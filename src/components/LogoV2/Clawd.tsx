@@ -33,42 +33,42 @@ type Segments = {
 };
 const POSES: Record<ClawdPose, Segments> = {
   default: {
-    r1L: ' ▐',
-    r1E: '▛███▜',
-    r1R: '▌',
-    r2L: '▝▜',
-    r2R: '▛▘'
+    r1L: ' ╭',
+    r1E: '▣─▣',
+    r1R: '╮ ',
+    r2L: ' │',
+    r2R: '│ '
   },
   'look-left': {
-    r1L: ' ▐',
-    r1E: '▟███▟',
-    r1R: '▌',
-    r2L: '▝▜',
-    r2R: '▛▘'
+    r1L: ' ╭',
+    r1E: '◧─◧',
+    r1R: '╮ ',
+    r2L: ' │',
+    r2R: '│ '
   },
   'look-right': {
-    r1L: ' ▐',
-    r1E: '▙███▙',
-    r1R: '▌',
-    r2L: '▝▜',
-    r2R: '▛▘'
+    r1L: ' ╭',
+    r1E: '◨─◨',
+    r1R: '╮ ',
+    r2L: ' │',
+    r2R: '│ '
   },
   'arms-up': {
-    r1L: '▗▟',
-    r1E: '▛███▜',
-    r1R: '▙▖',
-    r2L: ' ▜',
-    r2R: '▛ '
+    r1L: '┌╴',
+    r1E: '▣─▣',
+    r1R: '╶┐',
+    r2L: ' │',
+    r2R: '│ '
   }
 };
 
 // Apple Terminal uses a bg-fill trick (see below), so only eye poses make
 // sense. Arm poses fall back to default.
 const APPLE_EYES: Record<ClawdPose, string> = {
-  default: ' ▗   ▖ ',
-  'look-left': ' ▘   ▘ ',
-  'look-right': ' ▝   ▝ ',
-  'arms-up': ' ▗   ▖ '
+  default: ' ▣ ─ ▣ ',
+  'look-left': ' ◧ ─ ◧ ',
+  'look-right': ' ◨ ─ ◨ ',
+  'arms-up': ' ▣ ─ ▣ '
 };
 export function Clawd(t0) {
   const $ = _c(26);
@@ -140,7 +140,7 @@ export function Clawd(t0) {
   }
   let t8;
   if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-    t8 = <Text color="clawd_body" backgroundColor="clawd_background">█████</Text>;
+    t8 = <Text color="clawd_body" backgroundColor="clawd_background">▤▤▤▤▤</Text>;
     $[16] = t8;
   } else {
     t8 = $[16];
@@ -164,7 +164,7 @@ export function Clawd(t0) {
   }
   let t11;
   if ($[22] === Symbol.for("react.memo_cache_sentinel")) {
-    t11 = <Text color="clawd_body">{"  "}▘▘ ▝▝{"  "}</Text>;
+    t11 = <Text color="clawd_body">{"  "}╵╵ ╵╵{"  "}</Text>;
     $[22] = t11;
   } else {
     t11 = $[22];
@@ -187,7 +187,7 @@ function AppleTerminalClawd(t0) {
   } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text color="clawd_body">▗</Text>;
+    t1 = <Text color="clawd_body">╭</Text>;
     $[0] = t1;
   } else {
     t1 = $[0];
@@ -203,7 +203,7 @@ function AppleTerminalClawd(t0) {
   }
   let t4;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Text color="clawd_body">▖</Text>;
+    t4 = <Text color="clawd_body">╮</Text>;
     $[3] = t4;
   } else {
     t4 = $[3];
@@ -220,7 +220,7 @@ function AppleTerminalClawd(t0) {
   let t7;
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
     t6 = <Text backgroundColor="clawd_body">{" ".repeat(7)}</Text>;
-    t7 = <Text color="clawd_body">▘▘ ▝▝</Text>;
+    t7 = <Text color="clawd_body">╵╵ ╵╵</Text>;
     $[6] = t6;
     $[7] = t7;
   } else {
