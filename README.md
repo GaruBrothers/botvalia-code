@@ -63,9 +63,14 @@ Optional:
   - Preset: `free-fast`
   - Output tokens: `2048`
   - Thinking tokens: `512`
+  - Auto-selects a `:free` model from OpenRouter model list, prioritizing lightweight options first.
 - Override preset/model/base URL:
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "free-fast" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..." -MaxOutputTokens 2048 -MaxThinkingTokens 512
+```
+- Customize free-model priority order:
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "free-fast" -PreferredFreeModels @("liquidai/lfm2.5-1.2b-instruct:free","google/gemma-3n-2b:free","openai/gpt-oss-20b:free")
 ```
 - Force OpenRouter automatic routing:
 ```powershell
@@ -73,7 +78,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "a
 ```
 - Force a specific model:
 ```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "custom" -Model "openrouter/google/gemma-3-4b-it:free"
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "custom" -Model "google/gemma-3-4b-it:free"
 ```
 
 Note:

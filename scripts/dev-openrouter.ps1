@@ -4,6 +4,17 @@ param(
   [string]$Model = "",
   [string]$ApiKey = "",
   [string]$BaseUrl = "https://openrouter.ai/api",
+  [string[]]$PreferredFreeModels = @(
+    "liquidai/lfm2.5-1.2b-instruct:free",
+    "liquid/lfm2.5-1.2b-instruct:free",
+    "liquidai/lfm2.5-1.2b-thinking:free",
+    "liquid/lfm2.5-1.2b-thinking:free",
+    "google/gemma-3n-2b:free",
+    "google/gemma-3n-4b:free",
+    "openai/gpt-oss-20b:free",
+    "google/gemma-4-26b-a4b:free",
+    "openai/gpt-oss-120b:free"
+  ),
   [int]$MaxOutputTokens = 2048,
   [int]$MaxThinkingTokens = 512,
   [switch]$VersionOnly
@@ -26,26 +37,70 @@ if ([string]::IsNullOrWhiteSpace($ApiKey)) {
   exit 1
 }
 
-$freeFastCandidates = @(
-  "openrouter/google/gemma-3-4b-it:free",
-  "openrouter/meta-llama/llama-3.2-3b-instruct:free",
-  "openrouter/mistralai/mistral-7b-instruct:free"
+$freeFastFallbackCandidates = @(
+  "liquidai/lfm2.5-1.2b-instruct:free",
+  "liquid/lfm2.5-1.2b-instruct:free",
+  "google/gemma-3n-2b:free",
+  "google/gemma-3n-4b:free",
+  "openai/gpt-oss-20b:free",
+  "google/gemma-3-4b-it:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+  "mistralai/mistral-7b-instruct:free"
 )
+
+function Normalize-ModelId {
+  param([string]$ModelId)
+  if ([string]::IsNullOrWhiteSpace($ModelId)) {
+    return $ModelId
+  }
+
+  if ($ModelId.StartsWith("openrouter/")) {
+    return $ModelId.Substring("openrouter/".Length)
+  }
+
+  return $ModelId
+}
+
+function Get-ModelRank {
+  param(
+    [string]$ModelId,
+    [string[]]$PreferredModels
+  )
+
+  $normalized = (Normalize-ModelId -ModelId $ModelId).ToLowerInvariant()
+
+  for ($i = 0; $i -lt $PreferredModels.Length; $i++) {
+    $preferred = (Normalize-ModelId -ModelId $PreferredModels[$i]).ToLowerInvariant()
+    if ($normalized -eq $preferred) {
+      return $i
+    }
+  }
+
+  # Heuristics: smaller free models first for speed.
+  if ($normalized -match "lfm2\.5-1\.2b") { return 100 }
+  if ($normalized -match "gemma-3n-2b") { return 110 }
+  if ($normalized -match "gemma-3n-4b") { return 120 }
+  if ($normalized -match "gpt-oss-20b") { return 200 }
+  if ($normalized -match "gpt-oss-120b") { return 300 }
+
+  return 1000
+}
 
 function Resolve-Model {
   param(
     [string]$SelectedPreset,
     [string]$SelectedModel,
     [string]$SelectedApiKey,
-    [string]$SelectedBaseUrl
+    [string]$SelectedBaseUrl,
+    [string[]]$SelectedPreferredFreeModels
   )
 
   if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
-    return $SelectedModel
+    return (Normalize-ModelId -ModelId $SelectedModel)
   }
 
   if ($SelectedPreset -eq "auto") {
-    return "openrouter/auto"
+    return "auto"
   }
 
   if ($SelectedPreset -eq "custom") {
@@ -67,19 +122,38 @@ function Resolve-Model {
       }
     }
 
-    foreach ($candidate in $freeFastCandidates) {
-      if ($available.ContainsKey($candidate)) {
-        return $candidate
+    $freeModels = New-Object System.Collections.Generic.List[string]
+    foreach ($modelId in $available.Keys) {
+      if ($modelId.ToLowerInvariant().Contains(":free")) {
+        $freeModels.Add($modelId)
+      }
+    }
+
+    if ($freeModels.Count -gt 0) {
+      $best = $freeModels `
+        | Sort-Object `
+          @{ Expression = { Get-ModelRank -ModelId $_ -PreferredModels $SelectedPreferredFreeModels } }, `
+          @{ Expression = { $_.Length } }, `
+          @{ Expression = { $_ } } `
+        | Select-Object -First 1
+
+      if (-not [string]::IsNullOrWhiteSpace($best)) {
+        return (Normalize-ModelId -ModelId $best)
       }
     }
   } catch {
     Write-Host "[botvalia openrouter] Could not auto-discover free models: $($_.Exception.Message)"
   }
 
-  return $freeFastCandidates[0]
+  return (Normalize-ModelId -ModelId $freeFastFallbackCandidates[0])
 }
 
-$resolvedModel = Resolve-Model -SelectedPreset $Preset -SelectedModel $Model -SelectedApiKey $ApiKey -SelectedBaseUrl $BaseUrl
+$resolvedModel = Resolve-Model `
+  -SelectedPreset $Preset `
+  -SelectedModel $Model `
+  -SelectedApiKey $ApiKey `
+  -SelectedBaseUrl $BaseUrl `
+  -SelectedPreferredFreeModels $PreferredFreeModels
 
 $env:ANTHROPIC_BASE_URL = $BaseUrl
 $env:ANTHROPIC_AUTH_TOKEN = $ApiKey
