@@ -1,9 +1,9 @@
-# Claude Code Source Code Reconstruction
+# BotValia Source Code Reconstruction
 
 [![Bun](https://img.shields.io/badge/Bun-≥1.3.5-f9f1e1?logo=bun&logoColor=black)](https://bun.sh)
 [![License](https://img.shields.io/badge/license-Research_&_Learning-red)](.)
 
-Complete TypeScript source code of the Claude Code CLI, reconstructed from source maps and **runnable locally**.
+Complete TypeScript source code of the BotValia CLI, reconstructed from source maps and **runnable locally**.
 
 <img src="preview.png" width="380"/>
 
@@ -34,7 +34,7 @@ This repo can run against a custom Anthropic-compatible base URL, so you can use
 ```bash
 litellm --config scripts/litellm.free.example.yaml --port 4000
 ```
-3. Run Claude Code in free mode:
+3. Run BotValia in free mode:
 ```bash
 bun run dev:free
 ```
@@ -91,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1 -BaseUrl "http:/
 
 ## Architecture
 
-Claude Code is built on top of a highly optimized and robust architecture designed for LLM API interaction, token efficiency, and advanced execution boundaries.
+BotValia is built on top of a highly optimized and robust architecture designed for LLM API interaction, token efficiency, and advanced execution boundaries.
 
 ### Boot Sequence
 
@@ -105,7 +105,7 @@ dev-entry.ts → entrypoints/cli.tsx → main.tsx → REPL (React/Ink)
 
 ### Core Engine & Token Optimization
 
-Token efficiency is critical for survival in Claude Code. The architecture employs industry-leading token saving techniques:
+Token efficiency is critical for survival in BotValia. The architecture employs industry-leading token saving techniques:
 - **`QueryEngine.ts`**: The central engine (~1,295 lines) managing the LLM API loop, session lifecycle, and automatic tool execution.
 - **3-Tier Compaction System**:
   1. **Microcompact**: Uses the `cache_edits` API to remove messages from the server cache without invalidating the prompt cache context (zero API cost).
