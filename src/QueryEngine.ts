@@ -206,6 +206,18 @@ export class QueryEngine {
   private static readonly codingIntentPattern =
     /\b(code|coding|program|programming|debug|bug|fix|refactor|function|class|method|typescript|javascript|ts|js|python|java|c#|csharp|sql|api|endpoint|test|tests|stacktrace|compile|build|lint|archivo|archivos|codigo|codificar|programar|depurar|error|errores|arreglar|refactorizar|funcion|clase|metodo|prueba|pruebas|compilar)\b/i
 
+  private static readonly defaultCodeModel = 'openai/gpt-oss-120b:free'
+  private static readonly defaultFastModel = 'minimax/minimax-m2.7:cloud'
+  private static readonly defaultCodeFallbacks = [
+    'minimax/minimax-m2.7:cloud',
+    'kimi/kimi-k2:free',
+    'openai/gpt-oss-20b:free',
+  ]
+  private static readonly defaultFastFallbacks = [
+    'kimi/kimi-k2:free',
+    'openai/gpt-oss-20b:free',
+  ]
+
   constructor(config: QueryEngineConfig) {
     this.config = config
     this.mutableMessages = config.initialMessages ?? []
@@ -501,16 +513,22 @@ export class QueryEngine {
       },
     }))
 
-    const autoRoutedModel =
+    const routeDecision =
       modelFromUserInput === undefined
-        ? this.getAutoRoutedModel(messagesFromUserInput, initialMainLoopModel)
+        ? this.getAutoRoutedSelection(
+            messagesFromUserInput,
+            initialMainLoopModel,
+            fallbackModel,
+          )
         : undefined
     const mainLoopModel =
-      modelFromUserInput ?? autoRoutedModel ?? initialMainLoopModel
+      modelFromUserInput ?? routeDecision?.model ?? initialMainLoopModel
+    const effectiveFallbackModel =
+      routeDecision?.fallbackModel ?? fallbackModel
     const modelSelectionSource =
       modelFromUserInput !== undefined
         ? 'manual'
-        : autoRoutedModel !== undefined
+        : routeDecision !== undefined
           ? 'auto-router'
           : 'default'
 
@@ -579,7 +597,7 @@ export class QueryEngine {
 
     if (this.shouldShowActiveModelNotice()) {
       const modelInfo = createSystemMessage(
-        `Modelo activo ahora: ${mainLoopModel} (origen: ${modelSelectionSource})`,
+        `Modelo activo ahora: ${mainLoopModel} (fallback: ${effectiveFallbackModel ?? 'none'}) (origen: ${modelSelectionSource})`,
         'info',
       )
       yield* normalizeMessage(modelInfo)
@@ -714,7 +732,7 @@ export class QueryEngine {
       systemContext,
       canUseTool: wrappedCanUseTool,
       toolUseContext: processUserInputContext,
-      fallbackModel,
+      fallbackModel: effectiveFallbackModel,
       querySource: 'sdk',
       maxTurns,
       taskBudget,
@@ -1212,10 +1230,16 @@ export class QueryEngine {
     this.config.userSpecifiedModel = model
   }
 
-  private getAutoRoutedModel(
+  private getAutoRoutedSelection(
     inputMessages: Message[],
     currentModel: string,
-  ): string | undefined {
+    currentFallbackModel?: string,
+  ):
+    | {
+        model: string
+        fallbackModel?: string
+      }
+    | undefined {
     if (!this.isModelRouterEnabled()) {
       return undefined
     }
@@ -1225,22 +1249,50 @@ export class QueryEngine {
       return undefined
     }
 
-    const codeModel =
-      process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL?.trim() ||
-      'openai/gpt-oss-120b:free'
-    const fastModel =
-      process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL?.trim() ||
-      'openai/gpt-oss-20b:free'
+    const isCodingIntent = QueryEngine.codingIntentPattern.test(promptText)
+    const primaryCandidate = isCodingIntent
+      ? process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL?.trim() ||
+        QueryEngine.defaultCodeModel
+      : process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL?.trim() ||
+        QueryEngine.defaultFastModel
+    const fallbackCandidates = this.getFallbackCandidates(isCodingIntent)
 
-    const targetModel = QueryEngine.codingIntentPattern.test(promptText)
-      ? codeModel
-      : fastModel
-    if (!targetModel || targetModel === currentModel) {
+    const routedPrimary = this.safeParseModel(primaryCandidate) ?? currentModel
+    const routedFallback = [
+      ...fallbackCandidates,
+      ...(currentFallbackModel ? [currentFallbackModel] : []),
+    ]
+      .map(candidate => this.safeParseModel(candidate))
+      .find(candidate => Boolean(candidate) && candidate !== routedPrimary)
+
+    const fallbackModel = routedFallback || undefined
+
+    if (routedPrimary === currentModel && fallbackModel === currentFallbackModel) {
       return undefined
     }
+    return { model: routedPrimary, fallbackModel }
+  }
 
+  private getFallbackCandidates(isCodingIntent: boolean): string[] {
+    const envVar = isCodingIntent
+      ? process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
+      : process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS
+    const defaults = isCodingIntent
+      ? QueryEngine.defaultCodeFallbacks
+      : QueryEngine.defaultFastFallbacks
+    if (!envVar || !envVar.trim()) {
+      return defaults
+    }
+    return envVar
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+  }
+
+  private safeParseModel(candidate: string): string | undefined {
+    if (!candidate) return undefined
     try {
-      return parseUserSpecifiedModel(targetModel)
+      return parseUserSpecifiedModel(candidate)
     } catch (error) {
       logError(error)
       return undefined

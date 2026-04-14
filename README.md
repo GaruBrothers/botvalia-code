@@ -74,13 +74,17 @@ bun run model:openrouter:clear
 
 BotValia quality router (enabled by default in `dev:openrouter`):
 - Coding/debug prompts -> `openai/gpt-oss-120b:free`
-- General/light prompts -> `openai/gpt-oss-20b:free`
+- General/light prompts -> `minimax/minimax-m2.7:cloud`
+- Coding fallback chain -> `minimax/minimax-m2.7:cloud`, then `kimi/kimi-k2:free`, then `openai/gpt-oss-20b:free`
+- General fallback chain -> `kimi/kimi-k2:free`, then `openai/gpt-oss-20b:free`
 
 Override examples:
 ```powershell
 $env:BOTVALIA_MODEL_ROUTER_ENABLED = "1"
 $env:BOTVALIA_MODEL_ROUTER_CODE_MODEL = "openai/gpt-oss-120b:free"
-$env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = "liquid/lfm-2.5-1.2b-instruct:free"
+$env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = "minimax/minimax-m2.7:cloud"
+$env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = "minimax/minimax-m2.7:cloud,kimi/kimi-k2:free,openai/gpt-oss-20b:free"
+$env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = "kimi/kimi-k2:free,openai/gpt-oss-20b:free"
 ```
 
 Optional:
