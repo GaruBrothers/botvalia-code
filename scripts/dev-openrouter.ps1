@@ -224,44 +224,21 @@ if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_FAST_MODEL)) {
   $env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = "minimax/minimax-m2.7:cloud"
 }
 if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS)) {
-  $env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = "google/gemma-3n-2b:free,openai/gpt-oss-20b:free"
+  $env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = "minimax/minimax-m2.7:cloud,kimi/kimi-k2:free,openai/gpt-oss-20b:free"
 }
 if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS)) {
-  $env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = "google/gemma-3n-2b:free,openai/gpt-oss-20b:free"
+  $env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = "kimi/kimi-k2:free,openai/gpt-oss-20b:free"
 }
 if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_SHOW_FOOTER_MODEL)) {
   $env:BOTVALIA_SHOW_FOOTER_MODEL = "1"
 }
 
-# Fallback models list - valid free models on OpenRouter
-$fallbackList = @(
-  "google/gemma-3n-2b:free",
-  "google/gemma-3n-4b:free",
-  "openai/gpt-oss-20b:free",
-  "google/gemma-3-4b-it:free",
-  "meta-llama/llama-3.2-3b-instruct:free",
-  "mistralai/mistral-7b-instruct:free"
-) | Where-Object { $_ -ne $resolvedModel } | Select-Object -Unique
-
-# Set BotValia model router with fallback
-$env:BOTVALIA_MODEL_ROUTER_ENABLED = "1"
-$env:BOTVALIA_MODEL_ROUTER_CODE_MODEL = $resolvedModel
-$env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = "minimax/minimax-m2.7:cloud"
-$env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = ($fallbackList -join ",")
-$env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = ($fallbackList -join ",")
-
-# Also set pinned model file with resolved model
-Set-Content -Path $PinnedModelFile -Value $resolvedModel -NoNewline
-
-# Now print all config AFTER setting all values
 Write-Host "[botvalia openrouter] ANTHROPIC_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia openrouter] ANTHROPIC_MODEL=$($env:ANTHROPIC_MODEL)"
-Write-Host "[botvalia openrouter] RESOLVED_MODEL=$resolvedModel"
 Write-Host "[botvalia openrouter] PRESET=$Preset"
 if (-not [string]::IsNullOrWhiteSpace($pinnedModel)) {
   Write-Host "[botvalia openrouter] PINNED_MODEL=$pinnedModel"
 }
-Write-Host "[botvalia openrouter] FALLBACK_FOR_ALL_PRIMARY_MODELS=$($env:FALLBACK_FOR_ALL_PRIMARY_MODELS)"
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_ENABLED=$($env:BOTVALIA_MODEL_ROUTER_ENABLED)"
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_CODE_MODEL=$($env:BOTVALIA_MODEL_ROUTER_CODE_MODEL)"
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_FAST_MODEL=$($env:BOTVALIA_MODEL_ROUTER_FAST_MODEL)"
@@ -270,14 +247,27 @@ Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS=$($env:BO
 Write-Host "[botvalia openrouter] BOTVALIA_SHOW_FOOTER_MODEL=$($env:BOTVALIA_SHOW_FOOTER_MODEL)"
 Write-Host "[botvalia openrouter] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia openrouter] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
-Write-Host "[botvalia openrouter] FALLBACK_MODELS=$($fallbackList -join ", ")"
-Write-Host "[botvalia openrouter] Pinned model saved: $resolvedModel"
+
+# Build fallback model list - use fallbackCandidates excluding the resolved model
+$extraArgs = ""
+$fallbackCandidates = @(
+  "liquidai/lfm2.5-1.2b-instruct:free",
+  "google/gemma-3n-2b:free",
+  "google/gemma-3n-4b:free",
+  "openai/gpt-oss-20b:free",
+  "google/gemma-3-4b-it:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+  "mistralai/mistral-7b-instruct:free"
+) | Where-Object { $_ -ne $resolvedModel } | Select-Object -Unique
+if ($fallbackCandidates.Count -gt 0) {
+  $extraArgs = "--fallback-model " + ($fallbackCandidates -join ",")
+  Write-Host "[botvalia openrouter] FALLBACK_MODELS=$($fallbackCandidates -join ", ")"
+}
 
 if ($VersionOnly) {
   & $bunPath run version
   exit $LASTEXITCODE
 }
 
-# Run dev - on failure, user can run script again with different model
-& $bunPath run dev
+& $bunPath run dev -- $extraArgs
 exit $LASTEXITCODE

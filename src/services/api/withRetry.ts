@@ -183,7 +183,7 @@ export async function* withRetry<T>(
     ...(isFastModeEnabled() && { fastMode: options.fastMode }),
   }
   let client: Anthropic | null = null
-  let consecutiveRateLimitErrors = options.initialConsecutive529Errors ?? 0
+  let consecutive529Errors = options.initialConsecutive529Errors ?? 0
   let lastError: unknown
   let persistentAttempt = 0
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -323,43 +323,30 @@ export async function* withRetry<T>(
         throw new CannotRetryError(error, retryContext)
       }
 
-      // Track consecutive 529 errors OR rate limit errors (429 from OpenRouter, etc)
-      const isRateLimitedError =
-        is529Error(error) ||
-        (error instanceof APIError && error.status === 429) ||
-        (error instanceof APIError &&
-          (error.message?.includes('rate-limited') ||
-            error.message?.includes('rate_limit') ||
-            error.message?.includes('rate limit') ||
-            error.message?.includes('429') ||
-            error.message?.includes('too many requests')))
+      // Track consecutive 529 errors
       if (
-        isRateLimitedError &&
+        is529Error(error) &&
         // If FALLBACK_FOR_ALL_PRIMARY_MODELS is not set, fall through only if the primary model is a non-custom Opus model.
         // TODO: Revisit if the isNonCustomOpusModel check should still exist, or if isNonCustomOpusModel is a stale artifact of when Claude Code was hardcoded on Opus.
         (process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS ||
           (!isClaudeAISubscriber() && isNonCustomOpusModel(options.model)))
       ) {
-        consecutiveRateLimitErrors++
-        if (consecutiveRateLimitErrors >= MAX_529_RETRIES) {
-          // Get fallback model from options, or use BotValia router fallbacks
-          const fallbackModel =
-            options.fallbackModel ??
-            process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS?.split(',')[0] ??
-            process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS?.split(',')[0]
-          if (fallbackModel) {
-            logEvent('tengu_api_rate_limit_fallback_triggered', {
+        consecutive529Errors++
+        if (consecutive529Errors >= MAX_529_RETRIES) {
+          // Check if fallback model is specified
+          if (options.fallbackModel) {
+            logEvent('tengu_api_opus_fallback_triggered', {
               original_model:
                 options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
-                fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                options.fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               provider: getAPIProviderForStatsig(),
             })
 
             // Throw special error to indicate fallback was triggered
             throw new FallbackTriggeredError(
               options.model,
-              fallbackModel,
+              options.fallbackModel,
             )
           }
 
