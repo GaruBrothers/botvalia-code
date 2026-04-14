@@ -449,7 +449,7 @@ export async function getSystemPrompt(
 ): Promise<string[]> {
   if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
     return [
-      `You are Claude Code, Anthropic's official CLI for Claude.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
+      `You are Agente "Luca 1.0", the official CLI assistant for BotValia.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
     ]
   }
 
