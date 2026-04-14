@@ -210,6 +210,9 @@ $env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1"
 $env:CLAUDE_CODE_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
 
+# Enable fallback for all models (triggers on 529 errors)
+$env:FALLBACK_FOR_ALL_PRIMARY_MODELS = "1"
+
 # BotValia model router: code tasks use stronger model; general chat uses faster model.
 if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_ENABLED)) {
   $env:BOTVALIA_MODEL_ROUTER_ENABLED = "1"
@@ -245,10 +248,26 @@ Write-Host "[botvalia openrouter] BOTVALIA_SHOW_FOOTER_MODEL=$($env:BOTVALIA_SHO
 Write-Host "[botvalia openrouter] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia openrouter] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 
+# Build fallback model list - use fallbackCandidates excluding the resolved model
+$extraArgs = ""
+$fallbackCandidates = @(
+  "liquidai/lfm2.5-1.2b-instruct:free",
+  "google/gemma-3n-2b:free",
+  "google/gemma-3n-4b:free",
+  "openai/gpt-oss-20b:free",
+  "google/gemma-3-4b-it:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+  "mistralai/mistral-7b-instruct:free"
+) | Where-Object { $_ -ne $resolvedModel } | Select-Object -Unique
+if ($fallbackCandidates.Count -gt 0) {
+  $extraArgs = "--fallback-model " + ($fallbackCandidates -join ",")
+  Write-Host "[botvalia openrouter] FALLBACK_MODELS=$($fallbackCandidates -join ", ")"
+}
+
 if ($VersionOnly) {
   & $bunPath run version
   exit $LASTEXITCODE
 }
 
-& $bunPath run dev
+& $bunPath run dev -- $extraArgs
 exit $LASTEXITCODE
