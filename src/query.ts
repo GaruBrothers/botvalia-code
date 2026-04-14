@@ -102,9 +102,11 @@ import { handleStopHooks } from './query/stopHooks.js'
 import { buildQueryConfig } from './query/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
+import { getMemoryService } from './services/memory/MemoryService.js'
 import { feature } from 'bun:bundle'
 import {
   getCurrentTurnTokenBudget,
+  getSessionId,
   getTurnOutputTokens,
   incrementBudgetContinuationCount,
 } from './bootstrap/state.js'
@@ -363,6 +365,33 @@ async function* queryLoop(
     }
 
     let messagesForQuery = [...getMessagesAfterCompactBoundary(messages)]
+
+    const shouldApplyInfiniteMemory =
+      turnCount === 1 &&
+      (querySource === 'sdk' || querySource === 'repl_main_thread') &&
+      !toolUseContext.agentId &&
+      process.env.BOTVALIA_MEMORY_DISABLED !== '1'
+
+    if (shouldApplyInfiniteMemory) {
+      try {
+        const memoryContext = await getMemoryService().buildOptimizedContext(
+          getSessionId(),
+          messagesForQuery,
+        )
+        if (memoryContext.optimizedMessages.length > 0) {
+          messagesForQuery = memoryContext.optimizedMessages
+          logEvent('botvalia_infinite_memory_context_applied', {
+            shortTermMessages: messagesForQuery.length,
+            hasSummary: Boolean(memoryContext.summaryText),
+            relevantCount: memoryContext.relevantMemories.length,
+            queryChainId: queryChainIdForAnalytics,
+            queryDepth: queryTracking.depth,
+          })
+        }
+      } catch (error) {
+        logError(error)
+      }
+    }
 
     let tracking = autoCompactTracking
 

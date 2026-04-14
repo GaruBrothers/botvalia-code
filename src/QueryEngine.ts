@@ -34,6 +34,7 @@ import { loadMemoryPrompt } from './memdir/memdir.js'
 import { hasAutoMemPathOverride } from './memdir/paths.js'
 import { query } from './query.js'
 import { categorizeRetryableAPIError } from './services/api/errors.js'
+import { getMemoryService } from './services/memory/MemoryService.js'
 import type { MCPServerConnection } from './services/mcp/types.js'
 import type { AppState } from './state/AppState.js'
 import { type Tools, type ToolUseContext, toolMatchesName } from './Tool.js'
@@ -58,7 +59,7 @@ import {
 } from './utils/fileStateCache.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
-import { getInMemoryErrors } from './utils/log.js'
+import { getInMemoryErrors, logError } from './utils/log.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
   getMainLoopModel,
@@ -429,6 +430,13 @@ export class QueryEngine {
 
     // Push new messages, including user input and any attachments
     this.mutableMessages.push(...messagesFromUserInput)
+    const memoryService = getMemoryService()
+    const conversationId = getSessionId()
+    void Promise.allSettled(
+      messagesFromUserInput.map(message =>
+        memoryService.saveMessage(conversationId, message),
+      ),
+    ).catch(logError)
 
     // Update params to reflect updates from processing /slash commands
     const messages = [...this.mutableMessages]
@@ -766,6 +774,7 @@ export class QueryEngine {
             lastStopReason = message.message.stop_reason
           }
           this.mutableMessages.push(message)
+          void memoryService.saveMessage(conversationId, message).catch(logError)
           yield* normalizeMessage(message)
           break
         case 'progress':
@@ -783,6 +792,7 @@ export class QueryEngine {
           break
         case 'user':
           this.mutableMessages.push(message)
+          void memoryService.saveMessage(conversationId, message).catch(logError)
           yield* normalizeMessage(message)
           break
         case 'stream_event':

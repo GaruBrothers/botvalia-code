@@ -103,6 +103,26 @@ Note:
   - `ANTHROPIC_AUTH_TOKEN=<OPENROUTER_API_KEY>`
   - `ANTHROPIC_API_KEY` is intentionally cleared.
 
+### Infinite Memory (BotValia)
+
+BotValia now includes a 3-layer memory pipeline:
+- Short-term memory: sends only recent messages to the model.
+- Long-term memory: persists interactions on disk per project.
+- Semantic memory: stores embeddings and injects relevant memories by similarity.
+
+Storage (local project):
+- `.botvalia/memory/interactions.json`
+- `.botvalia/memory/vectors.json`
+- `.botvalia/memory/summaries.json`
+- `.botvalia/memory/state.json`
+
+Environment toggles:
+- `BOTVALIA_MEMORY_DISABLED=1` disables the memory optimization layer.
+- `BOTVALIA_MEMORY_SHORT_TERM_LIMIT` default `10`
+- `BOTVALIA_MEMORY_RELEVANT_TOP_K` default `5`
+- `BOTVALIA_MEMORY_SUMMARY_TRIGGER` default `40`
+- `BOTVALIA_MEMORY_SUMMARY_KEEP_RECENT` default `14`
+
 ---
 
 ## Project Structure

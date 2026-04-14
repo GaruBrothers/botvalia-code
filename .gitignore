@@ -14,5 +14,6 @@ coverage/
 *.swo
 
 .claude/
+.botvalia/
 .idea/
 .vscode/
