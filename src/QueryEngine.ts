@@ -62,6 +62,7 @@ import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.j
 import { getInMemoryErrors, logError } from './utils/log.js'
 import {
   countToolCalls,
+  createSystemMessage,
   getContentText,
   SYNTHETIC_MESSAGES,
 } from './utils/messages.js'
@@ -506,6 +507,12 @@ export class QueryEngine {
         : undefined
     const mainLoopModel =
       modelFromUserInput ?? autoRoutedModel ?? initialMainLoopModel
+    const modelSelectionSource =
+      modelFromUserInput !== undefined
+        ? 'manual'
+        : autoRoutedModel !== undefined
+          ? 'auto-router'
+          : 'default'
 
     // Recreate after processing the prompt to pick up updated messages and
     // model (from slash commands).
@@ -569,6 +576,14 @@ export class QueryEngine {
       plugins: enabledPlugins,
       fastMode: initialAppState.fastMode,
     })
+
+    if (this.shouldShowActiveModelNotice()) {
+      const modelInfo = createSystemMessage(
+        `Modelo activo ahora: ${mainLoopModel} (origen: ${modelSelectionSource})`,
+        'info',
+      )
+      yield* normalizeMessage(modelInfo)
+    }
 
     // Record when system message is yielded for headless latency tracking
     headlessProfilerCheckpoint('system_message_yielded')
@@ -1251,6 +1266,14 @@ export class QueryEngine {
       }
     }
     return ''
+  }
+
+  private shouldShowActiveModelNotice(): boolean {
+    const raw = process.env.BOTVALIA_SHOW_ACTIVE_MODEL
+    if (raw === undefined) {
+      return true
+    }
+    return isEnvTruthy(raw)
   }
 }
 
