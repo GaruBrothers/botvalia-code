@@ -61,7 +61,7 @@ Optional:
 - Verify startup only: `bun run version:openrouter`
 - Override model/base URL:
 ```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Model "openrouter/auto" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..."
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Model "openrouter/auto" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..." -MaxOutputTokens 4096 -MaxThinkingTokens 1024
 ```
 
 Note:
