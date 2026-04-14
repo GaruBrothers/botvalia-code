@@ -4,6 +4,8 @@ param(
   [string]$Model = "",
   [string]$ApiKey = "",
   [string]$BaseUrl = "https://openrouter.ai/api",
+  [bool]$UsePinnedModel = $true,
+  [string]$PinnedModelFile = "",
   [string[]]$PreferredFreeModels = @(
     "liquidai/lfm2.5-1.2b-instruct:free",
     "liquid/lfm2.5-1.2b-instruct:free",
@@ -35,6 +37,10 @@ if ([string]::IsNullOrWhiteSpace($ApiKey)) {
 if ([string]::IsNullOrWhiteSpace($ApiKey)) {
   Write-Error "Missing API key. Set OPENROUTER_API_KEY or pass -ApiKey."
   exit 1
+}
+
+if ([string]::IsNullOrWhiteSpace($PinnedModelFile)) {
+  $PinnedModelFile = Join-Path $PSScriptRoot "..\.botvalia\openrouter-model.txt"
 }
 
 $freeFastFallbackCandidates = @(
@@ -86,10 +92,37 @@ function Get-ModelRank {
   return 1000
 }
 
+function Get-PinnedModel {
+  param(
+    [bool]$Enabled,
+    [string]$PinFile
+  )
+
+  if (-not $Enabled) {
+    return ""
+  }
+
+  if (-not (Test-Path $PinFile)) {
+    return ""
+  }
+
+  try {
+    $raw = Get-Content -Path $PinFile -ErrorAction Stop | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+      return ""
+    }
+    return (Normalize-ModelId -ModelId $raw.Trim())
+  } catch {
+    Write-Host "[botvalia openrouter] Could not read pinned model file: $($_.Exception.Message)"
+    return ""
+  }
+}
+
 function Resolve-Model {
   param(
     [string]$SelectedPreset,
     [string]$SelectedModel,
+    [string]$SelectedPinnedModel,
     [string]$SelectedApiKey,
     [string]$SelectedBaseUrl,
     [string[]]$SelectedPreferredFreeModels
@@ -97,6 +130,10 @@ function Resolve-Model {
 
   if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
     return (Normalize-ModelId -ModelId $SelectedModel)
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($SelectedPinnedModel)) {
+    return (Normalize-ModelId -ModelId $SelectedPinnedModel)
   }
 
   if ($SelectedPreset -eq "auto") {
@@ -148,9 +185,12 @@ function Resolve-Model {
   return (Normalize-ModelId -ModelId $freeFastFallbackCandidates[0])
 }
 
+$pinnedModel = Get-PinnedModel -Enabled $UsePinnedModel -PinFile $PinnedModelFile
+
 $resolvedModel = Resolve-Model `
   -SelectedPreset $Preset `
   -SelectedModel $Model `
+  -SelectedPinnedModel $pinnedModel `
   -SelectedApiKey $ApiKey `
   -SelectedBaseUrl $BaseUrl `
   -SelectedPreferredFreeModels $PreferredFreeModels
@@ -173,6 +213,9 @@ $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
 Write-Host "[botvalia openrouter] ANTHROPIC_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia openrouter] ANTHROPIC_MODEL=$($env:ANTHROPIC_MODEL)"
 Write-Host "[botvalia openrouter] PRESET=$Preset"
+if (-not [string]::IsNullOrWhiteSpace($pinnedModel)) {
+  Write-Host "[botvalia openrouter] PINNED_MODEL=$pinnedModel"
+}
 Write-Host "[botvalia openrouter] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia openrouter] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 

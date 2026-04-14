@@ -62,6 +62,16 @@ To list currently available free models from your account:
 bun run models:openrouter:free
 ```
 
+To pin one model (fixed across sessions until you change it):
+```bash
+bun run model:openrouter:set -- -Model "openai/gpt-oss-20b:free"
+```
+
+To remove pinned mode and return to auto selection:
+```bash
+bun run model:openrouter:clear
+```
+
 Optional:
 - Verify startup only: `bun run version:openrouter`
 - Free + fast is now the default behavior in `dev:openrouter`:
@@ -69,6 +79,7 @@ Optional:
   - Output tokens: `2048`
   - Thinking tokens: `512`
   - Auto-selects a `:free` model from OpenRouter model list, prioritizing lightweight options first.
+  - If a pinned model exists, it is used first and does not rotate automatically.
 - Override preset/model/base URL:
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "free-fast" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..." -MaxOutputTokens 2048 -MaxThinkingTokens 512
