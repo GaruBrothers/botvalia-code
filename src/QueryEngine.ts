@@ -147,7 +147,7 @@ export type QueryEngineConfig = {
   customSystemPrompt?: string
   appendSystemPrompt?: string
   userSpecifiedModel?: string
-  fallbackModel?: string
+  fallbackModels?: string[]
   thinkingConfig?: ThinkingConfig
   maxTurns?: number
   maxBudgetUsd?: number
@@ -207,15 +207,16 @@ export class QueryEngine {
     /\b(code|coding|program|programming|debug|bug|fix|refactor|function|class|method|typescript|javascript|ts|js|python|java|c#|csharp|sql|api|endpoint|test|tests|stacktrace|compile|build|lint|archivo|archivos|codigo|codificar|programar|depurar|error|errores|arreglar|refactorizar|funcion|clase|metodo|prueba|pruebas|compilar)\b/i
 
   private static readonly defaultCodeModel = 'openai/gpt-oss-120b:free'
-  private static readonly defaultFastModel = 'minimax/minimax-m2.7:cloud'
+  private static readonly defaultFastModel = 'openai/gpt-oss-20b:free'
   private static readonly defaultCodeFallbacks = [
     'minimax/minimax-m2.7:cloud',
     'kimi/kimi-k2:free',
     'openai/gpt-oss-20b:free',
   ]
   private static readonly defaultFastFallbacks = [
+    'minimax/minimax-m2.7:cloud',
     'kimi/kimi-k2:free',
-    'openai/gpt-oss-20b:free',
+    'openai/gpt-oss-120b:free',
   ]
 
   constructor(config: QueryEngineConfig) {
@@ -245,7 +246,7 @@ export class QueryEngine {
       customSystemPrompt,
       appendSystemPrompt,
       userSpecifiedModel,
-      fallbackModel,
+      fallbackModels,
       jsonSchema,
       getAppState,
       setAppState,
@@ -518,13 +519,13 @@ export class QueryEngine {
         ? this.getAutoRoutedSelection(
             messagesFromUserInput,
             initialMainLoopModel,
-            fallbackModel,
+            fallbackModels,
           )
         : undefined
     const mainLoopModel =
       modelFromUserInput ?? routeDecision?.model ?? initialMainLoopModel
-    const effectiveFallbackModel =
-      routeDecision?.fallbackModel ?? fallbackModel
+    const effectiveFallbackModels =
+      routeDecision?.fallbackModels ?? fallbackModels ?? []
     const modelSelectionSource =
       modelFromUserInput !== undefined
         ? 'manual'
@@ -607,7 +608,7 @@ export class QueryEngine {
 
     if (this.shouldShowActiveModelNotice()) {
       const modelInfo = createSystemMessage(
-        `Modelo activo ahora: ${mainLoopModel} (fallback: ${effectiveFallbackModel ?? 'none'}) (origen: ${modelSelectionSource})`,
+        `Modelo activo ahora: ${mainLoopModel} (fallbacks: ${effectiveFallbackModels.length > 0 ? effectiveFallbackModels.join(' -> ') : 'none'}) (origen: ${modelSelectionSource})`,
         'info',
       )
       yield* normalizeMessage(modelInfo)
@@ -742,7 +743,7 @@ export class QueryEngine {
       systemContext,
       canUseTool: wrappedCanUseTool,
       toolUseContext: processUserInputContext,
-      fallbackModel: effectiveFallbackModel,
+      fallbackModels: effectiveFallbackModels,
       querySource: 'sdk',
       maxTurns,
       taskBudget,
@@ -1243,11 +1244,11 @@ export class QueryEngine {
   private getAutoRoutedSelection(
     inputMessages: Message[],
     currentModel: string,
-    currentFallbackModel?: string,
+    currentFallbackModels?: string[],
   ):
     | {
         model: string
-        fallbackModel?: string
+        fallbackModels?: string[]
       }
     | undefined {
     if (!this.isModelRouterEnabled()) {
@@ -1268,25 +1269,36 @@ export class QueryEngine {
     const fallbackCandidates = this.getFallbackCandidates(isCodingIntent)
 
     const routedPrimary = this.safeParseModel(primaryCandidate) ?? currentModel
-    const routedFallback = [
+    const routedFallbacks = [
       ...fallbackCandidates,
-      ...(currentFallbackModel ? [currentFallbackModel] : []),
+      ...(currentFallbackModels ?? []),
     ]
       .map(candidate => this.safeParseModel(candidate))
-      .find(candidate => Boolean(candidate) && candidate !== routedPrimary)
+      .filter(
+        (candidate): candidate is string =>
+          Boolean(candidate) && candidate !== routedPrimary,
+      )
+      .filter((candidate, index, arr) => arr.indexOf(candidate) === index)
 
-    const fallbackModel = routedFallback || undefined
+    const fallbackModels =
+      routedFallbacks.length > 0 ? routedFallbacks : undefined
 
-    if (routedPrimary === currentModel && fallbackModel === currentFallbackModel) {
+    if (
+      routedPrimary === currentModel &&
+      JSON.stringify(fallbackModels ?? []) ===
+        JSON.stringify(currentFallbackModels ?? [])
+    ) {
       return undefined
     }
-    return { model: routedPrimary, fallbackModel }
+    return { model: routedPrimary, fallbackModels }
   }
 
   private getFallbackCandidates(isCodingIntent: boolean): string[] {
     const envVar = isCodingIntent
-      ? process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
-      : process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS
+      ? process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN ||
+        process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
+      : process.env.BOTVALIA_MODEL_ROUTER_FAST_CHAIN ||
+        process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS
     const defaults = isCodingIntent
       ? QueryEngine.defaultCodeFallbacks
       : QueryEngine.defaultFastFallbacks
@@ -1366,7 +1378,7 @@ export async function* ask({
   customSystemPrompt,
   appendSystemPrompt,
   userSpecifiedModel,
-  fallbackModel,
+  fallbackModels,
   jsonSchema,
   getAppState,
   setAppState,
@@ -1395,7 +1407,7 @@ export async function* ask({
   customSystemPrompt?: string
   appendSystemPrompt?: string
   userSpecifiedModel?: string
-  fallbackModel?: string
+  fallbackModels?: string[]
   jsonSchema?: Record<string, unknown>
   getAppState: () => AppState
   setAppState: (f: (prev: AppState) => AppState) => void
@@ -1423,7 +1435,7 @@ export async function* ask({
     customSystemPrompt,
     appendSystemPrompt,
     userSpecifiedModel,
-    fallbackModel,
+    fallbackModels,
     thinkingConfig,
     maxTurns,
     maxBudgetUsd,

@@ -187,7 +187,7 @@ export type QueryParams = {
   systemContext: { [k: string]: string }
   canUseTool: CanUseToolFn
   toolUseContext: ToolUseContext
-  fallbackModel?: string
+  fallbackModels?: string[]
   querySource: QuerySource
   maxOutputTokensOverride?: number
   maxTurns?: number
@@ -257,7 +257,7 @@ async function* queryLoop(
     userContext,
     systemContext,
     canUseTool,
-    fallbackModel,
+    fallbackModels,
     querySource,
     maxTurns,
     skipCacheWrite,
@@ -605,6 +605,9 @@ async function* queryLoop(
         permissionMode === 'plan' &&
         doesMostRecentAssistantMessageExceed200k(messagesForQuery),
     })
+    let fallbackQueue = [...(fallbackModels ?? [])].filter(
+      candidate => candidate !== currentModel,
+    )
 
     queryCheckpoint('query_setup_end')
 
@@ -701,9 +704,9 @@ async function* queryLoop(
                 fastMode: appState.fastMode,
               }),
               toolChoice: undefined,
-              isNonInteractiveSession:
-                toolUseContext.options.isNonInteractiveSession,
-              fallbackModel,
+                isNonInteractiveSession:
+                  toolUseContext.options.isNonInteractiveSession,
+                fallbackModel: fallbackQueue[0],
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },
@@ -920,9 +923,15 @@ async function* queryLoop(
             }
           }
         } catch (innerError) {
-          if (innerError instanceof FallbackTriggeredError && fallbackModel) {
+          if (
+            innerError instanceof FallbackTriggeredError &&
+            innerError.fallbackModel
+          ) {
             // Fallback was triggered - switch model and retry
-            currentModel = fallbackModel
+            currentModel = innerError.fallbackModel
+            fallbackQueue = fallbackQueue.filter(
+              candidate => candidate !== currentModel,
+            )
             attemptWithFallback = true
 
             // Clear assistant messages since we'll retry the entire request
@@ -948,7 +957,7 @@ async function* queryLoop(
             }
 
             // Update tool use context with new model
-            toolUseContext.options.mainLoopModel = fallbackModel
+            toolUseContext.options.mainLoopModel = currentModel
 
             // Thinking signatures are model-bound: replaying a protected-thinking
             // block (e.g. capybara) to an unprotected fallback (e.g. opus) 400s.
@@ -962,7 +971,7 @@ async function* queryLoop(
               original_model:
                 innerError.originalModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
-                fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                currentModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               entrypoint:
                 'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               queryChainId: queryChainIdForAnalytics,
