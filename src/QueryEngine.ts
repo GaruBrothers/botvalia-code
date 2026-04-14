@@ -532,6 +532,16 @@ export class QueryEngine {
           ? 'auto-router'
           : 'default'
 
+    setAppState(prev => {
+      if (prev.mainLoopModelForSession === mainLoopModel) {
+        return prev
+      }
+      return {
+        ...prev,
+        mainLoopModelForSession: mainLoopModel,
+      }
+    })
+
     // Recreate after processing the prompt to pick up updated messages and
     // model (from slash commands).
     processUserInputContext = {

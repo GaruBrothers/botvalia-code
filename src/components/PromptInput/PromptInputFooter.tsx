@@ -6,6 +6,7 @@ import { getBridgeStatus } from '../../bridge/bridgeStatusUtil.js';
 import { useSetPromptOverlay } from '../../context/promptOverlayContext.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import type { IDESelection } from '../../hooks/useIdeSelection.js';
+import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { useSettings } from '../../hooks/useSettings.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text } from '../../ink.js';
@@ -120,6 +121,8 @@ function PromptInputFooter({
 
   // Hide `? for shortcuts` if the user has a custom status line, or during ctrl-r
   const suppressHint = suppressHintFromProps || statusLineShouldDisplay(settings) || isSearching;
+  const mainLoopModel = useMainLoopModel();
+  const showFooterModel = process.env.BOTVALIA_SHOW_FOOTER_MODEL !== '0';
   // Fullscreen: portal data to FullscreenLayout — see promptOverlayContext.tsx
   const overlayData = useMemo(() => isFullscreen && suggestions.length ? {
     suggestions,
@@ -142,6 +145,7 @@ function PromptInputFooter({
           <PromptInputFooterLeftSide exitMessage={exitMessage} vimMode={vimMode} mode={mode} toolPermissionContext={toolPermissionContext} suppressHint={suppressHint} isLoading={isLoading} tasksSelected={pillSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} isPasting={isPasting} isSearching={isSearching} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={onOpenTasksDialog} />
         </Box>
         <Box flexShrink={1} gap={1}>
+          {showFooterModel && mode === 'prompt' && <Text dimColor wrap="truncate">model: {mainLoopModel}</Text>}
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
           {"external" === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />

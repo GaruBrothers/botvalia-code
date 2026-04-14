@@ -226,6 +226,9 @@ if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS)) {
 if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS)) {
   $env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = "kimi/kimi-k2:free,openai/gpt-oss-20b:free"
 }
+if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_SHOW_FOOTER_MODEL)) {
+  $env:BOTVALIA_SHOW_FOOTER_MODEL = "1"
+}
 
 Write-Host "[botvalia openrouter] ANTHROPIC_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia openrouter] ANTHROPIC_MODEL=$($env:ANTHROPIC_MODEL)"
@@ -238,6 +241,7 @@ Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_CODE_MODEL=$($env:BOTVAL
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_FAST_MODEL=$($env:BOTVALIA_MODEL_ROUTER_FAST_MODEL)"
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS)"
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS)"
+Write-Host "[botvalia openrouter] BOTVALIA_SHOW_FOOTER_MODEL=$($env:BOTVALIA_SHOW_FOOTER_MODEL)"
 Write-Host "[botvalia openrouter] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia openrouter] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 
