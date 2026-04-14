@@ -17,7 +17,9 @@
   "scripts": {
     "dev": "bun run ./src/dev-entry.ts",
     "start": "bun run ./src/dev-entry.ts",
-    "version": "bun run ./src/dev-entry.ts --version"
+    "version": "bun run ./src/dev-entry.ts --version",
+    "dev:free": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1",
+    "version:free": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1 -VersionOnly"
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "*",

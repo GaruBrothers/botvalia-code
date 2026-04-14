@@ -25,6 +25,27 @@ $ bun run dev       # Start CLI (Interactive)
 $ bun run version   # Verify version number
 ```
 
+### Free Model Mode (Ollama + LiteLLM)
+
+This repo can run against a custom Anthropic-compatible base URL, so you can use local/free models.
+
+1. Start Ollama with a local model (example: `llama3.2:3b`).
+2. Start LiteLLM proxy using [scripts/litellm.free.example.yaml](scripts/litellm.free.example.yaml), for example:
+```bash
+litellm --config scripts/litellm.free.example.yaml --port 4000
+```
+3. Run Claude Code in free mode:
+```bash
+bun run dev:free
+```
+
+Optional:
+- `bun run version:free` to verify startup with free-mode env vars.
+- Override defaults:
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1 -BaseUrl "http://localhost:4000" -Model "ollama/llama3.2:3b" -ApiKey "sk-local"
+```
+
 ---
 
 ## Project Structure
