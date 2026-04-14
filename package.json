@@ -21,7 +21,8 @@
     "dev:free": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1",
     "version:free": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1 -VersionOnly",
     "dev:openrouter": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1",
-    "version:openrouter": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -VersionOnly"
+    "version:openrouter": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -VersionOnly",
+    "models:openrouter:free": "powershell -ExecutionPolicy Bypass -File ./scripts/list-openrouter-free-models.ps1"
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "*",

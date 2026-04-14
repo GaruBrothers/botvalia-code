@@ -57,6 +57,11 @@ $env:OPENROUTER_API_KEY = "sk-or-..."
 bun run dev:openrouter
 ```
 
+To list currently available free models from your account:
+```bash
+bun run models:openrouter:free
+```
+
 Optional:
 - Verify startup only: `bun run version:openrouter`
 - Free + fast is now the default behavior in `dev:openrouter`:
