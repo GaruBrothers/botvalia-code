@@ -1,7 +1,7 @@
 param(
   [string]$Model = "openrouter/auto",
   [string]$ApiKey = "",
-  [string]$BaseUrl = "https://openrouter.ai/api/v1/anthropic",
+  [string]$BaseUrl = "https://openrouter.ai/api",
   [switch]$VersionOnly
 )
 
@@ -23,7 +23,8 @@ if ([string]::IsNullOrWhiteSpace($ApiKey)) {
 }
 
 $env:ANTHROPIC_BASE_URL = $BaseUrl
-$env:ANTHROPIC_API_KEY = $ApiKey
+$env:ANTHROPIC_AUTH_TOKEN = $ApiKey
+$env:ANTHROPIC_API_KEY = ""
 $env:ANTHROPIC_MODEL = $Model
 $env:ANTHROPIC_CUSTOM_MODEL_OPTION = $Model
 $env:ANTHROPIC_CUSTOM_MODEL_OPTION_NAME = "OpenRouter: $Model"

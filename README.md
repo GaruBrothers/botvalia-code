@@ -61,8 +61,14 @@ Optional:
 - Verify startup only: `bun run version:openrouter`
 - Override model/base URL:
 ```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Model "openrouter/auto" -BaseUrl "https://openrouter.ai/api/v1/anthropic" -ApiKey "sk-or-..."
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Model "openrouter/auto" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..."
 ```
+
+Note:
+- This mode uses Anthropic-compatible envs for OpenRouter:
+  - `ANTHROPIC_BASE_URL=https://openrouter.ai/api`
+  - `ANTHROPIC_AUTH_TOKEN=<OPENROUTER_API_KEY>`
+  - `ANTHROPIC_API_KEY` is intentionally cleared.
 
 ---
 
