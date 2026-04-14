@@ -59,9 +59,21 @@ bun run dev:openrouter
 
 Optional:
 - Verify startup only: `bun run version:openrouter`
-- Override model/base URL:
+- Free + fast is now the default behavior in `dev:openrouter`:
+  - Preset: `free-fast`
+  - Output tokens: `2048`
+  - Thinking tokens: `512`
+- Override preset/model/base URL:
 ```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Model "openrouter/auto" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..." -MaxOutputTokens 4096 -MaxThinkingTokens 1024
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "free-fast" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..." -MaxOutputTokens 2048 -MaxThinkingTokens 512
+```
+- Force OpenRouter automatic routing:
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "auto"
+```
+- Force a specific model:
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "custom" -Model "openrouter/google/gemma-3-4b-it:free"
 ```
 
 Note:
