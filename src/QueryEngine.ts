@@ -60,7 +60,11 @@ import {
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
 import { getInMemoryErrors, logError } from './utils/log.js'
-import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
+import {
+  countToolCalls,
+  getContentText,
+  SYNTHETIC_MESSAGES,
+} from './utils/messages.js'
 import {
   getMainLoopModel,
   parseUserSpecifiedModel,
@@ -197,6 +201,9 @@ export class QueryEngine {
   // many turns in SDK mode.
   private discoveredSkillNames = new Set<string>()
   private loadedNestedMemoryPaths = new Set<string>()
+
+  private static readonly codingIntentPattern =
+    /\b(code|coding|program|programming|debug|bug|fix|refactor|function|class|method|typescript|javascript|ts|js|python|java|c#|csharp|sql|api|endpoint|test|tests|stacktrace|compile|build|lint|archivo|archivos|codigo|codificar|programar|depurar|error|errores|arreglar|refactorizar|funcion|clase|metodo|prueba|pruebas|compilar)\b/i
 
   constructor(config: QueryEngineConfig) {
     this.config = config
@@ -493,7 +500,12 @@ export class QueryEngine {
       },
     }))
 
-    const mainLoopModel = modelFromUserInput ?? initialMainLoopModel
+    const autoRoutedModel =
+      modelFromUserInput === undefined
+        ? this.getAutoRoutedModel(messagesFromUserInput, initialMainLoopModel)
+        : undefined
+    const mainLoopModel =
+      modelFromUserInput ?? autoRoutedModel ?? initialMainLoopModel
 
     // Recreate after processing the prompt to pick up updated messages and
     // model (from slash commands).
@@ -1183,6 +1195,62 @@ export class QueryEngine {
 
   setModel(model: string): void {
     this.config.userSpecifiedModel = model
+  }
+
+  private getAutoRoutedModel(
+    inputMessages: Message[],
+    currentModel: string,
+  ): string | undefined {
+    if (!this.isModelRouterEnabled()) {
+      return undefined
+    }
+
+    const promptText = this.extractLatestUserText(inputMessages)
+    if (!promptText) {
+      return undefined
+    }
+
+    const codeModel =
+      process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL?.trim() ||
+      'openai/gpt-oss-120b:free'
+    const fastModel =
+      process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL?.trim() ||
+      'openai/gpt-oss-20b:free'
+
+    const targetModel = QueryEngine.codingIntentPattern.test(promptText)
+      ? codeModel
+      : fastModel
+    if (!targetModel || targetModel === currentModel) {
+      return undefined
+    }
+
+    try {
+      return parseUserSpecifiedModel(targetModel)
+    } catch (error) {
+      logError(error)
+      return undefined
+    }
+  }
+
+  private isModelRouterEnabled(): boolean {
+    const raw = process.env.BOTVALIA_MODEL_ROUTER_ENABLED
+    if (raw === undefined) {
+      return true
+    }
+    return isEnvTruthy(raw)
+  }
+
+  private extractLatestUserText(messages: Message[]): string {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i]
+      if (!message || message.type !== 'user') continue
+      if (message.isMeta || message.toolUseResult) continue
+      const text = getContentText(message.message.content as never)
+      if (text && text.trim()) {
+        return text.trim()
+      }
+    }
+    return ''
   }
 }
 

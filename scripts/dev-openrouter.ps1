@@ -210,12 +210,26 @@ $env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1"
 $env:CLAUDE_CODE_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
 
+# BotValia model router: code tasks use stronger model; general chat uses faster model.
+if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_ENABLED)) {
+  $env:BOTVALIA_MODEL_ROUTER_ENABLED = "1"
+}
+if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_CODE_MODEL)) {
+  $env:BOTVALIA_MODEL_ROUTER_CODE_MODEL = "openai/gpt-oss-120b:free"
+}
+if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_MODEL_ROUTER_FAST_MODEL)) {
+  $env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = "openai/gpt-oss-20b:free"
+}
+
 Write-Host "[botvalia openrouter] ANTHROPIC_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia openrouter] ANTHROPIC_MODEL=$($env:ANTHROPIC_MODEL)"
 Write-Host "[botvalia openrouter] PRESET=$Preset"
 if (-not [string]::IsNullOrWhiteSpace($pinnedModel)) {
   Write-Host "[botvalia openrouter] PINNED_MODEL=$pinnedModel"
 }
+Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_ENABLED=$($env:BOTVALIA_MODEL_ROUTER_ENABLED)"
+Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_CODE_MODEL=$($env:BOTVALIA_MODEL_ROUTER_CODE_MODEL)"
+Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_FAST_MODEL=$($env:BOTVALIA_MODEL_ROUTER_FAST_MODEL)"
 Write-Host "[botvalia openrouter] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia openrouter] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 

@@ -72,6 +72,17 @@ To remove pinned mode and return to auto selection:
 bun run model:openrouter:clear
 ```
 
+BotValia quality router (enabled by default in `dev:openrouter`):
+- Coding/debug prompts -> `openai/gpt-oss-120b:free`
+- General/light prompts -> `openai/gpt-oss-20b:free`
+
+Override examples:
+```powershell
+$env:BOTVALIA_MODEL_ROUTER_ENABLED = "1"
+$env:BOTVALIA_MODEL_ROUTER_CODE_MODEL = "openai/gpt-oss-120b:free"
+$env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = "liquid/lfm-2.5-1.2b-instruct:free"
+```
+
 Optional:
 - Verify startup only: `bun run version:openrouter`
 - Free + fast is now the default behavior in `dev:openrouter`:
