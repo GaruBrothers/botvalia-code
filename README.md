@@ -46,6 +46,24 @@ Optional:
 powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1 -BaseUrl "http://localhost:4000" -Model "ollama/llama3.2:3b" -ApiKey "sk-local"
 ```
 
+### OpenRouter Mode
+
+1. Set your API key in PowerShell:
+```powershell
+$env:OPENROUTER_API_KEY = "sk-or-..."
+```
+2. Start BotValia with OpenRouter:
+```bash
+bun run dev:openrouter
+```
+
+Optional:
+- Verify startup only: `bun run version:openrouter`
+- Override model/base URL:
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Model "openrouter/auto" -BaseUrl "https://openrouter.ai/api/v1/anthropic" -ApiKey "sk-or-..."
+```
+
 ---
 
 ## Project Structure
