@@ -167,6 +167,7 @@ import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js';
 import { resolveAgentTools } from '../tools/AgentTool/agentToolUtils.js';
 import { resumeAgentBackground } from '../tools/AgentTool/resumeAgent.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
+import { getDefaultHaikuModel, getDefaultOpusModel, getDefaultSonnetModel, parseUserSpecifiedModel } from '../utils/model/model.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../state/AppState.js';
 import type { ContentBlockParam, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
@@ -560,6 +561,7 @@ export type Props = {
   commands: Command[];
   debug: boolean;
   initialTools: Tool[];
+  fallbackModels?: string[];
   // Initial messages to populate the REPL with
   initialMessages?: MessageType[];
   // Deferred hook messages promise — REPL renders immediately and injects
@@ -606,6 +608,7 @@ export function REPL({
   commands: initialCommands,
   debug,
   initialTools,
+  fallbackModels: cliFallbackModels,
   initialMessages,
   pendingHookMessages,
   initialFileHistorySnapshots,
@@ -2825,6 +2828,37 @@ export function REPL({
     resetTurnHookDuration();
     resetTurnToolDuration();
     resetTurnClassifierDuration();
+    const fallbackModels = (() => {
+      if (cliFallbackModels && cliFallbackModels.length > 0) {
+        return cliFallbackModels;
+      }
+      const raw = process.env.BOTVALIA_FALLBACK_MODELS;
+      if (raw && raw.trim()) {
+        return raw.split(',').map(s => s.trim()).filter(Boolean).map(model => {
+          if (model === 'default') return mainLoopModelParam;
+          try {
+            return parseUserSpecifiedModel(model);
+          } catch (e) {
+            logForDebugging(`Ignoring invalid BOTVALIA_FALLBACK_MODELS entry: ${model} (${e instanceof Error ? e.message : String(e)})`);
+            return null;
+          }
+        }).filter(Boolean) as string[];
+      }
+      const fallbackEnabledRaw = process.env.BOTVALIA_DEFAULT_FALLBACK_MODELS;
+      const fallbackEnabled = fallbackEnabledRaw === undefined ? true : isEnvTruthy(fallbackEnabledRaw);
+      if (!fallbackEnabled) return undefined;
+      const normalized = (mainLoopModelParam || '').toLowerCase();
+      if (normalized.includes('opus')) {
+        return [getDefaultSonnetModel(), getDefaultHaikuModel()];
+      }
+      if (normalized.includes('sonnet')) {
+        return [getDefaultHaikuModel(), getDefaultOpusModel()];
+      }
+      if (normalized.includes('haiku')) {
+        return [getDefaultSonnetModel()];
+      }
+      return [getDefaultSonnetModel(), getDefaultHaikuModel()];
+    })();
     for await (const event of query({
       messages: messagesIncludingNewMessages,
       systemPrompt,
@@ -2832,7 +2866,8 @@ export function REPL({
       systemContext,
       canUseTool,
       toolUseContext,
-      querySource: getQuerySourceForREPL()
+      querySource: getQuerySourceForREPL(),
+      fallbackModels
     })) {
       onQueryEvent(event);
     }

@@ -206,17 +206,14 @@ export class QueryEngine {
   private static readonly codingIntentPattern =
     /\b(code|coding|program|programming|debug|bug|fix|refactor|function|class|method|typescript|javascript|ts|js|python|java|c#|csharp|sql|api|endpoint|test|tests|stacktrace|compile|build|lint|archivo|archivos|codigo|codificar|programar|depurar|error|errores|arreglar|refactorizar|funcion|clase|metodo|prueba|pruebas|compilar)\b/i
 
-  private static readonly defaultCodeModel = 'openai/gpt-oss-120b:free'
-  private static readonly defaultFastModel = 'openai/gpt-oss-20b:free'
+  private static readonly defaultCodeModel = 'sonnet'
+  private static readonly defaultFastModel = 'haiku'
   private static readonly defaultCodeFallbacks = [
-    'minimax/minimax-m2.7:cloud',
-    'kimi/kimi-k2:free',
-    'openai/gpt-oss-20b:free',
+    'opus',
+    'haiku',
   ]
   private static readonly defaultFastFallbacks = [
-    'minimax/minimax-m2.7:cloud',
-    'kimi/kimi-k2:free',
-    'openai/gpt-oss-120b:free',
+    'sonnet',
   ]
 
   constructor(config: QueryEngineConfig) {

@@ -152,7 +152,10 @@ export function isMediaSizeErrorMessage(msg: AssistantMessage): boolean {
   )
 }
 export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
-export const INVALID_API_KEY_ERROR_MESSAGE = 'Not logged in · Please run /login'
+export const INVALID_API_KEY_ERROR_MESSAGE =
+  process.env.BOTVALIA_SHOW_LOGIN_HINT === '1'
+    ? 'Not logged in · Please run /login'
+    : 'Missing API key · Set ANTHROPIC_API_KEY'
 export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =
   'Invalid API key · Fix external API key'
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
@@ -160,7 +163,9 @@ export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
   'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
 export const TOKEN_REVOKED_ERROR_MESSAGE =
-  'OAuth token revoked · Please run /login'
+  process.env.BOTVALIA_SHOW_LOGIN_HINT === '1'
+    ? 'OAuth token revoked · Please run /login'
+    : 'Authentication error · Refresh credentials'
 export const CCR_AUTH_ERROR_MESSAGE =
   'Authentication error · This may be a temporary network issue, please try again'
 export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'

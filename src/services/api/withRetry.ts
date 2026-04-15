@@ -54,6 +54,77 @@ const FLOOR_OUTPUT_TOKENS = 3000
 const MAX_529_RETRIES = 3
 export const BASE_DELAY_MS = 500
 
+function isFallbackForAllPrimaryModelsEnabled(): boolean {
+  const botvaliaRaw = process.env.BOTVALIA_FALLBACK_FOR_ALL_PRIMARY_MODELS
+  if (botvaliaRaw !== undefined) {
+    return isEnvTruthy(botvaliaRaw)
+  }
+
+  const legacyRaw = process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS
+  if (legacyRaw !== undefined) {
+    return isEnvTruthy(legacyRaw)
+  }
+
+  // BotValia: enable by default so 529 fallback works for Sonnet/Haiku too.
+  return true
+}
+
+function isOpenRouterBaseUrl(): boolean {
+  const raw = process.env.ANTHROPIC_BASE_URL
+  if (!raw) return false
+  try {
+    const url = new URL(raw)
+    return url.host === 'openrouter.ai' || url.host.endsWith('.openrouter.ai')
+  } catch {
+    // allow bare host/path strings
+    return raw.includes('openrouter.ai')
+  }
+}
+
+function getOpenRouterAuthTokenPool(): string[] {
+  const raw =
+    process.env.BOTVALIA_OPENROUTER_API_KEYS || process.env.OPENROUTER_API_KEYS
+  const candidates: string[] = []
+  if (raw && raw.trim()) {
+    candidates.push(
+      ...raw
+        .split(/,|\n|\r\n|;/)
+        .map(s => s.trim())
+        .filter(Boolean),
+    )
+  }
+  if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim()) {
+    candidates.push(process.env.OPENROUTER_API_KEY.trim())
+  }
+  if (
+    process.env.ANTHROPIC_AUTH_TOKEN &&
+    process.env.ANTHROPIC_AUTH_TOKEN.trim()
+  ) {
+    candidates.push(process.env.ANTHROPIC_AUTH_TOKEN.trim())
+  }
+  return Array.from(new Set(candidates))
+}
+
+function rotateOpenRouterAuthToken(current: string | undefined): {
+  rotated: boolean
+  next?: string
+} {
+  const pool = getOpenRouterAuthTokenPool()
+  if (pool.length <= 1) {
+    return { rotated: false }
+  }
+
+  const normalizedCurrent = (current || '').trim()
+  const currentIdx = normalizedCurrent ? pool.indexOf(normalizedCurrent) : -1
+  const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % pool.length : 0
+  const next = pool[nextIdx]
+  if (!next || next === normalizedCurrent) {
+    return { rotated: false }
+  }
+  process.env.ANTHROPIC_AUTH_TOKEN = next
+  return { rotated: true, next }
+}
+
 // Foreground query sources where the user IS blocking on the result — these
 // retry on 529. Everything else (summaries, titles, suggestions, classifiers)
 // bails immediately: during a capacity cascade each retry is 3-10× gateway
@@ -161,8 +232,16 @@ export class FallbackTriggeredError extends Error {
   constructor(
     public readonly originalModel: string,
     public readonly fallbackModel: string,
+    public readonly reason?:
+      | 'overloaded'
+      | 'rate_limit'
+      | 'invalid_model'
+      | 'unavailable'
+      | 'auth',
   ) {
-    super(`Model fallback triggered: ${originalModel} -> ${fallbackModel}`)
+    super(
+      `Model fallback triggered: ${originalModel} -> ${fallbackModel}${reason ? ` (${reason})` : ''}`,
+    )
     this.name = 'FallbackTriggeredError'
   }
 }
@@ -185,6 +264,7 @@ export async function* withRetry<T>(
   let client: Anthropic | null = null
   let consecutive529Errors = options.initialConsecutive529Errors ?? 0
   let lastError: unknown
+  let openRouterTokenRotations = 0
   let persistentAttempt = 0
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     if (options.signal?.aborted) {
@@ -313,6 +393,34 @@ export async function* withRetry<T>(
         continue
       }
 
+      // OpenRouter BYOK fallback: if we have multiple tokens, rotate on 401/429
+      // and retry immediately with a fresh client.
+      if (
+        isOpenRouterBaseUrl() &&
+        error instanceof APIError &&
+        (error.status === 401 || error.status === 429) &&
+        openRouterTokenRotations < getOpenRouterAuthTokenPool().length - 1
+      ) {
+        const current = process.env.ANTHROPIC_AUTH_TOKEN
+        const { rotated, next } = rotateOpenRouterAuthToken(current)
+        if (rotated) {
+          openRouterTokenRotations++
+          client = null
+          logForDebugging(
+            `[OpenRouter] Rotated auth token (${openRouterTokenRotations}/${getOpenRouterAuthTokenPool().length - 1})`,
+            { level: 'warn' },
+          )
+          logEvent('tengu_openrouter_auth_token_rotated', {
+            status: error.status,
+            model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          })
+          // Retry with the new token; do not fall through to long backoffs yet.
+          continue
+        } else if (next) {
+          // unreachable (rotate returns rotated when next is different), but keep for clarity
+        }
+      }
+
       // Non-foreground sources bail immediately on 529 — no retry amplification
       // during capacity cascades. User never sees these fail.
       if (is529Error(error) && !shouldRetry529(options.querySource)) {
@@ -323,12 +431,59 @@ export async function* withRetry<T>(
         throw new CannotRetryError(error, retryContext)
       }
 
+      // OpenRouter is frequently rate-limited per-provider/model. If a fallback
+      // model was provided, prefer switching models over long retry backoffs.
+      if (
+        isOpenRouterBaseUrl() &&
+        error instanceof APIError &&
+        error.status === 429 &&
+        options.fallbackModel
+      ) {
+        throw new FallbackTriggeredError(
+          options.model,
+          options.fallbackModel,
+          'rate_limit',
+        )
+      }
+
+      // OpenRouter model ids change frequently (and differ by endpoint). If a
+      // fallback model was provided, skip invalid model IDs automatically.
+      if (
+        isOpenRouterBaseUrl() &&
+        error instanceof APIError &&
+        error.status === 400 &&
+        options.fallbackModel &&
+        (error.message || '').includes('not a valid model ID')
+      ) {
+        throw new FallbackTriggeredError(
+          options.model,
+          options.fallbackModel,
+          'invalid_model',
+        )
+      }
+
+      // OpenRouter availability differs by provider/account; treat 403/404 as
+      // "try the next model" when fallbacks are provided.
+      if (
+        isOpenRouterBaseUrl() &&
+        error instanceof APIError &&
+        (error.status === 403 || error.status === 404) &&
+        options.fallbackModel
+      ) {
+        throw new FallbackTriggeredError(
+          options.model,
+          options.fallbackModel,
+          'unavailable',
+        )
+      }
+
       // Track consecutive 529 errors
       if (
         is529Error(error) &&
-        // If FALLBACK_FOR_ALL_PRIMARY_MODELS is not set, fall through only if the primary model is a non-custom Opus model.
-        // TODO: Revisit if the isNonCustomOpusModel check should still exist, or if isNonCustomOpusModel is a stale artifact of when Claude Code was hardcoded on Opus.
-        (process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS ||
+        // If fallback-for-all is off, fall through only if the primary model is a
+        // non-custom Opus model (historical behavior).
+        // TODO: Revisit if the isNonCustomOpusModel check should still exist.
+        (isFallbackForAllPrimaryModelsEnabled() ||
           (!isClaudeAISubscriber() && isNonCustomOpusModel(options.model)))
       ) {
         consecutive529Errors++
@@ -347,6 +502,7 @@ export async function* withRetry<T>(
             throw new FallbackTriggeredError(
               options.model,
               options.fallbackModel,
+              'overloaded',
             )
           }
 

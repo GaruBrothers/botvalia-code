@@ -3,6 +3,7 @@ param(
   [string]$Preset = "free-fast",
   [string]$Model = "",
   [string]$ApiKey = "",
+  [string]$ApiKeys = "",
   [string]$BaseUrl = "https://openrouter.ai/api",
   [bool]$UsePinnedModel = $true,
   [string]$PinnedModelFile = "",
@@ -31,7 +32,18 @@ if (Test-Path $wingetBunPath) {
 }
 
 if ([string]::IsNullOrWhiteSpace($ApiKey)) {
-  $ApiKey = $env:OPENROUTER_API_KEY
+  if (-not [string]::IsNullOrWhiteSpace($ApiKeys)) {
+    $ApiKey = ($ApiKeys -split ",|;|`n|`r`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
+    $env:BOTVALIA_OPENROUTER_API_KEYS = $ApiKeys
+  } elseif (-not [string]::IsNullOrWhiteSpace($env:OPENROUTER_API_KEYS)) {
+    $ApiKey = ($env:OPENROUTER_API_KEYS -split ",|;|`n|`r`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
+    $env:BOTVALIA_OPENROUTER_API_KEYS = $env:OPENROUTER_API_KEYS
+  } else {
+    $ApiKey = $env:OPENROUTER_API_KEY
+    if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+      $env:BOTVALIA_OPENROUTER_API_KEYS = $ApiKey
+    }
+  }
 }
 
 if ([string]::IsNullOrWhiteSpace($ApiKey)) {
@@ -249,18 +261,40 @@ Write-Host "[botvalia openrouter] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CO
 Write-Host "[botvalia openrouter] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 
 # Build fallback model list - use fallbackCandidates excluding the resolved model
-$extraArgs = ""
-$fallbackCandidates = @(
-  "liquidai/lfm2.5-1.2b-instruct:free",
-  "google/gemma-3n-2b:free",
-  "google/gemma-3n-4b:free",
-  "openai/gpt-oss-20b:free",
-  "google/gemma-3-4b-it:free",
-  "meta-llama/llama-3.2-3b-instruct:free",
-  "mistralai/mistral-7b-instruct:free"
-) | Where-Object { $_ -ne $resolvedModel } | Select-Object -Unique
+$extraArgs = @()
+$fallbackCandidates = @()
+try {
+  $modelsUrl = $BaseUrl.TrimEnd("/") + "/v1/models"
+  $headers = @{
+    "Authorization" = "Bearer $ApiKey"
+    "Accept" = "application/json"
+  }
+  $response = Invoke-RestMethod -Method Get -Uri $modelsUrl -Headers $headers -TimeoutSec 10
+  $available = New-Object System.Collections.Generic.List[string]
+  foreach ($item in $response.data) {
+    if ($null -ne $item.id -and -not [string]::IsNullOrWhiteSpace($item.id)) {
+      $available.Add($item.id)
+    }
+  }
+  $fallbackCandidates = $available `
+    | Where-Object { $_.ToLowerInvariant().Contains(":free") } `
+    | Where-Object { $_ -ne $resolvedModel } `
+    | Sort-Object `
+      @{ Expression = { Get-ModelRank -ModelId $_ -PreferredModels $PreferredFreeModels } }, `
+      @{ Expression = { $_.Length } }, `
+      @{ Expression = { $_ } } `
+    | Select-Object -First 10
+} catch {
+  Write-Host "[botvalia openrouter] Could not fetch models for fallback list: $($_.Exception.Message)"
+  $fallbackCandidates = @(
+    "openai/gpt-oss-20b:free",
+    "openai/gpt-oss-120b:free",
+    "google/gemma-3n-2b:free",
+    "google/gemma-3n-4b:free"
+  ) | Where-Object { $_ -ne $resolvedModel } | Select-Object -Unique
+}
 if ($fallbackCandidates.Count -gt 0) {
-  $extraArgs = "--fallback-model " + ($fallbackCandidates -join ",")
+  $extraArgs = @("--fallback-model", ($fallbackCandidates -join ","))
   Write-Host "[botvalia openrouter] FALLBACK_MODELS=$($fallbackCandidates -join ", ")"
 }
 

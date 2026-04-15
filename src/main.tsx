@@ -3081,6 +3081,7 @@ async function run(): Promise<CommanderCommand> {
       commands: [...commands, ...mcpCommands],
       initialTools,
       mcpClients,
+      fallbackModels: userSpecifiedFallbackModels,
       autoConnectIdeFlag: ide,
       mainThreadAgentDefinition,
       disableSlashCommands,

@@ -305,7 +305,7 @@ function NotificationContent({
         </Box>}
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && <Box>
           <Text color="error" wrap="truncate">
-            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? 'Authentication error · Try again' : 'Not logged in · Run /login'}
+            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? 'Authentication error · Try again' : process.env.BOTVALIA_SHOW_LOGIN_HINT === '1' ? 'Not logged in · Run /login' : 'Missing API key · Set ANTHROPIC_API_KEY'}
           </Text>
         </Box>}
       {debug && <Box>

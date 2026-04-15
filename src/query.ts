@@ -958,6 +958,16 @@ async function* queryLoop(
 
             // Update tool use context with new model
             toolUseContext.options.mainLoopModel = currentModel
+            // Update UI footer model (REPL) for this session.
+            toolUseContext.setAppState(prev => {
+              if (prev.mainLoopModelForSession === currentModel) {
+                return prev
+              }
+              return {
+                ...prev,
+                mainLoopModelForSession: currentModel,
+              }
+            })
 
             // Thinking signatures are model-bound: replaying a protected-thinking
             // block (e.g. capybara) to an unprotected fallback (e.g. opus) 400s.
@@ -980,8 +990,13 @@ async function* queryLoop(
 
             // Yield system message about fallback — use 'warning' level so
             // users see the notification without needing verbose mode
+            const fallbackReason = innerError.reason
+            const fallbackMessage =
+              fallbackReason === 'overloaded' || fallbackReason === 'rate_limit'
+                ? `Switched to ${renderModelName(innerError.fallbackModel)} due to high demand for ${renderModelName(innerError.originalModel)}`
+                : `Switched to ${renderModelName(innerError.fallbackModel)} because ${renderModelName(innerError.originalModel)} was unavailable`
             yield createSystemMessage(
-              `Switched to ${renderModelName(innerError.fallbackModel)} due to high demand for ${renderModelName(innerError.originalModel)}`,
+              fallbackMessage,
               'warning',
             )
 
