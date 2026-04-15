@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import math
+import time
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -44,6 +46,12 @@ class ImportanceScorer:
       score += 0.12
     if _preference.search(text):
       score += 0.22
+
+    # Type weighting: code-ish > casual
+    if _code_fence.search(text) or "```" in text:
+      score += 0.10
+    if "diff" in text.lower() or "patch" in text.lower() or "stack" in text.lower():
+      score += 0.06
 
     # Longer isn't always better; mild boost up to a point.
     if length > 200:
@@ -90,4 +98,3 @@ def suggest_tags(user_text: str, assistant_text: str) -> List[str]:
     seen.add(t)
     out.append(t)
   return out
-

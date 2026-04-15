@@ -13,13 +13,19 @@
     "max_injected_chars": 2200,
     "max_memory_chars_each": 700,
     "score_similarity_weight": 0.75,
-    "score_importance_weight": 0.25
+    "score_importance_weight": 0.25,
+    "score_recency_weight": 0.10,
+    "recency_half_life_days": 30.0
   },
   "dedup": {
     "min_similarity": 0.88
   },
   "importance": {
     "min_store": 0.35
+  },
+  "summarizer": {
+    "max_summary_chars": 180,
+    "max_text_chars": 1200
   },
   "proxy": {
     "enabled": false,
@@ -28,4 +34,3 @@
     "upstream_base_url": "https://openrouter.ai/api"
   }
 }
-

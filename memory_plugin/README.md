@@ -32,13 +32,22 @@ By default, all plugin data is stored under:
 from memory_plugin import wrapLLMCall
 
 def original_llm_call(messages):
-  # call your provider here, return response
+  # call your provider here, return response (streaming or non-streaming)
   return {"content": [{"type": "text", "text": "hello"}]}
 
 messages = [{"role": "user", "content": "Remember: use bun, not npm."}]
 result = wrapLLMCall(original_llm_call, messages)
 print(result)
 ```
+
+### Streaming support
+
+If `original_llm_call(...)` returns an **iterator / generator** (or async iterator),
+`wrapLLMCall` will:
+
+1) Yield chunks as-is to the caller
+2) Buffer text deltas internally
+3) Save memory **only after the stream completes**
 
 ## Integration (CLI via proxy, optional)
 
@@ -56,3 +65,19 @@ $env:ANTHROPIC_BASE_URL = "http://127.0.0.1:4010"
 
 Note: the proxy currently focuses on non-streaming JSON responses (it forwards streaming unchanged but won’t always extract text from streams for saving).
 
+## Prompt injection format
+
+Memory is injected into the **SYSTEM** prompt only, using a compact structured block:
+
+```
+[MEMORY]
+facts:
+- ...
+preferences:
+- ...
+project context:
+- ...
+past decisions:
+- ...
+[/MEMORY]
+```
