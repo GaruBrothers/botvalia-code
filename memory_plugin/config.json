@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "storage_dir": ".botvalia/infinite_memory",
+  "sqlite_path": "memory.sqlite3",
+  "log_path": "interactions.jsonl",
+  "embedding": {
+    "provider": "local_hash",
+    "dims": 512
+  },
+  "retrieval": {
+    "max_results": 5,
+    "min_similarity": 0.18,
+    "max_injected_chars": 2200,
+    "max_memory_chars_each": 700,
+    "score_similarity_weight": 0.75,
+    "score_importance_weight": 0.25
+  },
+  "dedup": {
+    "min_similarity": 0.88
+  },
+  "importance": {
+    "min_store": 0.35
+  },
+  "proxy": {
+    "enabled": false,
+    "listen_host": "127.0.0.1",
+    "listen_port": 4010,
+    "upstream_base_url": "https://openrouter.ai/api"
+  }
+}
+
