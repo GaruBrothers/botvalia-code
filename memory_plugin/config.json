@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "debug": false,
   "storage_dir": ".botvalia/infinite_memory",
   "sqlite_path": "memory.sqlite3",
   "log_path": "interactions.jsonl",
@@ -15,7 +16,8 @@
     "score_similarity_weight": 0.75,
     "score_importance_weight": 0.25,
     "score_recency_weight": 0.10,
-    "recency_half_life_days": 30.0
+    "recency_half_life_days": 30.0,
+    "max_injected_tokens": 450
   },
   "dedup": {
     "min_similarity": 0.88
@@ -26,6 +28,9 @@
   "summarizer": {
     "max_summary_chars": 180,
     "max_text_chars": 1200
+  },
+  "limits": {
+    "max_memories_per_scope": 1000
   },
   "proxy": {
     "enabled": false,

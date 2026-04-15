@@ -117,8 +117,9 @@ class MemorySaver:
     *,
     user_text: str,
     assistant_text: str,
+    scope: Dict[str, Optional[str]],
     extra_meta: Optional[Dict[str, Any]] = None,
-  ) -> None:
+  ) -> Optional[Dict[str, Any]]:
     record = {
       "ts_ms": _now_ms(),
       "user": user_text,
@@ -129,14 +130,16 @@ class MemorySaver:
 
     extracted = self._extract_important(user_text, assistant_text)
     if not extracted:
-      return
+      return None
     memory_text, summary = extracted
+
+    scope_key = f"{(scope.get('project_id') or '').strip()}|{(scope.get('user_id') or '').strip()}|{(scope.get('session_id') or '')}"
 
     tags = suggest_tags(user_text, assistant_text)
     emb = self.embedder.embed_text(memory_text)
 
     # novelty check
-    top = self.store.get_top_similar(emb, limit=1)
+    top = self.store.get_top_similar(emb, limit=1, scope=scope)
     top_id = top[0][0] if top else None
     novelty_sim = top[0][1] if top else None
 
@@ -147,7 +150,12 @@ class MemorySaver:
       tags=tags,
     )
     if importance < self.config.min_store:
-      return
+      return {
+        "action": "skipped_low_importance",
+        "importance": importance,
+        "novelty_similarity": novelty_sim,
+        "tags": tags,
+      }
 
     # dedup: if extremely similar, update existing instead of inserting a new row
     if (
@@ -158,7 +166,7 @@ class MemorySaver:
       existing = self.store.get_by_id(top_id) if hasattr(self.store, "get_by_id") else None
       if existing and self._is_contradiction(existing.text, memory_text) and novelty_sim >= self.config.contradiction_similarity:
         # Mark old as obsolete and insert new
-        memory_id = _sha1(summary + "|" + memory_text)
+        memory_id = _sha1(scope_key + "|" + summary + "|" + memory_text)
         if hasattr(self.store, "mark_obsolete"):
           self.store.mark_obsolete(existing.id, memory_id)  # type: ignore[attr-defined]
         self.store.upsert(
@@ -168,6 +176,7 @@ class MemorySaver:
           tags=tags,
           importance=importance,
           embedding=emb,
+          scope=scope,
           meta={
             "source": "turn",
             "created_at_ms": _now_ms(),
@@ -176,7 +185,14 @@ class MemorySaver:
             **(extra_meta or {}),
           },
         )
-        return
+        return {
+          "action": "insert_superseding",
+          "memory_id": memory_id,
+          "supersedes": existing.id,
+          "importance": importance,
+          "novelty_similarity": novelty_sim,
+          "tags": tags,
+        }
 
       # Merge/update existing
       merged_tags = list(dict.fromkeys((existing.tags if existing else []) + tags)) if existing else tags
@@ -188,6 +204,7 @@ class MemorySaver:
         tags=merged_tags,
         importance=new_importance,
         embedding=emb,
+        scope=scope,
         meta={
           "source": "turn_update",
           "updated_at_ms": _now_ms(),
@@ -195,9 +212,15 @@ class MemorySaver:
           **(extra_meta or {}),
         },
       )
-      return
+      return {
+        "action": "updated_existing",
+        "memory_id": top_id,
+        "importance": new_importance,
+        "novelty_similarity": novelty_sim,
+        "tags": merged_tags,
+      }
 
-    memory_id = _sha1(summary + "|" + memory_text)
+    memory_id = _sha1(scope_key + "|" + summary + "|" + memory_text)
     self.store.upsert(
       memory_id=memory_id,
       text=memory_text,
@@ -205,9 +228,17 @@ class MemorySaver:
       tags=tags,
       importance=importance,
       embedding=emb,
+      scope=scope,
       meta={
         "source": "turn",
         "created_at_ms": _now_ms(),
         **(extra_meta or {}),
       },
     )
+    return {
+      "action": "inserted",
+      "memory_id": memory_id,
+      "importance": importance,
+      "novelty_similarity": novelty_sim,
+      "tags": tags,
+    }

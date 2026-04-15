@@ -36,6 +36,9 @@ class MemoryRow:
   importance: float
   created_at_ms: int
   last_accessed_ms: int
+  scope_project_id: str = ""
+  scope_user_id: str = ""
+  scope_session_id: Optional[str] = None
   similarity: float = 0.0
 
 
@@ -49,6 +52,7 @@ class VectorStore:
     tags: List[str],
     importance: float,
     embedding: Sequence[float],
+    scope: Dict[str, Optional[str]],
     meta: Optional[Dict[str, Any]] = None,
   ) -> None:
     raise NotImplementedError
@@ -58,6 +62,8 @@ class VectorStore:
     query_embedding: Sequence[float],
     *,
     limit: int,
+    scope: Dict[str, Optional[str]],
+    include_global_session: bool = True,
   ) -> List[MemoryRow]:
     raise NotImplementedError
 
@@ -69,8 +75,9 @@ class VectorStore:
     query_embedding: Sequence[float],
     *,
     limit: int,
+    scope: Dict[str, Optional[str]],
   ) -> List[Tuple[str, float]]:
-    rows = self.search(query_embedding, limit=limit)
+    rows = self.search(query_embedding, limit=limit, scope=scope)
     return [(r.id, r.similarity) for r in rows]
 
 
@@ -89,6 +96,9 @@ class SQLiteVectorStore(VectorStore):
       """
       CREATE TABLE IF NOT EXISTS memories (
         id TEXT PRIMARY KEY,
+        scope_project_id TEXT NOT NULL,
+        scope_user_id TEXT NOT NULL,
+        scope_session_id TEXT,
         text TEXT NOT NULL,
         summary TEXT NOT NULL,
         tags_json TEXT NOT NULL,
@@ -106,9 +116,24 @@ class SQLiteVectorStore(VectorStore):
       "CREATE INDEX IF NOT EXISTS idx_memories_last_accessed ON memories(last_accessed_ms);"
     )
     self._conn.execute(
+      "CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope_project_id, scope_user_id, scope_session_id);"
+    )
+    self._conn.execute(
       "CREATE INDEX IF NOT EXISTS idx_memories_obsolete ON memories(is_obsolete);"
     )
     # Migrations for older DBs (best-effort).
+    try:
+      self._conn.execute("ALTER TABLE memories ADD COLUMN scope_project_id TEXT NOT NULL DEFAULT '';")
+    except Exception:
+      pass
+    try:
+      self._conn.execute("ALTER TABLE memories ADD COLUMN scope_user_id TEXT NOT NULL DEFAULT '';")
+    except Exception:
+      pass
+    try:
+      self._conn.execute("ALTER TABLE memories ADD COLUMN scope_session_id TEXT;")
+    except Exception:
+      pass
     try:
       self._conn.execute("ALTER TABLE memories ADD COLUMN is_obsolete INTEGER NOT NULL DEFAULT 0;")
     except Exception:
@@ -128,15 +153,22 @@ class SQLiteVectorStore(VectorStore):
     tags: List[str],
     importance: float,
     embedding: Sequence[float],
+    scope: Dict[str, Optional[str]],
     meta: Optional[Dict[str, Any]] = None,
   ) -> None:
     created = _now_ms()
     blob = _pack_f32(embedding)
+    project_id = (scope.get("project_id") or "").strip()
+    user_id = (scope.get("user_id") or "").strip()
+    session_id = (scope.get("session_id") or None) or None
     self._conn.execute(
       """
-      INSERT INTO memories(id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms, embedding, meta_json, is_obsolete, superseded_by)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+      INSERT INTO memories(id, scope_project_id, scope_user_id, scope_session_id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms, embedding, meta_json, is_obsolete, superseded_by)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
       ON CONFLICT(id) DO UPDATE SET
+        scope_project_id=excluded.scope_project_id,
+        scope_user_id=excluded.scope_user_id,
+        scope_session_id=excluded.scope_session_id,
         text=excluded.text,
         summary=excluded.summary,
         tags_json=excluded.tags_json,
@@ -149,6 +181,9 @@ class SQLiteVectorStore(VectorStore):
       """,
       (
         memory_id,
+        project_id,
+        user_id,
+        session_id,
         text,
         summary,
         json.dumps(tags, ensure_ascii=False),
@@ -166,14 +201,30 @@ class SQLiteVectorStore(VectorStore):
     query_embedding: Sequence[float],
     *,
     limit: int,
+    scope: Dict[str, Optional[str]],
+    include_global_session: bool = True,
   ) -> List[MemoryRow]:
     # Minimal, dependency-free brute force cosine similarity (vectors are expected to be normalized).
-    cur = self._conn.execute(
-      "SELECT id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms, embedding, is_obsolete FROM memories WHERE is_obsolete=0"
-    )
+    project_id = (scope.get("project_id") or "").strip()
+    user_id = (scope.get("user_id") or "").strip()
+    session_id = (scope.get("session_id") or None) or None
+
+    if include_global_session and session_id:
+      cur = self._conn.execute(
+        "SELECT id, scope_project_id, scope_user_id, scope_session_id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms, embedding, is_obsolete FROM memories WHERE is_obsolete=0 AND scope_project_id=? AND scope_user_id=? AND (scope_session_id=? OR scope_session_id IS NULL)",
+        (project_id, user_id, session_id),
+      )
+    else:
+      cur = self._conn.execute(
+        "SELECT id, scope_project_id, scope_user_id, scope_session_id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms, embedding, is_obsolete FROM memories WHERE is_obsolete=0 AND scope_project_id=? AND scope_user_id=? AND ((scope_session_id IS NULL AND ? IS NULL) OR scope_session_id=?)",
+        (project_id, user_id, session_id, session_id),
+      )
     rows: List[MemoryRow] = []
     for (
       memory_id,
+      scope_project_id,
+      scope_user_id,
+      scope_session_id,
       text,
       summary,
       tags_json,
@@ -196,6 +247,9 @@ class SQLiteVectorStore(VectorStore):
           importance=float(importance),
           created_at_ms=int(created_at_ms),
           last_accessed_ms=int(last_accessed_ms),
+          scope_project_id=str(scope_project_id or ""),
+          scope_user_id=str(scope_user_id or ""),
+          scope_session_id=str(scope_session_id) if scope_session_id is not None else None,
           similarity=float(sim),
         )
       )
@@ -224,13 +278,24 @@ class SQLiteVectorStore(VectorStore):
 
   def get_by_id(self, memory_id: str) -> Optional[MemoryRow]:
     cur = self._conn.execute(
-      "SELECT id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms FROM memories WHERE id=?",
+      "SELECT id, scope_project_id, scope_user_id, scope_session_id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms FROM memories WHERE id=?",
       (memory_id,),
     )
     row = cur.fetchone()
     if not row:
       return None
-    id_, text, summary, tags_json, importance, created_at_ms, last_accessed_ms = row
+    (
+      id_,
+      scope_project_id,
+      scope_user_id,
+      scope_session_id,
+      text,
+      summary,
+      tags_json,
+      importance,
+      created_at_ms,
+      last_accessed_ms,
+    ) = row
     return MemoryRow(
       id=str(id_),
       text=str(text),
@@ -239,8 +304,47 @@ class SQLiteVectorStore(VectorStore):
       importance=float(importance),
       created_at_ms=int(created_at_ms),
       last_accessed_ms=int(last_accessed_ms),
+      scope_project_id=str(scope_project_id or ""),
+      scope_user_id=str(scope_user_id or ""),
+      scope_session_id=str(scope_session_id) if scope_session_id is not None else None,
       similarity=0.0,
     )
+
+  def count_scope(self, scope: Dict[str, Optional[str]]) -> int:
+    project_id = (scope.get("project_id") or "").strip()
+    user_id = (scope.get("user_id") or "").strip()
+    session_id = (scope.get("session_id") or None) or None
+    cur = self._conn.execute(
+      "SELECT COUNT(1) FROM memories WHERE is_obsolete=0 AND scope_project_id=? AND scope_user_id=? AND ((scope_session_id IS NULL AND ? IS NULL) OR scope_session_id=?)",
+      (project_id, user_id, session_id, session_id),
+    )
+    return int(cur.fetchone()[0] or 0)
+
+  def prune_scope(self, scope: Dict[str, Optional[str]], max_items: int) -> int:
+    """
+    Remove lowest-importance / oldest memories for this exact scope until <= max_items.
+    Returns number deleted.
+    """
+    if max_items <= 0:
+      return 0
+    project_id = (scope.get("project_id") or "").strip()
+    user_id = (scope.get("user_id") or "").strip()
+    session_id = (scope.get("session_id") or None) or None
+    count = self.count_scope(scope)
+    if count <= max_items:
+      return 0
+    to_delete = count - max_items
+    cur = self._conn.execute(
+      "SELECT id FROM memories WHERE is_obsolete=0 AND scope_project_id=? AND scope_user_id=? AND ((scope_session_id IS NULL AND ? IS NULL) OR scope_session_id=?) ORDER BY importance ASC, last_accessed_ms ASC LIMIT ?",
+      (project_id, user_id, session_id, session_id, int(to_delete)),
+    )
+    ids = [r[0] for r in cur.fetchall()]
+    if not ids:
+      return 0
+    placeholders = ",".join(["?"] * len(ids))
+    self._conn.execute(f"DELETE FROM memories WHERE id IN ({placeholders})", tuple(ids))
+    self._conn.commit()
+    return len(ids)
 
 
 # Optional high-performance vector backends (install separately):
@@ -282,7 +386,14 @@ try:
       # simplest correctness-first approach: rebuild on each write
       self._rebuild()
 
-    def search(self, query_embedding: Sequence[float], *, limit: int) -> List[MemoryRow]:  # type: ignore[override]
+    def search(  # type: ignore[override]
+      self,
+      query_embedding: Sequence[float],
+      *,
+      limit: int,
+      scope: Dict[str, Optional[str]],
+      include_global_session: bool = True,
+    ) -> List[MemoryRow]:
       if len(self._id_map) == 0:
         return []
       q = _np.array([list(query_embedding)], dtype="float32")
@@ -296,12 +407,15 @@ try:
         return []
       placeholders = ",".join(["?"] * len(chosen))
       cur = self._conn.execute(
-        f"SELECT id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms FROM memories WHERE id IN ({placeholders})",
+        f"SELECT id, scope_project_id, scope_user_id, scope_session_id, text, summary, tags_json, importance, created_at_ms, last_accessed_ms FROM memories WHERE id IN ({placeholders})",
         tuple(chosen),
       )
       by_id: Dict[str, MemoryRow] = {}
       for (
         memory_id,
+        scope_project_id,
+        scope_user_id,
+        scope_session_id,
         text,
         summary,
         tags_json,
@@ -317,6 +431,9 @@ try:
           importance=float(importance),
           created_at_ms=int(created_at_ms),
           last_accessed_ms=int(last_accessed_ms),
+          scope_project_id=str(scope_project_id or ""),
+          scope_user_id=str(scope_user_id or ""),
+          scope_session_id=str(scope_session_id) if scope_session_id is not None else None,
           similarity=0.0,
         )
       out: List[MemoryRow] = []
@@ -359,9 +476,15 @@ try:
       tags: List[str],
       importance: float,
       embedding: Sequence[float],
+      scope: Dict[str, Optional[str]],
       meta: Optional[Dict[str, Any]] = None,
     ) -> None:
-      md = {"summary": summary, "tags": tags, "importance": float(importance)}
+      md = {
+        "summary": summary,
+        "tags": tags,
+        "importance": float(importance),
+        "scope": scope,
+      }
       if meta:
         md["meta"] = meta
       self._col.upsert(
@@ -371,7 +494,14 @@ try:
         metadatas=[md],
       )
 
-    def search(self, query_embedding: Sequence[float], *, limit: int) -> List[MemoryRow]:
+    def search(
+      self,
+      query_embedding: Sequence[float],
+      *,
+      limit: int,
+      scope: Dict[str, Optional[str]],
+      include_global_session: bool = True,
+    ) -> List[MemoryRow]:
       res = self._col.query(
         query_embeddings=[list(query_embedding)],
         n_results=int(limit),
@@ -388,6 +518,7 @@ try:
         tags = md.get("tags") if isinstance(md, dict) else []
         importance = float(md.get("importance", 0.0)) if isinstance(md, dict) else 0.0
         summary = md.get("summary", "") if isinstance(md, dict) else ""
+        md_scope = md.get("scope") if isinstance(md, dict) else {}
         out.append(
           MemoryRow(
             id=str(memory_id),
@@ -397,6 +528,9 @@ try:
             importance=importance,
             created_at_ms=0,
             last_accessed_ms=0,
+            scope_project_id=str((md_scope or {}).get("project_id") or ""),
+            scope_user_id=str((md_scope or {}).get("user_id") or ""),
+            scope_session_id=(md_scope or {}).get("session_id"),
             similarity=sim,
           )
         )

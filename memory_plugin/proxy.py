@@ -40,9 +40,10 @@ class MemoryProxyHandler(BaseHTTPRequestHandler):
     # Inject memory for Anthropic-style requests when possible.
     injected = False
     used_meta: Dict[str, Any] = {}
+    scope = mgr._resolve_scope(None)  # type: ignore[attr-defined]
     if isinstance(payload, dict) and isinstance(payload.get("messages"), list):
       messages = payload["messages"]
-      injected_messages, used = mgr.injector.inject_into_messages(messages)
+      injected_messages, used = mgr.injector.inject_into_messages(messages, scope=scope)
       if injected_messages is not messages:
         payload["messages"] = injected_messages
         injected = True
@@ -78,7 +79,12 @@ class MemoryProxyHandler(BaseHTTPRequestHandler):
       out = json.loads(raw.decode("utf-8"))
       assistant_text = extract_assistant_text(out)
       user_text = extract_user_text(payload.get("messages", []))
-      mgr.saver.save_turn(user_text=user_text, assistant_text=assistant_text, extra_meta={"proxy": True, **used_meta})
+      mgr.saver.save_turn(
+        user_text=user_text,
+        assistant_text=assistant_text,
+        scope=scope,
+        extra_meta={"proxy": True, **used_meta},
+      )
     except Exception:
       pass
 

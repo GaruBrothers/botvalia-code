@@ -44,6 +44,7 @@ class InjectorConfig:
   score_importance_weight: float
   score_recency_weight: float = 0.10
   recency_half_life_days: float = 30.0
+  max_injected_tokens: int = 450
 
 
 class MemoryInjector:
@@ -68,11 +69,16 @@ class MemoryInjector:
     scored.sort(key=lambda x: x[0], reverse=True)
     return [r for _, r in scored]
 
-  def retrieve(self, user_text: str) -> List[MemoryRow]:
+  def retrieve(self, user_text: str, *, scope: Dict[str, Optional[str]]) -> List[MemoryRow]:
     if not user_text:
       return []
     q = self.embedder.embed_text(user_text)
-    rows = self.store.search(q, limit=max(1, int(self.config.max_results) * 4))
+    rows = self.store.search(
+      q,
+      limit=max(1, int(self.config.max_results) * 6),
+      scope=scope,
+      include_global_session=True,
+    )
     rows = [r for r in rows if r.similarity >= self.config.min_similarity]
     rows = self._rank(rows)[: self.config.max_results]
     if rows:
@@ -82,9 +88,11 @@ class MemoryInjector:
   def inject_into_messages(
     self,
     messages: List[Dict[str, Any]],
+    *,
+    scope: Dict[str, Optional[str]],
   ) -> Tuple[List[Dict[str, Any]], List[MemoryRow]]:
     user_text = _extract_latest_user_text(messages)
-    memories = self.retrieve(user_text)
+    memories = self.retrieve(user_text, scope=scope)
     if not memories:
       return messages, []
 
@@ -106,36 +114,47 @@ class MemoryInjector:
         return "past_decisions"
       return "facts"
 
-    budget = int(self.config.max_injected_chars)
+    budget_chars = int(self.config.max_injected_chars)
+    budget_tokens = int(self.config.max_injected_tokens)
+
+    def cost_tokens(s: str) -> int:
+      # Rough heuristic: ~4 chars per token.
+      return max(1, int(len(s) / 4))
+
     for m in memories:
       chunk = (m.summary or m.text or "").strip()
       if not chunk:
         continue
       chunk = _truncate(chunk, int(self.config.max_memory_chars_each))
       entry = f"- {chunk}"
-      if len(entry) > budget:
+      if len(entry) > budget_chars:
+        continue
+      tcost = cost_tokens(entry)
+      if tcost > budget_tokens:
         continue
       buckets[bucket_for(m)].append(entry)
-      budget -= len(entry) + 1
-      if budget <= 240:
+      budget_chars -= len(entry) + 1
+      budget_tokens -= tcost
+      if budget_chars <= 240 or budget_tokens <= 40:
         break
 
     if not any(buckets.values()):
       return messages, []
 
+    # Priority order: decisions > preferences > context > facts
     parts: List[str] = ["[MEMORY]"]
-    if buckets["facts"]:
-      parts.append("facts:")
-      parts.extend(buckets["facts"][: self.config.max_results])
+    if buckets["past_decisions"]:
+      parts.append("past decisions:")
+      parts.extend(buckets["past_decisions"][: self.config.max_results])
     if buckets["preferences"]:
       parts.append("preferences:")
       parts.extend(buckets["preferences"][: self.config.max_results])
     if buckets["project_context"]:
       parts.append("project context:")
       parts.extend(buckets["project_context"][: self.config.max_results])
-    if buckets["past_decisions"]:
-      parts.append("past decisions:")
-      parts.extend(buckets["past_decisions"][: self.config.max_results])
+    if buckets["facts"]:
+      parts.append("facts:")
+      parts.extend(buckets["facts"][: self.config.max_results])
 
     system_block = "\n".join(parts) + "\n[/MEMORY]"
 

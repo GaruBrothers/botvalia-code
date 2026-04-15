@@ -81,3 +81,21 @@ past decisions:
 - ...
 [/MEMORY]
 ```
+
+## Scoping (project/user/session)
+
+Memory is isolated by scope:
+
+- `project_id` (required)
+- `user_id` (required)
+- `session_id` (optional; when provided, retrieval includes both session-specific and session-global entries)
+
+You can provide scope via `wrapLLMCall(..., meta={"scope": {...}})` or environment variables:
+
+- `BOTVALIA_PROJECT_ID`
+- `BOTVALIA_USER_ID`
+- `BOTVALIA_SESSION_ID`
+
+## Growth limits
+
+Set `limits.max_memories_per_scope` in `config.json` (default 1000). Old low-importance memories are pruned first.

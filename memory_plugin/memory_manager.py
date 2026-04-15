@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
@@ -11,6 +13,7 @@ from .importance_scorer import ImportanceScorer
 from .memory_injector import InjectorConfig, MemoryInjector
 from .memory_saver import MemorySaver, SaverConfig
 from .vector_store import SQLiteVectorStore
+from .stream_adapter import extract_stream_text
 
 
 def _default_config_path() -> str:
@@ -87,6 +90,7 @@ class MemoryManager:
     with open(config_path, "r", encoding="utf-8") as f:
       cfg = json.load(f)
     self.cfg = cfg
+    self.debug = bool(cfg.get("debug", False))
 
     storage_dir = cfg.get("storage_dir", ".botvalia/infinite_memory")
     _ensure_dir(storage_dir)
@@ -97,6 +101,7 @@ class MemoryManager:
       sqlite_path = str(Path(storage_dir) / sqlite_path)
     if not os.path.isabs(log_path):
       log_path = str(Path(storage_dir) / log_path)
+    self.debug_log_path = str(Path(storage_dir) / "debug.jsonl")
 
     emb_cfg = cfg.get("embedding", {})
     dims = int(emb_cfg.get("dims", 512))
@@ -119,6 +124,7 @@ class MemoryManager:
         score_importance_weight=float(r_cfg.get("score_importance_weight", 0.25)),
         score_recency_weight=float(r_cfg.get("score_recency_weight", 0.10)),
         recency_half_life_days=float(r_cfg.get("recency_half_life_days", 30.0)),
+        max_injected_tokens=int(r_cfg.get("max_injected_tokens", 450)),
       ),
     )
 
@@ -135,6 +141,48 @@ class MemoryManager:
       ),
     )
 
+    self.max_memories_per_scope = int(cfg.get("limits", {}).get("max_memories_per_scope", 1000))
+
+  def _dbg(self, event: str, payload: Dict[str, Any]) -> None:
+    if not self.debug:
+      return
+    try:
+      rec = {"event": event, **payload}
+      with open(self.debug_log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+      # never break main flow
+      return
+
+  def _resolve_scope(self, meta: Optional[Dict[str, Any]]) -> Dict[str, Optional[str]]:
+    scope_meta = (meta or {}).get("scope") if isinstance(meta, dict) else None
+    scope: Dict[str, Optional[str]] = {}
+    if isinstance(scope_meta, dict):
+      scope["project_id"] = scope_meta.get("project_id")
+      scope["user_id"] = scope_meta.get("user_id")
+      scope["session_id"] = scope_meta.get("session_id")
+
+    scope.setdefault("project_id", os.environ.get("BOTVALIA_PROJECT_ID") or os.path.basename(os.getcwd()))
+    scope.setdefault("user_id", os.environ.get("BOTVALIA_USER_ID") or os.environ.get("USERNAME") or os.environ.get("USER") or "default")
+    scope.setdefault("session_id", os.environ.get("BOTVALIA_SESSION_ID"))
+
+    # normalize empties to None
+    for k in ["project_id", "user_id", "session_id"]:
+      v = scope.get(k)
+      if v is None:
+        continue
+      if isinstance(v, str) and not v.strip():
+        scope[k] = None
+      elif isinstance(v, str):
+        scope[k] = v.strip()
+    return scope
+
+  def _scope_key(self, scope: Dict[str, Optional[str]]) -> str:
+    p = scope.get("project_id") or ""
+    u = scope.get("user_id") or ""
+    s = scope.get("session_id") or ""
+    return f"{p}|{u}|{s}"
+
   def enabled(self) -> bool:
     return bool(self.cfg.get("enabled", True))
 
@@ -148,7 +196,9 @@ class MemoryManager:
     if not self.enabled():
       return originalFunction(messages)
 
-    injected_messages, used_memories = self.injector.inject_into_messages(messages)
+    scope = self._resolve_scope(meta)
+    injected_messages, used_memories = self.injector.inject_into_messages(messages, scope=scope)
+    self._dbg("inject", {"scope": scope, "used_memory_ids": [m.id for m in used_memories]})
     result = originalFunction(injected_messages)
 
     user_text = _extract_user_text(messages)
@@ -162,6 +212,7 @@ class MemoryManager:
         user_text=user_text,
         used_memories=used_memories,
         meta=meta,
+        scope=scope,
       )
     if _is_sync_stream(result):
       return self._wrap_sync_stream(
@@ -169,17 +220,31 @@ class MemoryManager:
         user_text=user_text,
         used_memories=used_memories,
         meta=meta,
+        scope=scope,
       )
 
     assistant_text = _extract_assistant_text(result)
-    self.saver.save_turn(
+    save_result = self.saver.save_turn(
       user_text=user_text,
       assistant_text=assistant_text,
+      scope=scope,
       extra_meta={
         "used_memories": [m.id for m in used_memories],
         **(meta or {}),
       },
     )
+    self._dbg(
+      "save",
+      {
+        "scope": scope,
+        "assistant_chars": len(assistant_text),
+        "result": save_result,
+      },
+    )
+    if hasattr(self.store, "prune_scope") and self.max_memories_per_scope > 0:
+      deleted = self.store.prune_scope(scope, self.max_memories_per_scope)  # type: ignore[attr-defined]
+      if deleted:
+        self._dbg("prune", {"scope": scope, "deleted": deleted, "max": self.max_memories_per_scope})
     return result
 
   def _wrap_sync_stream(
@@ -189,6 +254,7 @@ class MemoryManager:
     user_text: str,
     used_memories: List[Any],
     meta: Optional[Dict[str, Any]],
+    scope: Dict[str, Optional[str]],
   ) -> Iterator[Any]:
     buffer_parts: List[str] = []
 
@@ -199,15 +265,24 @@ class MemoryManager:
           yield chunk
       finally:
         assistant_text = "".join(buffer_parts).strip()
-        self.saver.save_turn(
+        save_result = self.saver.save_turn(
           user_text=user_text,
           assistant_text=assistant_text,
+          scope=scope,
           extra_meta={
             "used_memories": [m.id for m in used_memories],
             "streaming": True,
             **(meta or {}),
           },
         )
+        self._dbg(
+          "save_stream",
+          {"scope": scope, "assistant_chars": len(assistant_text), "result": save_result},
+        )
+        if hasattr(self.store, "prune_scope") and self.max_memories_per_scope > 0:
+          deleted = self.store.prune_scope(scope, self.max_memories_per_scope)  # type: ignore[attr-defined]
+          if deleted:
+            self._dbg("prune", {"scope": scope, "deleted": deleted, "max": self.max_memories_per_scope})
 
     return gen()
 
@@ -218,6 +293,7 @@ class MemoryManager:
     user_text: str,
     used_memories: List[Any],
     meta: Optional[Dict[str, Any]],
+    scope: Dict[str, Optional[str]],
   ) -> Any:
     buffer_parts: List[str] = []
 
@@ -228,15 +304,24 @@ class MemoryManager:
           yield chunk
       finally:
         assistant_text = "".join(buffer_parts).strip()
-        self.saver.save_turn(
+        save_result = self.saver.save_turn(
           user_text=user_text,
           assistant_text=assistant_text,
+          scope=scope,
           extra_meta={
             "used_memories": [m.id for m in used_memories],
             "streaming": True,
             **(meta or {}),
           },
         )
+        self._dbg(
+          "save_stream",
+          {"scope": scope, "assistant_chars": len(assistant_text), "result": save_result},
+        )
+        if hasattr(self.store, "prune_scope") and self.max_memories_per_scope > 0:
+          deleted = self.store.prune_scope(scope, self.max_memories_per_scope)  # type: ignore[attr-defined]
+          if deleted:
+            self._dbg("prune", {"scope": scope, "deleted": deleted, "max": self.max_memories_per_scope})
 
     return agen()
 
@@ -269,45 +354,4 @@ def _is_sync_stream(obj: Any) -> bool:
 
 
 def _extract_stream_text(chunk: Any) -> str:
-  """
-  Best-effort extraction for streaming chunk payloads (provider-agnostic).
-  Supports:
-  - plain strings
-  - dicts with common delta fields
-  """
-  if chunk is None:
-    return ""
-  if isinstance(chunk, str):
-    return chunk
-  if isinstance(chunk, bytes):
-    try:
-      return chunk.decode("utf-8", errors="ignore")
-    except Exception:
-      return ""
-  if isinstance(chunk, dict):
-    # OpenAI-like: {"choices":[{"delta":{"content":"..."}}]}
-    if "choices" in chunk and isinstance(chunk["choices"], list) and chunk["choices"]:
-      c0 = chunk["choices"][0]
-      if isinstance(c0, dict):
-        delta = c0.get("delta")
-        if isinstance(delta, dict) and "content" in delta and isinstance(delta["content"], str):
-          return delta["content"]
-        if "text" in c0 and isinstance(c0["text"], str):
-          return c0["text"]
-    # Anthropic-like events: {"type":"content_block_delta","delta":{"text":"..."}}
-    delta = chunk.get("delta")
-    if isinstance(delta, dict) and "text" in delta and isinstance(delta["text"], str):
-      return delta["text"]
-    if "text" in chunk and isinstance(chunk["text"], str):
-      return chunk["text"]
-    if "content" in chunk:
-      c = chunk["content"]
-      if isinstance(c, str):
-        return c
-      if isinstance(c, list):
-        parts: List[str] = []
-        for blk in c:
-          if isinstance(blk, dict) and blk.get("type") == "text":
-            parts.append(str(blk.get("text", "")))
-        return "\n".join(parts).strip()
-  return ""
+  return extract_stream_text(chunk)
