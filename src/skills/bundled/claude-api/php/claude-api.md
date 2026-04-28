@@ -1,3 +1,3 @@
-# PHP Claude API
+# PHP BotValia API
 
 Restored placeholder content.

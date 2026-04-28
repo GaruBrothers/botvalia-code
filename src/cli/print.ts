@@ -907,10 +907,11 @@ export async function runHeadless(
       message.type !== 'streamlined_tool_use_summary' &&
       message.type !== 'prompt_suggestion'
     ) {
+      const sdkMessage = message as SDKMessage
       if (needsFullArray) {
-        messages.push(message)
+        messages.push(sdkMessage)
       }
-      lastMessage = message
+      lastMessage = sdkMessage
     }
   }
 
@@ -1644,7 +1645,9 @@ function runHeadlessStreaming(
         }
       } else if (
         connection.config.type === 'stdio' ||
-        connection.config.type === undefined
+        (connection.config.type === undefined &&
+          'command' in connection.config &&
+          'args' in connection.config)
       ) {
         config = {
           type: 'stdio' as const,
@@ -1794,14 +1797,7 @@ function runHeadlessStreaming(
     const supportedConfigs: Record<string, McpServerConfigForProcessTransport> =
       {}
     for (const [name, config] of Object.entries(newConfigs)) {
-      const type = config.type
-      if (
-        type === undefined ||
-        type === 'stdio' ||
-        type === 'sse' ||
-        type === 'http' ||
-        type === 'sdk'
-      ) {
+      if (isProcessTransportConfig(config)) {
         supportedConfigs[name] = config
       }
     }
@@ -3579,7 +3575,7 @@ function runHeadlessStreaming(
           // The claude_oauth_callback handler re-awaits flow for the manual
           // path and surfaces the real error to the client.
           void flow.catch(err =>
-            logForDebugging(`claude_authenticate flow ended: ${err}`, {
+            logForDebugging(`botvalia_authenticate flow ended: ${err}`, {
               level: 'info',
             }),
           )
@@ -5313,6 +5309,18 @@ export type DynamicMcpState = {
  * Converts a process transport config to a scoped config.
  * The types are structurally compatible, so we just add the scope.
  */
+function isProcessTransportConfig(
+  config: ScopedMcpServerConfig,
+): config is ScopedMcpServerConfig & McpServerConfigForProcessTransport {
+  return (
+    config.type === undefined ||
+    config.type === 'stdio' ||
+    config.type === 'sse' ||
+    config.type === 'http' ||
+    config.type === 'sdk'
+  )
+}
+
 function toScopedConfig(
   config: McpServerConfigForProcessTransport,
 ): ScopedMcpServerConfig {

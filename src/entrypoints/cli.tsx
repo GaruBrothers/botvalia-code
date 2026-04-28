@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
     // MACRO.VERSION is inlined at build time
     // biome-ignore lint/suspicious/noConsole:: intentional console output
-    console.log(`${MACRO.VERSION} (Claude Code)`);
+    console.log(`${MACRO.VERSION} (BotValia Code)`);
     return;
   }
 
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude remote-control` (also accepts legacy `claude remote` / `claude sync` / `claude bridge`):
+  // Fast-path for `botvalia remote-control` (also accepts legacy `botvalia remote` / `botvalia sync` / `botvalia bridge`):
   // serve local machine as bridge environment.
   // feature() must stay inline for build-time dead code elimination;
   // isBridgeEnabled() checks the runtime GrowthBook gate.
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude daemon [subcommand]`: long-running supervisor.
+  // Fast-path for `botvalia daemon [subcommand]`: long-running supervisor.
   if (feature('DAEMON') && args[0] === 'daemon') {
     profileCheckpoint('cli_daemon_path');
     const {
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude ps|logs|attach|kill` and `--bg`/`--background`.
+  // Fast-path for `botvalia ps|logs|attach|kill` and `--bg`/`--background`.
   // Session management against the ~/.claude/sessions/ registry. Flag
   // literals are inlined so bg.js only loads when actually dispatching.
   if (feature('BG_SESSIONS') && (args[0] === 'ps' || args[0] === 'logs' || args[0] === 'attach' || args[0] === 'kill' || args.includes('--bg') || args.includes('--background'))) {
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Fast-path for `claude environment-runner`: headless BYOC runner.
+  // Fast-path for `botvalia environment-runner`: headless BYOC runner.
   // feature() must stay inline for build-time dead code elimination.
   if (feature('BYOC_ENVIRONMENT_RUNNER') && args[0] === 'environment-runner') {
     profileCheckpoint('cli_environment_runner_path');
@@ -232,7 +232,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude self-hosted-runner`: headless self-hosted-runner
+  // Fast-path for `botvalia self-hosted-runner`: headless self-hosted-runner
   // targeting the SelfHostedRunnerWorkerService API (register + poll; poll IS
   // heartbeat). feature() must stay inline for build-time dead code elimination.
   if (feature('SELF_HOSTED_RUNNER') && args[0] === 'self-hosted-runner') {

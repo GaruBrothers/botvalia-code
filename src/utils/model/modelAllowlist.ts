@@ -49,7 +49,7 @@ function modelMatchesVersionPrefix(model: string, entry: string): boolean {
   // Try with "claude-" prefix (e.g. "opus-4-5" → "claude-opus-4-5")
   if (
     !entry.startsWith('claude-') &&
-    prefixMatchesModel(resolvedModel, `claude-${entry}`)
+    prefixMatchesModel(resolvedModel, `botvalia-${entry}`)
   ) {
     return true
   }

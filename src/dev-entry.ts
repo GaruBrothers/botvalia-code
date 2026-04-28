@@ -247,7 +247,7 @@ if (args.includes('--version')) {
 
 if (args.includes('--help')) {
   if (missingImports.length > 0) {
-    console.log('Claude Code restored development workspace')
+    console.log('BotValia Code restored development workspace')
     console.log(`version: ${pkg.version}`)
     console.log(`missing relative imports: ${missingImports.length}`)
     process.exit(0)
@@ -263,7 +263,7 @@ if (args.includes('--help')) {
 }
 
 if (missingImports.length > 0) {
-  console.log('Claude Code restored development workspace')
+  console.log('BotValia Code restored development workspace')
   console.log(`version: ${pkg.version}`)
   console.log(`missing relative imports: ${missingImports.length}`)
   console.log('')

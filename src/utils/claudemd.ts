@@ -857,7 +857,7 @@ export const getMemoryFiles = memoize(
     }
 
     // When running from a git worktree nested inside its main repo (e.g.,
-    // .claude/worktrees/<name>/ from `claude -w`), the upward walk passes
+    // .claude/worktrees/<name>/ from `botvalia -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
     // checked-in files like CLAUDE.md and .claude/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from

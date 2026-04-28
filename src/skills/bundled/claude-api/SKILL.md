@@ -1,3 +1,3 @@
-# Claude API
+# BotValia API
 
 Restored placeholder content.

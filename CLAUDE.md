@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to BotValia Code (claude.ai/code) when working with code in this repository.
 
 ## What This Is
 
-Reconstructed TypeScript source tree of the Claude Code CLI, recovered from source maps of the public npm release. Some native modules are replaced with compatible shims in `shims/`. This is **not** the upstream Anthropic development repo.
+Reconstructed TypeScript source tree of the BotValia Code CLI, recovered from source maps of the public npm release. Some native modules are replaced with compatible shims in `shims/`. This is **not** the upstream Anthropic development repo.
 
 ## Development Commands
 

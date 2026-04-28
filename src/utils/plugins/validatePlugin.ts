@@ -16,7 +16,7 @@ import {
 /**
  * Fields that belong in marketplace.json entries (PluginMarketplaceEntrySchema)
  * but not plugin.json (PluginManifestSchema). Plugin authors reasonably copy
- * one into the other. Surfaced as warnings by `claude plugin validate` since
+ * one into the other. Surfaced as warnings by `botvalia plugin validate` since
  * they're a known confusion point — the load path silently strips all unknown
  * keys via zod's default behavior, so they're harmless at runtime but worth
  * flagging to authors.
@@ -213,7 +213,7 @@ export async function validatePluginManifest(
   }
 
   // Surface marketplace-only fields as a warning BEFORE validation flags
-  // them. `claude plugin validate` is a developer tool — authors running it
+  // them. `botvalia plugin validate` is a developer tool — authors running it
   // want to know these fields don't belong here. But it's a warning, not an
   // error: the plugin loads fine at runtime (the base schema strips unknown
   // keys). We strip them here so the .strict() call below doesn't double-
@@ -232,7 +232,7 @@ export async function validatePluginManifest(
           path: key,
           message:
             `Field '${key}' belongs in the marketplace entry (marketplace.json), ` +
-            `not plugin.json. It's harmless here but unused — Claude Code ` +
+            `not plugin.json. It's harmless here but unused — BotValia Code ` +
             `ignores it at load time.`,
         })
       }
@@ -255,14 +255,14 @@ export async function validatePluginManifest(
     const manifest = result.data
 
     // Warn if name isn't strict kebab-case. CC's schema only rejects spaces,
-    // but the Claude.ai marketplace sync rejects non-kebab names. Surfacing
+    // but the BotValia.ai marketplace sync rejects non-kebab names. Surfacing
     // this here lets authors catch it in CI before the sync fails on them.
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(manifest.name)) {
       warnings.push({
         path: 'name',
         message:
-          `Plugin name "${manifest.name}" is not kebab-case. Claude Code accepts ` +
-          `it, but the Claude.ai marketplace sync requires kebab-case ` +
+          `Plugin name "${manifest.name}" is not kebab-case. BotValia Code accepts ` +
+          `it, but the BotValia.ai marketplace sync requires kebab-case ` +
           `(lowercase letters, digits, and hyphens only, e.g., "my-plugin").`,
       })
     }
@@ -510,7 +510,7 @@ export async function validateMarketplaceManifest(
  *
  * The runtime loader (parseFrontmatter) silently drops unparseable YAML to a
  * debug log and returns an empty object. That's the right resilience choice
- * for the load path, but authors running `claude plugin validate` want a hard
+ * for the load path, but authors running `botvalia plugin validate` want a hard
  * signal. This re-parses the frontmatter block and surfaces what the loader
  * would silently swallow.
  */
@@ -580,7 +580,7 @@ function validateComponentFile(
     warnings.push({
       path: 'description',
       message:
-        `No description in frontmatter. A description helps users and Claude ` +
+        `No description in frontmatter. A description helps users and BotValia ` +
         `understand when to use this ${fileType}.`,
     })
   }

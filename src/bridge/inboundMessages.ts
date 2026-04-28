@@ -1,10 +1,9 @@
 import type {
   Base64ImageSource,
-  ContentBlockParam,
-  ImageBlockParam,
 } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { UUID } from 'crypto'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
+import type { MessageContentBlock } from '../types/message.js'
 import { detectImageFormatFromBase64 } from '../utils/imageResizer.js'
 
 /**
@@ -21,7 +20,7 @@ import { detectImageFormatFromBase64 } from '../utils/imageResizer.js'
 export function extractInboundMessageFields(
   msg: SDKMessage,
 ):
-  | { content: string | Array<ContentBlockParam>; uuid: UUID | undefined }
+  | { content: string | Array<MessageContentBlock>; uuid: UUID | undefined }
   | undefined {
   if (msg.type !== 'user') return undefined
   const content = msg.message?.content
@@ -50,8 +49,8 @@ export function extractInboundMessageFields(
  * normalization is needed (zero allocation on the happy path).
  */
 export function normalizeImageBlocks(
-  blocks: Array<ContentBlockParam>,
-): Array<ContentBlockParam> {
+  blocks: Array<MessageContentBlock>,
+): Array<MessageContentBlock> {
   if (!blocks.some(isMalformedBase64Image)) return blocks
 
   return blocks.map(block => {
@@ -73,8 +72,13 @@ export function normalizeImageBlocks(
 }
 
 function isMalformedBase64Image(
-  block: ContentBlockParam,
-): block is ImageBlockParam & { source: Base64ImageSource } {
-  if (block.type !== 'image' || block.source?.type !== 'base64') return false
-  return !(block.source as unknown as Record<string, unknown>).media_type
+  block: MessageContentBlock,
+): block is MessageContentBlock & {
+  type: 'image'
+  source: Base64ImageSource & { mediaType?: string }
+} {
+  if (block.type !== 'image' || !block.source || typeof block.source !== 'object')
+    return false
+  const source = block.source as Record<string, unknown>
+  return source.type === 'base64' && typeof source.data === 'string' && !source.media_type
 }

@@ -1,3 +1,3 @@
-# Ruby Claude API
+# Ruby BotValia API
 
 Restored placeholder content.

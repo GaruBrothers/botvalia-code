@@ -32,7 +32,7 @@ import {
 import { isPluginBlockedByPolicy } from './pluginPolicy.js'
 
 /**
- * Hard cap on `claudeCodeHints.plugin[]` — bounds config growth. Each shown
+ * Hard cap on `botvaliaCodeHints.plugin[]` — bounds config growth. Each shown
  * plugin appends one slug; past this point we stop prompting (and stop
  * appending) rather than let the config grow without limit.
  */

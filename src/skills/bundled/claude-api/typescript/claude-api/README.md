@@ -1,3 +1,3 @@
-# TypeScript Claude API
+# TypeScript BotValia API
 
 Restored placeholder content.

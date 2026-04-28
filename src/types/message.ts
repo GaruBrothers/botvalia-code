@@ -1,3 +1,5 @@
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+
 export type MessageOrigin = {
   kind?: string
   [key: string]: unknown
@@ -16,15 +18,29 @@ export type MessageBase = {
   [key: string]: unknown
 }
 
+export type MessageContentBlock =
+  | ContentBlockParam
+  | {
+      type: string
+      text?: string
+      [key: string]: unknown
+    }
+
+export type MessageAttachment = {
+  type: string
+  [key: string]: unknown
+}
+
 export type AttachmentMessage = MessageBase & {
   type: 'attachment'
   path?: string
+  attachment: MessageAttachment
 }
 
 export type UserMessage = MessageBase & {
   type: 'user'
   message: {
-    content: string | Array<{ type: string; text?: string; [key: string]: unknown }>
+    content: string | MessageContentBlock[]
     [key: string]: unknown
   }
 }

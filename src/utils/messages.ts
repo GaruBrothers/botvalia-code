@@ -42,6 +42,7 @@ import type {
   AssistantMessage,
   AttachmentMessage,
   Message,
+  MessageContentBlock,
   MessageOrigin,
   NormalizedAssistantMessage,
   NormalizedMessage,
@@ -235,7 +236,7 @@ export function AUTO_REJECT_MESSAGE(toolName: string): string {
   return `Permission to use ${toolName} has been denied. ${DENIAL_WORKAROUND_GUIDANCE}`
 }
 export function DONT_ASK_REJECT_MESSAGE(toolName: string): string {
-  return `Permission to use ${toolName} has been denied because Claude Code is running in don't ask mode. ${DENIAL_WORKAROUND_GUIDANCE}`
+  return `Permission to use ${toolName} has been denied because BotValia Code is running in don't ask mode. ${DENIAL_WORKAROUND_GUIDANCE}`
 }
 export const NO_RESPONSE_REQUESTED = 'No response requested.'
 
@@ -1615,7 +1616,7 @@ function stripUnavailableToolReferencesFromUserMessage(
 /**
  * Appends a [id:...] message ID tag to the last text block of a user message.
  * Only mutates the API-bound copy, not the stored message.
- * This lets Claude reference message IDs when calling the snip tool.
+ * This lets BotValia reference message IDs when calling the snip tool.
  */
 function appendMessageTagToUserMessage(message: UserMessage): UserMessage {
   if (message.isMeta) {
@@ -2901,7 +2902,7 @@ export function extractTextContent(
 }
 
 export function getContentText(
-  content: string | DeepImmutable<Array<ContentBlockParam>>,
+  content: string | DeepImmutable<Array<MessageContentBlock>>,
 ): string | null {
   if (typeof content === 'string') {
     return content

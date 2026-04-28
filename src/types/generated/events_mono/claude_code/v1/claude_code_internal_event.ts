@@ -61,7 +61,7 @@ export interface EnvironmentMetadata {
 }
 
 /**
- * SlackContext contains context fields present on every Claude-in-Slack (CIS) event.
+ * SlackContext contains context fields present on every BotValia-in-Slack (CIS) event.
  * Event-specific fields (errorType, durationMs, httpStatus, etc.) go in
  * ClaudeCodeInternalEvent.additional_metadata as JSON.
  */
@@ -73,7 +73,7 @@ export interface SlackContext {
 }
 
 /**
- * ClaudeCodeInternalEvent represents events logged from Claude Code via Statsig
+ * ClaudeCodeInternalEvent represents events logged from BotValia Code via Statsig
  * This schema matches the structure in claude-cli-internal/src/services/statsig.ts
  * Source table: proj-product-data-nhme.raw_statsig_internal_tools.events
  */
@@ -121,7 +121,7 @@ export interface ClaudeCodeInternalEvent {
   agent_id?: string | undefined
   parent_session_id?: string | undefined
   agent_type?: string | undefined
-  /** Claude-in-Slack context (only present for cis_* events) */
+  /** BotValia-in-Slack context (only present for cis_* events) */
   slack?: SlackContext | undefined
   team_name?: string | undefined
   skill_name?: string | undefined
