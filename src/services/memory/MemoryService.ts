@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { mkdir, readFile, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import type { Message } from 'src/types/message.js'
 import { extractTextContent, getContentText, isToolUseResultMessage } from 'src/utils/messages.js'
 import { getCwd } from 'src/utils/cwd.js'
@@ -378,13 +378,14 @@ export class MemoryService {
   }
 }
 
-let memoryServiceSingleton: MemoryService | null = null
+const memoryServicesByBaseDir = new Map<string, MemoryService>()
 
 export function getMemoryService(): MemoryService {
-  if (!memoryServiceSingleton) {
-    memoryServiceSingleton = new MemoryService(
-      join(getCwd(), '.botvalia', 'memory'),
-    )
+  const baseDir = resolve(getCwd(), '.botvalia', 'memory')
+  let memoryService = memoryServicesByBaseDir.get(baseDir)
+  if (!memoryService) {
+    memoryService = new MemoryService(baseDir)
+    memoryServicesByBaseDir.set(baseDir, memoryService)
   }
-  return memoryServiceSingleton
+  return memoryService
 }

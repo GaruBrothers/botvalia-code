@@ -1,5 +1,13 @@
 import pkg from '../package.json'
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'fs'
+import { createHash } from 'crypto'
 import { dirname, extname, join, resolve } from 'path'
 
 type MacroConfig = {
@@ -33,7 +41,35 @@ type MissingImport = {
   specifier: string
 }
 
-function scanFiles(dir: string, out: string[]): void {
+type ScannedFile = {
+  path: string
+  mtimeMs: number
+  size: number
+}
+
+type MissingImportScanCache = {
+  version: number
+  fingerprint: string
+  missing: MissingImport[]
+}
+
+const SOURCE_EXTENSIONS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+])
+const MISSING_IMPORT_SCAN_CACHE_VERSION = 1
+const MISSING_IMPORT_SCAN_CACHE_PATH = resolve(
+  '.botvalia',
+  'missing-import-scan-cache.json',
+)
+const RELATIVE_IMPORT_PATTERN =
+  /(?:import|export)\s+[\s\S]*?from\s+['"](\.\.?\/[^'"]+)['"]|require\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g
+
+function scanFiles(dir: string, out: ScannedFile[]): void {
   if (!existsSync(dir)) return
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = join(dir, entry.name)
@@ -41,13 +77,103 @@ function scanFiles(dir: string, out: string[]): void {
       scanFiles(fullPath, out)
       continue
     }
-    if (['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(extname(entry.name))) {
-      out.push(fullPath)
+    if (SOURCE_EXTENSIONS.has(extname(entry.name))) {
+      const stat = statSync(fullPath)
+      out.push({
+        path: fullPath,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+      })
     }
   }
 }
 
-function hasResolvableTarget(basePath: string): boolean {
+function buildWorkspaceFingerprint(files: readonly ScannedFile[]): string {
+  const hash = createHash('sha1')
+  hash.update(`${MISSING_IMPORT_SCAN_CACHE_VERSION}\n`)
+  for (const file of files) {
+    hash.update(file.path)
+    hash.update('\n')
+    hash.update(String(file.mtimeMs))
+    hash.update('\n')
+    hash.update(String(file.size))
+    hash.update('\n')
+  }
+  return hash.digest('hex')
+}
+
+function buildResolvableTargetSet(files: readonly ScannedFile[]): Set<string> {
+  const targets = new Set<string>()
+  for (const file of files) {
+    const filePath = file.path
+    targets.add(filePath)
+
+    const extension = extname(filePath)
+    if (extension) {
+      targets.add(filePath.slice(0, -extension.length))
+    }
+
+    const fileName = filePath.slice(
+      Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\')) + 1,
+    )
+    if (
+      fileName === 'index.ts' ||
+      fileName === 'index.tsx' ||
+      fileName === 'index.js' ||
+      fileName === 'index.jsx' ||
+      fileName === 'index.mjs' ||
+      fileName === 'index.cjs'
+    ) {
+      targets.add(dirname(filePath))
+    }
+  }
+  return targets
+}
+
+function readMissingImportScanCache(
+  fingerprint: string,
+): MissingImport[] | undefined {
+  try {
+    const cache = JSON.parse(
+      readFileSync(MISSING_IMPORT_SCAN_CACHE_PATH, 'utf8'),
+    ) as MissingImportScanCache
+    if (
+      cache.version !== MISSING_IMPORT_SCAN_CACHE_VERSION ||
+      cache.fingerprint !== fingerprint ||
+      !Array.isArray(cache.missing)
+    ) {
+      return undefined
+    }
+    return cache.missing
+  } catch {
+    return undefined
+  }
+}
+
+function writeMissingImportScanCache(
+  fingerprint: string,
+  missing: MissingImport[],
+): void {
+  try {
+    mkdirSync(dirname(MISSING_IMPORT_SCAN_CACHE_PATH), { recursive: true })
+    writeFileSync(
+      MISSING_IMPORT_SCAN_CACHE_PATH,
+      JSON.stringify({
+        version: MISSING_IMPORT_SCAN_CACHE_VERSION,
+        fingerprint,
+        missing,
+      } satisfies MissingImportScanCache),
+      'utf8',
+    )
+  } catch {
+    // Cache writes are opportunistic only.
+  }
+}
+
+function hasResolvableTarget(
+  basePath: string,
+  resolvableTargets: ReadonlySet<string>,
+): boolean {
   const withoutJs = basePath.replace(/\.js$/u, '')
   const candidates = [
     withoutJs,
@@ -61,38 +187,49 @@ function hasResolvableTarget(basePath: string): boolean {
     join(withoutJs, 'index.tsx'),
     join(withoutJs, 'index.js'),
   ]
-  return candidates.some(candidate => existsSync(candidate))
+  return candidates.some(
+    candidate => resolvableTargets.has(candidate) || existsSync(candidate),
+  )
 }
 
 function collectMissingRelativeImports(): MissingImport[] {
-  const files: string[] = []
+  const files: ScannedFile[] = []
   scanFiles(resolve('src'), files)
   scanFiles(resolve('vendor'), files)
+  files.sort((a, b) => a.path.localeCompare(b.path))
+
+  const fingerprint = buildWorkspaceFingerprint(files)
+  const cached = readMissingImportScanCache(fingerprint)
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const resolvableTargets = buildResolvableTargetSet(files)
   const missing: MissingImport[] = []
   const seen = new Set<string>()
-  const pattern =
-    /(?:import|export)\s+[\s\S]*?from\s+['"](\.\.?\/[^'"]+)['"]|require\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g
 
   for (const file of files) {
-    const text = readFileSync(file, 'utf8')
-    for (const match of text.matchAll(pattern)) {
+    const text = readFileSync(file.path, 'utf8')
+    for (const match of text.matchAll(RELATIVE_IMPORT_PATTERN)) {
       const specifier = match[1] ?? match[2]
       if (!specifier) continue
-      const target = resolve(dirname(file), specifier)
-      if (hasResolvableTarget(target)) continue
-      const key = `${file} -> ${specifier}`
+      const target = resolve(dirname(file.path), specifier)
+      if (hasResolvableTarget(target, resolvableTargets)) continue
+      const key = `${file.path} -> ${specifier}`
       if (seen.has(key)) continue
       seen.add(key)
       missing.push({
-        importer: file,
+        importer: file.path,
         specifier,
       })
     }
   }
 
-  return missing.sort((a, b) =>
+  const sortedMissing = missing.sort((a, b) =>
     `${a.importer}:${a.specifier}`.localeCompare(`${b.importer}:${b.specifier}`),
   )
+  writeMissingImportScanCache(fingerprint, sortedMissing)
+  return sortedMissing
 }
 
 const args = process.argv.slice(2)

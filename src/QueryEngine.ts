@@ -1340,7 +1340,9 @@ export class QueryEngine {
   }
 
   private shouldShowActiveModelNotice(): boolean {
-    const raw = process.env.BOTVALIA_SHOW_ACTIVE_MODEL
+    const raw =
+      process.env.BOTVALIA_SHOW_ACTIVE_MODEL ??
+      process.env.BOTVALIA_SHOW_FOOTER_MODEL
     if (raw === undefined) {
       return true
     }

@@ -4,6 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "checkJs": false,
     "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,
@@ -11,6 +12,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": false,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "src/*": [
