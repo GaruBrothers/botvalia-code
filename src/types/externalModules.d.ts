@@ -4,12 +4,31 @@ declare namespace React {
   type Dispatch<T> = (value: T) => void
   type SetStateAction<T> = T | ((prev: T) => T)
   type FC<P = {}> = (props: P) => ReactNode
+  interface ErrorInfo {
+    componentStack: string
+  }
   interface RefObject<T> {
     current: T | null
   }
   interface MutableRefObject<T> {
     current: T
   }
+  class Component<P = {}, S = {}, SS = unknown> {
+    constructor(props: P)
+    props: Readonly<P>
+    state: Readonly<S>
+    context: unknown
+    setState(
+      state:
+        | Partial<S>
+        | null
+        | ((prevState: Readonly<S>, props: Readonly<P>) => Partial<S> | null),
+      callback?: () => void,
+    ): void
+    forceUpdate(callback?: () => void): void
+    render(): ReactNode
+  }
+  class PureComponent<P = {}, S = {}, SS = unknown> extends Component<P, S, SS> {}
 }
 
 declare module 'react/compiler-runtime' {
