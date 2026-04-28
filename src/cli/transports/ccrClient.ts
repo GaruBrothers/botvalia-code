@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import type { BetaRawMessageStreamEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { SDKAssistantMessage } from 'src/entrypoints/agentSdkTypes.js'
 import type {
   SDKPartialAssistantMessage,
   StdoutMessage,
@@ -95,6 +97,10 @@ type CoalescedStreamEvent = {
   }
 }
 
+type CCRStreamEventMessage = Omit<SDKPartialAssistantMessage, 'event'> & {
+  event: BetaRawMessageStreamEvent
+}
+
 /**
  * Accumulator state for text_delta coalescing. Keyed by API message ID so
  * lifetime is tied to the assistant message — cleared when the complete
@@ -147,7 +153,8 @@ export function accumulateStreamEvents(
   // array reference (stable per {messageId, index}) so subsequent deltas
   // rewrite the same entry instead of emitting one event per delta.
   const touched = new Map<string[], CoalescedStreamEvent>()
-  for (const msg of buffer) {
+  for (const raw of buffer) {
+    const msg = raw as CCRStreamEventMessage
     switch (msg.event.type) {
       case 'message_start': {
         const id = msg.event.message.id
@@ -209,20 +216,29 @@ export function accumulateStreamEvents(
  */
 export function clearStreamAccumulatorForMessage(
   state: StreamAccumulatorState,
-  assistant: {
-    session_id: string
-    parent_tool_use_id: string | null
-    message: { id: string }
-  },
+  assistant: Pick<
+    SDKAssistantMessage,
+    'session_id' | 'parent_tool_use_id' | 'message'
+  >,
 ): void {
-  state.byMessage.delete(assistant.message.id)
+  const messageId =
+    typeof assistant.message === 'object' &&
+    assistant.message !== null &&
+    'id' in assistant.message &&
+    typeof assistant.message.id === 'string'
+      ? assistant.message.id
+      : undefined
+  if (!messageId) return
+  state.byMessage.delete(messageId)
   const scope = scopeKey(assistant)
-  if (state.scopeToMessage.get(scope) === assistant.message.id) {
+  if (state.scopeToMessage.get(scope) === messageId) {
     state.scopeToMessage.delete(scope)
   }
 }
 
-type RequestResult = { ok: true } | { ok: false; retryAfterMs?: number }
+type RequestResult =
+  | { ok: true; retryAfterMs?: never }
+  | { ok: false; retryAfterMs?: number }
 
 type WorkerEvent = {
   payload: EventPayload
@@ -372,12 +388,11 @@ export class CCRClient {
           { worker_epoch: this.workerEpoch, events: batch },
           'client events',
         )
-        if (!result.ok) {
-          throw new RetryableError(
-            'client event POST failed',
-            result.retryAfterMs,
-          )
-        }
+        if (result.ok) return
+        throw new RetryableError(
+          'client event POST failed',
+          result.retryAfterMs,
+        )
       },
       baseDelayMs: 500,
       maxDelayMs: 30_000,
@@ -395,12 +410,11 @@ export class CCRClient {
           { worker_epoch: this.workerEpoch, events: batch },
           'internal events',
         )
-        if (!result.ok) {
-          throw new RetryableError(
-            'internal event POST failed',
-            result.retryAfterMs,
-          )
-        }
+        if (result.ok) return
+        throw new RetryableError(
+          'internal event POST failed',
+          result.retryAfterMs,
+        )
       },
       baseDelayMs: 500,
       maxDelayMs: 30_000,
@@ -426,9 +440,8 @@ export class CCRClient {
           },
           'delivery batch',
         )
-        if (!result.ok) {
-          throw new RetryableError('delivery POST failed', result.retryAfterMs)
-        }
+        if (result.ok) return
+        throw new RetryableError('delivery POST failed', result.retryAfterMs)
       },
       baseDelayMs: 500,
       maxDelayMs: 30_000,

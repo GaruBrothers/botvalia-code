@@ -1,5 +1,6 @@
 import type {
   Base64ImageSource,
+  ContentBlockParam,
 } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { UUID } from 'crypto'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
@@ -20,7 +21,7 @@ import { detectImageFormatFromBase64 } from '../utils/imageResizer.js'
 export function extractInboundMessageFields(
   msg: SDKMessage,
 ):
-  | { content: string | Array<MessageContentBlock>; uuid: UUID | undefined }
+  | { content: string | Array<ContentBlockParam>; uuid: UUID | undefined }
   | undefined {
   if (msg.type !== 'user') return undefined
   const content = msg.message?.content
@@ -50,8 +51,8 @@ export function extractInboundMessageFields(
  */
 export function normalizeImageBlocks(
   blocks: Array<MessageContentBlock>,
-): Array<MessageContentBlock> {
-  if (!blocks.some(isMalformedBase64Image)) return blocks
+): Array<ContentBlockParam> {
+  if (!blocks.some(isMalformedBase64Image)) return blocks as ContentBlockParam[]
 
   return blocks.map(block => {
     if (!isMalformedBase64Image(block)) return block
@@ -68,7 +69,7 @@ export function normalizeImageBlocks(
         data: block.source.data,
       },
     }
-  })
+  }) as ContentBlockParam[]
 }
 
 function isMalformedBase64Image(

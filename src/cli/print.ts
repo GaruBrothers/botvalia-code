@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle'
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import { readFile, stat } from 'fs/promises'
 import { dirname } from 'path'
 import {
@@ -38,7 +39,11 @@ import {
   isBuiltInAgent,
   parseAgentsFromJson,
 } from 'src/tools/AgentTool/loadAgentsDir.js'
-import type { Message, NormalizedUserMessage } from 'src/types/message.js'
+import type {
+  Message,
+  MessageContentBlock,
+  NormalizedUserMessage,
+} from 'src/types/message.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import {
   dequeue,
@@ -418,6 +423,12 @@ type PromptValue = string | ContentBlockParam[]
 
 function toBlocks(v: PromptValue): ContentBlockParam[] {
   return typeof v === 'string' ? [{ type: 'text', text: v }] : v
+}
+
+function toPromptValue(
+  value: string | MessageContentBlock[],
+): string | ContentBlockParam[] {
+  return typeof value === 'string' ? value : (value as ContentBlockParam[])
 }
 
 /**
@@ -1039,7 +1050,9 @@ function runHeadlessStreaming(
   registerCleanup(async () => {
     const bg: Record<string, number> = {}
     for (const t of getRunningTasks(getAppState())) {
-      if (isBackgroundTask(t)) bg[t.type] = (bg[t.type] ?? 0) + 1
+      if (isBackgroundTask(t) && typeof t.type === 'string') {
+        bg[t.type] = (bg[t.type] ?? 0) + 1
+      }
     }
     logForDiagnosticsNoPII('info', 'run_state_at_shutdown', {
       run_active: running,
@@ -1187,7 +1200,7 @@ function runHeadlessStreaming(
     removeInterruptedMessage(mutableMessages, turnInterruptionState.message)
     enqueue({
       mode: 'prompt',
-      value: turnInterruptionState.message.message.content,
+      value: toPromptValue(turnInterruptionState.message.message.content),
       uuid: randomUUID(),
     })
   }
@@ -2985,7 +2998,9 @@ function runHeadlessStreaming(
             sdkClient.type === 'connected' &&
             sdkClient.client?.transport?.onmessage
           ) {
-            sdkClient.client.transport.onmessage(mcpRequest.message)
+            sdkClient.client.transport.onmessage(
+              mcpRequest.message as JSONRPCMessage,
+            )
           }
           sendControlResponseSuccess(message)
         } else if (message.request.subtype === 'rewind_files') {
@@ -4056,27 +4071,28 @@ function runHeadlessStreaming(
       initialized = true
 
       // Check for duplicate user message - skip if already processed
-      if (message.uuid) {
+      const messageUuid = validateUuid(message.uuid)
+      if (messageUuid) {
         const sessionId = getSessionId() as UUID
         const existsInSession = await doesMessageExistInSession(
           sessionId,
-          message.uuid,
+          messageUuid,
         )
 
         // Check both historical duplicates (from file) and runtime duplicates (this session)
-        if (existsInSession || receivedMessageUuids.has(message.uuid)) {
-          logForDebugging(`Skipping duplicate user message: ${message.uuid}`)
+        if (existsInSession || receivedMessageUuids.has(messageUuid)) {
+          logForDebugging(`Skipping duplicate user message: ${messageUuid}`)
           // Send acknowledgment for duplicate message if replay mode is enabled
           if (options.replayUserMessages) {
             logForDebugging(
-              `Sending acknowledgment for duplicate user message: ${message.uuid}`,
+              `Sending acknowledgment for duplicate user message: ${messageUuid}`,
             )
             output.enqueue({
               type: 'user',
               message: message.message,
               session_id: sessionId,
               parent_tool_use_id: null,
-              uuid: message.uuid,
+              uuid: messageUuid,
               timestamp: message.timestamp,
               isReplay: true,
             } as SDKUserMessageReplay)
@@ -4085,14 +4101,14 @@ function runHeadlessStreaming(
           // ran but its lifecycle was never closed (interrupted before ack).
           // Runtime dups don't need this — the original enqueue path closes them.
           if (existsInSession) {
-            notifyCommandLifecycle(message.uuid, 'completed')
+            notifyCommandLifecycle(messageUuid, 'completed')
           }
           // Don't enqueue duplicate messages for execution
           continue
         }
 
         // Track this UUID to prevent runtime duplicates
-        trackReceivedMessageUuid(message.uuid)
+        trackReceivedMessageUuid(messageUuid)
       }
 
       enqueue({
@@ -4100,7 +4116,7 @@ function runHeadlessStreaming(
         // file_attachments rides the protobuf catchall from the web composer.
         // Same-ref no-op when absent (no 'file_attachments' key).
         value: await resolveAndPrepend(message, message.message.content),
-        uuid: message.uuid,
+        uuid: messageUuid ?? undefined,
         priority: message.priority,
       })
       // Increment prompt count for attribution tracking and save snapshot
@@ -4363,10 +4379,10 @@ async function handleInitializeRequest(
   }
 
   // Apply systemPrompt/appendSystemPrompt from stdin to avoid ARG_MAX limits
-  if (request.systemPrompt !== undefined) {
+  if (typeof request.systemPrompt === 'string') {
     options.systemPrompt = request.systemPrompt
   }
-  if (request.appendSystemPrompt !== undefined) {
+  if (typeof request.appendSystemPrompt === 'string') {
     options.appendSystemPrompt = request.appendSystemPrompt
   }
   if (request.promptSuggestions !== undefined) {
@@ -4443,8 +4459,12 @@ async function handleInitializeRequest(
     }
     registerHookCallbacks(hooks)
   }
-  if (request.jsonSchema) {
-    setInitJsonSchema(request.jsonSchema)
+  if (
+    request.jsonSchema &&
+    typeof request.jsonSchema === 'object' &&
+    !Array.isArray(request.jsonSchema)
+  ) {
+    setInitJsonSchema(request.jsonSchema as Record<string, unknown>)
   }
   const initResponse: SDKControlInitializeResponse = {
     commands: commands
@@ -5250,8 +5270,7 @@ export async function handleOrphanedPermissionResponse({
     message.response.response?.toolUseID &&
     typeof message.response.response.toolUseID === 'string'
   ) {
-    const permissionResult = message.response.response as PermissionResult
-    const { toolUseID } = permissionResult
+    const toolUseID = message.response.response.toolUseID
     if (!toolUseID) {
       return false
     }
@@ -5281,6 +5300,7 @@ export async function handleOrphanedPermissionResponse({
     }
 
     handledToolUseIds.add(toolUseID)
+    const permissionResult = message.response.response as PermissionResult
     logForDebugging(
       `handleOrphanedPermissionResponse: enqueuing orphaned permission for toolUseID=${toolUseID} messageID=${assistantMessage.message.id}`,
     )

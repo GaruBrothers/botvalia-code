@@ -17,6 +17,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
 import { z } from 'zod/v4'
 import { getSessionId } from '../bootstrap/state.js'
+import type { MessageContentBlock } from '../types/message.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { lazySchema } from '../utils/lazySchema.js'
@@ -140,24 +141,25 @@ export async function resolveInboundAttachments(
  * block[0] means they're silently ignored for [text, image] content.
  */
 export function prependPathRefs(
-  content: string | Array<ContentBlockParam>,
+  content: string | Array<MessageContentBlock>,
   prefix: string,
 ): string | Array<ContentBlockParam> {
-  if (!prefix) return content
+  if (!prefix) return content as string | Array<ContentBlockParam>
   if (typeof content === 'string') return prefix + content
-  const i = content.findLastIndex(b => b.type === 'text')
+  const blocks = content as ContentBlockParam[]
+  const i = blocks.findLastIndex(b => b.type === 'text')
   if (i !== -1) {
-    const b = content[i]!
+    const b = blocks[i]!
     if (b.type === 'text') {
       return [
-        ...content.slice(0, i),
+        ...blocks.slice(0, i),
         { ...b, text: prefix + b.text },
-        ...content.slice(i + 1),
+        ...blocks.slice(i + 1),
       ]
     }
   }
   // No text block — append one at the end so it's last.
-  return [...content, { type: 'text', text: prefix.trimEnd() }]
+  return [...blocks, { type: 'text', text: prefix.trimEnd() }]
 }
 
 /**
@@ -166,10 +168,11 @@ export function prependPathRefs(
  */
 export async function resolveAndPrepend(
   msg: unknown,
-  content: string | Array<ContentBlockParam>,
+  content: string | Array<MessageContentBlock>,
 ): Promise<string | Array<ContentBlockParam>> {
   const attachments = extractInboundAttachments(msg)
-  if (attachments.length === 0) return content
+  if (attachments.length === 0)
+    return content as string | Array<ContentBlockParam>
   const prefix = await resolveInboundAttachments(attachments)
   return prependPathRefs(content, prefix)
 }

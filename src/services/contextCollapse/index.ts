@@ -1,20 +1,26 @@
 type Stats = {
   collapsedSpans: number
+  collapsedMessages: number
   stagedSpans: number
   health: {
+    totalSpawns: number
     totalErrors: number
     totalEmptySpawns: number
     emptySpawnWarningEmitted: boolean
+    lastError?: string
   }
 }
 
 const stats: Stats = {
   collapsedSpans: 0,
+  collapsedMessages: 0,
   stagedSpans: 0,
   health: {
+    totalSpawns: 0,
     totalErrors: 0,
     totalEmptySpawns: 0,
     emptySpawnWarningEmitted: false,
+    lastError: undefined,
   },
 }
 
@@ -32,6 +38,8 @@ export function getStats(): Stats {
 export function isContextCollapseEnabled(): boolean {
   return false
 }
+
+export function initContextCollapse(): void {}
 
 export function resetContextCollapse(): void {}
 

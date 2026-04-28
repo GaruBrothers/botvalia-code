@@ -4,10 +4,12 @@ import type {
   ModelInfo,
   RewindFilesResult,
   SDKMessage,
+  SDKPartialAssistantMessage as CoreSDKPartialAssistantMessage,
   SDKSessionInfo,
   SDKStatus,
 } from './coreTypes.js'
 import type { PermissionMode } from '../../types/permissions.js'
+import type { HookInput, PermissionUpdate } from './hookTypes.js'
 
 type SDKCommandSummary = {
   name: string
@@ -66,6 +68,27 @@ export type SDKControlMcpStatusRequest = {
 
 export type SDKControlGetContextUsageRequest = {
   subtype: 'get_context_usage'
+}
+
+export type SDKControlPermissionRequest = {
+  subtype: 'can_use_tool'
+  tool_name: string
+  input: Record<string, unknown>
+  permission_suggestions?: PermissionUpdate[]
+  blocked_path?: string
+  decision_reason?: string
+  title?: string
+  display_name?: string
+  tool_use_id: string
+  agent_id?: string
+  description?: string
+}
+
+export type SDKControlHookCallbackRequest = {
+  subtype: 'hook_callback'
+  callback_id: string
+  input: HookInput
+  tool_use_id?: string
 }
 
 export type SDKControlMcpMessageRequest = {
@@ -152,14 +175,44 @@ export type SDKControlApplyFlagSettingsRequest = {
   settings: Record<string, unknown>
 }
 
-export type SDKControlCancelRequest = {
-  subtype: 'cancel'
-  [key: string]: unknown
+export type SDKControlGetSettingsRequest = {
+  subtype: 'get_settings'
 }
 
-export type SDKControlPermissionRequest = {
-  subtype: 'permission'
-  [key: string]: unknown
+export type SDKControlStopTaskRequest = {
+  subtype: 'stop_task'
+  task_id: string
+}
+
+export type SDKControlElicitationRequest = {
+  subtype: 'elicitation'
+  mcp_server_name: string
+  message: string
+  mode?: 'form' | 'url'
+  url?: string
+  elicitation_id?: string
+  requested_schema?: Record<string, unknown>
+}
+
+export type SDKControlGenerateSessionTitleRequest = {
+  subtype: 'generate_session_title'
+  description: string
+  persist?: boolean
+}
+
+export type SDKControlSideQuestionRequest = {
+  subtype: 'side_question'
+  question: string
+}
+
+export type SDKControlRemoteControlRequest = {
+  subtype: 'remote_control'
+  enabled: boolean
+}
+
+export type SDKControlSetProactiveRequest = {
+  subtype: 'set_proactive'
+  enabled: boolean
 }
 
 export type SDKControlRequestInner =
@@ -171,6 +224,8 @@ export type SDKControlRequestInner =
   | SDKControlSetMaxThinkingTokensRequest
   | SDKControlMcpStatusRequest
   | SDKControlGetContextUsageRequest
+  | SDKControlPermissionRequest
+  | SDKControlHookCallbackRequest
   | SDKControlMcpMessageRequest
   | SDKControlRewindFilesRequest
   | SDKControlCancelAsyncMessageRequest
@@ -187,8 +242,13 @@ export type SDKControlRequestInner =
   | SDKControlClaudeOAuthWaitForCompletionRequest
   | SDKControlMcpClearAuthRequest
   | SDKControlApplyFlagSettingsRequest
-  | SDKControlCancelRequest
-  | SDKControlPermissionRequest
+  | SDKControlGetSettingsRequest
+  | SDKControlStopTaskRequest
+  | SDKControlElicitationRequest
+  | SDKControlGenerateSessionTitleRequest
+  | SDKControlSideQuestionRequest
+  | SDKControlRemoteControlRequest
+  | SDKControlSetProactiveRequest
 
 export type SDKControlRequest = {
   type: 'control_request'
@@ -240,19 +300,42 @@ export type SDKControlErrorResponse = {
   subtype: 'error'
   request_id: string
   error: string
+  pending_permission_requests?: SDKControlRequest[]
 }
 
 export type SDKControlResponse = {
   type: 'control_response'
   request_id?: string
-  response:
-    | SDKControlSuccessResponse
-    | SDKControlErrorResponse
-    | Record<string, unknown>
+  response: SDKControlSuccessResponse | SDKControlErrorResponse
 }
 
-export type SDKPartialAssistantMessage = {
-  type: 'assistant'
+export type SDKControlCancelRequest = {
+  type: 'control_cancel_request'
+  request_id: string
+}
+
+export type SDKKeepAliveMessage = {
+  type: 'keep_alive'
+}
+
+export type SDKUpdateEnvironmentVariablesMessage = {
+  type: 'update_environment_variables'
+  variables: Record<string, string>
+}
+
+export type SDKStreamlinedTextMessage = {
+  type: 'streamlined_text'
+  [key: string]: unknown
+}
+
+export type SDKStreamlinedToolUseSummaryMessage = {
+  type: 'streamlined_tool_use_summary'
+  [key: string]: unknown
+}
+
+export type SDKPostTurnSummaryMessage = {
+  type: 'system'
+  subtype: 'post_turn_summary'
   [key: string]: unknown
 }
 
@@ -260,15 +343,17 @@ export type StdinMessage =
   | SDKMessage
   | SDKControlResponse
   | SDKControlRequest
+  | SDKKeepAliveMessage
+  | SDKUpdateEnvironmentVariablesMessage
+
+export type SDKPartialAssistantMessage = CoreSDKPartialAssistantMessage
 
 export type StdoutMessage =
   | SDKMessage
+  | SDKControlRequest
   | SDKControlResponse
-  | {
-      type:
-        | 'stream_event'
-        | 'keep_alive'
-        | 'streamlined_text'
-        | 'streamlined_tool_use_summary'
-      [key: string]: unknown
-    }
+  | SDKControlCancelRequest
+  | SDKKeepAliveMessage
+  | SDKStreamlinedTextMessage
+  | SDKStreamlinedToolUseSummaryMessage
+  | SDKPostTurnSummaryMessage

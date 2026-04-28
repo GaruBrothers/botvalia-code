@@ -123,25 +123,25 @@ async function createFork(customTitle?: string): Promise<{
     // Create forked transcript entry preserving all original metadata
     const forkedEntry: TranscriptEntry = {
       ...entry,
-      sessionId: forkSessionId,
+      sessionId: forkSessionId as UUID,
       parentUuid,
       isSidechain: false,
       forkedFrom: {
-        sessionId: originalSessionId,
-        messageUuid: entry.uuid,
+        sessionId: originalSessionId as UUID,
+        messageUuid: entry.uuid as UUID,
       },
     }
 
     // Build serialized message for LogOption
     const serialized: SerializedMessage = {
       ...entry,
-      sessionId: forkSessionId,
+      sessionId: forkSessionId as UUID,
     }
 
     serializedMessages.push(serialized)
     lines.push(jsonStringify(forkedEntry))
     if (entry.type !== 'progress') {
-      parentUuid = entry.uuid
+      parentUuid = entry.uuid as UUID
     }
   }
 

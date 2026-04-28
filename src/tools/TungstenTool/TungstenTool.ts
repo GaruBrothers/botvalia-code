@@ -34,3 +34,7 @@ export const TungstenTool = buildTool({
     return { data: { ok: false } }
   },
 })
+
+export function clearSessionsWithTungstenUsage(): void {}
+
+export function resetInitializationState(): void {}
