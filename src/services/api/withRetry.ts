@@ -32,6 +32,7 @@ import {
   triggerFastModeCooldown,
 } from '../../utils/fastMode.js'
 import { isNonCustomOpusModel } from '../../utils/model/model.js'
+import { isProviderRouteSpec } from '../../utils/model/providerRouting.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
@@ -79,6 +80,10 @@ function isOpenRouterBaseUrl(): boolean {
     // allow bare host/path strings
     return raw.includes('openrouter.ai')
   }
+}
+
+function hasMultiProviderFallback(fallbackModel: string | undefined): boolean {
+  return Boolean(fallbackModel && isProviderRouteSpec(fallbackModel))
 }
 
 function getOpenRouterAuthTokenPool(): string[] {
@@ -475,6 +480,53 @@ export async function* withRetry<T>(
           options.fallbackModel,
           'unavailable',
         )
+      }
+
+      // BotValia multi-provider route chains should fail over quickly across
+      // providers when the current endpoint is unavailable, rate-limited, or
+      // missing credentials.
+      if (hasMultiProviderFallback(options.fallbackModel)) {
+        if (is529Error(error)) {
+          throw new FallbackTriggeredError(
+            options.model,
+            options.fallbackModel!,
+            'overloaded',
+          )
+        }
+
+        if (error instanceof APIError) {
+          if (error.status === 429) {
+            throw new FallbackTriggeredError(
+              options.model,
+              options.fallbackModel!,
+              'rate_limit',
+            )
+          }
+
+          if (error.status === 401) {
+            throw new FallbackTriggeredError(
+              options.model,
+              options.fallbackModel!,
+              'auth',
+            )
+          }
+
+          if (error.status === 403 || error.status === 404) {
+            throw new FallbackTriggeredError(
+              options.model,
+              options.fallbackModel!,
+              'unavailable',
+            )
+          }
+        }
+
+        if (error instanceof APIConnectionError) {
+          throw new FallbackTriggeredError(
+            options.model,
+            options.fallbackModel!,
+            'unavailable',
+          )
+        }
       }
 
       // Track consecutive 529 errors

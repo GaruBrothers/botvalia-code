@@ -64,12 +64,14 @@ import {
   countToolCalls,
   createSystemMessage,
   getContentText,
+  isCompactBoundaryMessage,
   SYNTHETIC_MESSAGES,
 } from './utils/messages.js'
 import {
   getMainLoopModel,
   parseUserSpecifiedModel,
 } from './utils/model/model.js'
+import { normalizeModelCandidate } from './utils/model/providerRouting.js'
 import { loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js'
 import {
   type ProcessUserInputContext,
@@ -175,8 +177,14 @@ export type QueryEngineConfig = {
   snipReplay?: (
     yieldedSystemMsg: Message,
     store: Message[],
-  ) => { messages: Message[]; executed: boolean } | undefined
-}
+  ) =>
+    | {
+        messages: Message[]
+        executed?: boolean
+        changed?: boolean
+      }
+    | undefined
+} 
 
 /**
  * QueryEngine owns the query lifecycle and session state for a conversation.
@@ -205,10 +213,17 @@ export class QueryEngine {
 
   private static readonly codingIntentPattern =
     /\b(code|coding|program|programming|debug|bug|fix|refactor|function|class|method|typescript|javascript|ts|js|python|java|c#|csharp|sql|api|endpoint|test|tests|stacktrace|compile|build|lint|archivo|archivos|codigo|codificar|programar|depurar|error|errores|arreglar|refactorizar|funcion|clase|metodo|prueba|pruebas|compilar)\b/i
+  private static readonly complexIntentPattern =
+    /\b(architecture|arquitectura|analyze|analysis|analiza|analisis|investigate|investigar|deep|profundo|complex|complejo|optimize|optimizar|performance|rendimiento|security|seguridad|migration|migracion|migrate|plan|strategy|estrategia|compare|comparar|scalable|escalable|production|produccion|root cause|causa raiz|multi-step|multistep)\b/i
 
   private static readonly defaultCodeModel = 'sonnet'
+  private static readonly defaultComplexModel = 'sonnet'
   private static readonly defaultFastModel = 'haiku'
   private static readonly defaultCodeFallbacks = [
+    'opus',
+    'haiku',
+  ]
+  private static readonly defaultComplexFallbacks = [
     'opus',
     'haiku',
   ]
@@ -523,11 +538,13 @@ export class QueryEngine {
       modelFromUserInput ?? routeDecision?.model ?? initialMainLoopModel
     const effectiveFallbackModels =
       routeDecision?.fallbackModels ?? fallbackModels ?? []
+    const effectivePrimaryRouteSpec = routeDecision?.routeSpec
+    const effectiveFallbackRouteSpecs = routeDecision?.fallbackRouteSpecs
     const modelSelectionSource =
       modelFromUserInput !== undefined
         ? 'manual'
         : routeDecision !== undefined
-          ? 'auto-router'
+          ? `auto-router:${routeDecision.tier}`
           : 'default'
 
     setAppState(prev => {
@@ -655,7 +672,7 @@ export class QueryEngine {
           yield localCommandOutputToSDKAssistantMessage(msg.content, msg.uuid)
         }
 
-        if (msg.type === 'system' && msg.subtype === 'compact_boundary') {
+        if (isCompactBoundaryMessage(msg)) {
           yield {
             type: 'system',
             subtype: 'compact_boundary' as const,
@@ -741,6 +758,8 @@ export class QueryEngine {
       canUseTool: wrappedCanUseTool,
       toolUseContext: processUserInputContext,
       fallbackModels: effectiveFallbackModels,
+      primaryRouteSpec: effectivePrimaryRouteSpec,
+      fallbackRouteSpecs: effectiveFallbackRouteSpecs,
       querySource: 'sdk',
       maxTurns,
       taskBudget,
@@ -761,10 +780,9 @@ export class QueryEngine {
         // without pruning → resume loads full pre-compact history.
         if (
           persistSession &&
-          message.type === 'system' &&
-          message.subtype === 'compact_boundary'
+          isCompactBoundaryMessage(message)
         ) {
-          const tailUuid = message.compactMetadata?.preservedSegment?.tailUuid
+          const tailUuid = message.compactMetadata.preservedSegment?.tailUuid
           if (tailUuid) {
             const tailIdx = this.mutableMessages.findLastIndex(
               m => m.uuid === tailUuid,
@@ -903,6 +921,10 @@ export class QueryEngine {
           }
           // Handle max turns reached signal from query.ts
           else if (message.attachment.type === 'max_turns_reached') {
+            const turnCount =
+              typeof message.attachment.turnCount === 'number'
+                ? message.attachment.turnCount
+                : 0
             if (persistSession) {
               if (
                 isEnvTruthy(process.env.CLAUDE_CODE_EAGER_FLUSH) ||
@@ -917,7 +939,7 @@ export class QueryEngine {
               duration_ms: Date.now() - startTime,
               duration_api_ms: getTotalAPIDuration(),
               is_error: true,
-              num_turns: message.attachment.turnCount,
+              num_turns: turnCount,
               stop_reason: lastStopReason,
               session_id: getSessionId(),
               total_cost_usd: getTotalCost(),
@@ -970,7 +992,7 @@ export class QueryEngine {
             this.mutableMessages,
           )
           if (snipResult !== undefined) {
-            if (snipResult.executed) {
+            if (snipResult.executed ?? snipResult.changed) {
               this.mutableMessages.length = 0
               this.mutableMessages.push(...snipResult.messages)
             }
@@ -978,10 +1000,7 @@ export class QueryEngine {
           }
           this.mutableMessages.push(message)
           // Yield compact boundary messages to SDK
-          if (
-            message.subtype === 'compact_boundary' &&
-            message.compactMetadata
-          ) {
+          if (isCompactBoundaryMessage(message)) {
             // Release pre-compaction messages for GC. The boundary was just
             // pushed so it's the last element. query.ts already uses
             // getMessagesAfterCompactBoundary() internally, so only
@@ -1003,15 +1022,25 @@ export class QueryEngine {
               compact_metadata: toSDKCompactMetadata(message.compactMetadata),
             }
           }
-          if (message.subtype === 'api_error') {
+          if (
+            message.subtype === 'api_error' &&
+            typeof message.retryAttempt === 'number' &&
+            typeof message.maxRetries === 'number' &&
+            typeof message.retryInMs === 'number' &&
+            typeof message.error === 'object' &&
+            message.error !== null
+          ) {
+            const apiError = message.error as Parameters<
+              typeof categorizeRetryableAPIError
+            >[0] & { status?: number }
             yield {
               type: 'system',
               subtype: 'api_retry' as const,
               attempt: message.retryAttempt,
               max_retries: message.maxRetries,
               retry_delay_ms: message.retryInMs,
-              error_status: message.error.status ?? null,
-              error: categorizeRetryableAPIError(message.error),
+              error_status: apiError.status ?? null,
+              error: categorizeRetryableAPIError(apiError),
               session_id: getSessionId(),
               uuid: message.uuid,
             }
@@ -1246,6 +1275,9 @@ export class QueryEngine {
     | {
         model: string
         fallbackModels?: string[]
+        routeSpec?: string
+        fallbackRouteSpecs?: Array<string | undefined>
+        tier: 'code' | 'complex' | 'fast'
       }
     | undefined {
     if (!this.isModelRouterEnabled()) {
@@ -1257,28 +1289,40 @@ export class QueryEngine {
       return undefined
     }
 
-    const isCodingIntent = QueryEngine.codingIntentPattern.test(promptText)
-    const primaryCandidate = isCodingIntent
-      ? process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL?.trim() ||
-        QueryEngine.defaultCodeModel
-      : process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL?.trim() ||
-        QueryEngine.defaultFastModel
-    const fallbackCandidates = this.getFallbackCandidates(isCodingIntent)
+    const tier = this.classifyPromptTier(promptText)
+    const primaryCandidate = this.getPrimaryCandidate(tier)
+    const fallbackCandidates = this.getFallbackCandidates(tier)
+    const parsedPrimary = this.safeNormalizeModelCandidate(primaryCandidate)
 
-    const routedPrimary = this.safeParseModel(primaryCandidate) ?? currentModel
-    const routedFallbacks = [
+    const routedPrimary = parsedPrimary?.model ?? currentModel
+    const routeSpec = parsedPrimary?.routeSpec
+
+    const parsedFallbacks = [
       ...fallbackCandidates,
       ...(currentFallbackModels ?? []),
     ]
-      .map(candidate => this.safeParseModel(candidate))
+      .map(candidate => this.safeNormalizeModelCandidate(candidate))
       .filter(
-        (candidate): candidate is string =>
-          Boolean(candidate) && candidate !== routedPrimary,
+        (candidate): candidate is { model: string; routeSpec?: string } =>
+          Boolean(candidate) && candidate.model !== routedPrimary,
       )
-      .filter((candidate, index, arr) => arr.indexOf(candidate) === index)
+      .filter(
+        (candidate, index, arr) =>
+          arr.findIndex(
+            item =>
+              item.model === candidate.model &&
+              item.routeSpec === candidate.routeSpec,
+          ) === index,
+      )
 
     const fallbackModels =
-      routedFallbacks.length > 0 ? routedFallbacks : undefined
+      parsedFallbacks.length > 0
+        ? parsedFallbacks.map(candidate => candidate.model)
+        : undefined
+    const fallbackRouteSpecs =
+      parsedFallbacks.length > 0
+        ? parsedFallbacks.map(candidate => candidate.routeSpec)
+        : undefined
 
     if (
       routedPrimary === currentModel &&
@@ -1287,18 +1331,72 @@ export class QueryEngine {
     ) {
       return undefined
     }
-    return { model: routedPrimary, fallbackModels }
+    return {
+      model: routedPrimary,
+      fallbackModels,
+      routeSpec,
+      fallbackRouteSpecs,
+      tier,
+    }
   }
 
-  private getFallbackCandidates(isCodingIntent: boolean): string[] {
-    const envVar = isCodingIntent
-      ? process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN ||
-        process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
-      : process.env.BOTVALIA_MODEL_ROUTER_FAST_CHAIN ||
-        process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS
-    const defaults = isCodingIntent
-      ? QueryEngine.defaultCodeFallbacks
-      : QueryEngine.defaultFastFallbacks
+  private classifyPromptTier(promptText: string): 'code' | 'complex' | 'fast' {
+    if (QueryEngine.codingIntentPattern.test(promptText)) {
+      return 'code'
+    }
+
+    const wordCount = promptText.split(/\s+/).filter(Boolean).length
+    if (
+      QueryEngine.complexIntentPattern.test(promptText) ||
+      wordCount >= 40 ||
+      promptText.includes('\n')
+    ) {
+      return 'complex'
+    }
+
+    return 'fast'
+  }
+
+  private getPrimaryCandidate(tier: 'code' | 'complex' | 'fast'): string {
+    if (tier === 'code') {
+      return (
+        process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL?.trim() ||
+        QueryEngine.defaultCodeModel
+      )
+    }
+
+    if (tier === 'complex') {
+      return (
+        process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL?.trim() ||
+        process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL?.trim() ||
+        QueryEngine.defaultComplexModel
+      )
+    }
+
+    return (
+      process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL?.trim() ||
+      QueryEngine.defaultFastModel
+    )
+  }
+
+  private getFallbackCandidates(tier: 'code' | 'complex' | 'fast'): string[] {
+    const envVar =
+      tier === 'code'
+        ? process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN ||
+          process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
+        : tier === 'complex'
+          ? process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_CHAIN ||
+            process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS ||
+            process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN ||
+            process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
+          : process.env.BOTVALIA_MODEL_ROUTER_FAST_CHAIN ||
+            process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS
+    const defaults =
+      tier === 'code'
+        ? QueryEngine.defaultCodeFallbacks
+        : tier === 'complex'
+          ? QueryEngine.defaultComplexFallbacks
+          : QueryEngine.defaultFastFallbacks
     if (!envVar || !envVar.trim()) {
       return defaults
     }
@@ -1308,10 +1406,12 @@ export class QueryEngine {
       .filter(Boolean)
   }
 
-  private safeParseModel(candidate: string): string | undefined {
+  private safeNormalizeModelCandidate(
+    candidate: string,
+  ): { model: string; routeSpec?: string } | undefined {
     if (!candidate) return undefined
     try {
-      return parseUserSpecifiedModel(candidate)
+      return normalizeModelCandidate(candidate)
     } catch (error) {
       logError(error)
       return undefined

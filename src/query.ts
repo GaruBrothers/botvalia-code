@@ -82,6 +82,10 @@ import {
   renderModelName,
 } from './utils/model/model.js'
 import {
+  applyProviderRoute,
+  normalizeModelCandidate,
+} from './utils/model/providerRouting.js'
+import {
   doesMostRecentAssistantMessageExceed200k,
   finalContextTokensFromLastResponse,
   tokenCountWithEstimation,
@@ -188,6 +192,8 @@ export type QueryParams = {
   canUseTool: CanUseToolFn
   toolUseContext: ToolUseContext
   fallbackModels?: string[]
+  primaryRouteSpec?: string
+  fallbackRouteSpecs?: Array<string | undefined>
   querySource: QuerySource
   maxOutputTokensOverride?: number
   maxTurns?: number
@@ -216,6 +222,57 @@ type State = {
   // Why the previous iteration continued. Undefined on first iteration.
   // Lets tests assert recovery paths fired without inspecting message contents.
   transition: Continue | undefined
+}
+
+type FallbackTarget = {
+  model: string
+  routeSpec?: string
+}
+
+function sameFallbackTarget(
+  left: FallbackTarget,
+  right: FallbackTarget,
+): boolean {
+  return left.model === right.model && left.routeSpec === right.routeSpec
+}
+
+function buildFallbackQueue(
+  fallbackModels?: string[],
+  fallbackRouteSpecs?: Array<string | undefined>,
+): FallbackTarget[] {
+  const length = Math.max(
+    fallbackModels?.length ?? 0,
+    fallbackRouteSpecs?.length ?? 0,
+  )
+  const targets: FallbackTarget[] = []
+
+  for (let index = 0; index < length; index++) {
+    const routeSpec = fallbackRouteSpecs?.[index]
+    const model =
+      fallbackModels?.[index] ??
+      (routeSpec ? normalizeModelCandidate(routeSpec).model : undefined)
+    if (!model) {
+      continue
+    }
+    const target = { model, routeSpec }
+    if (!targets.some(existing => sameFallbackTarget(existing, target))) {
+      targets.push(target)
+    }
+  }
+
+  return targets
+}
+
+function resolveFallbackTarget(
+  fallbackValue: string,
+  fallbackQueue: FallbackTarget[],
+): FallbackTarget {
+  return (
+    fallbackQueue.find(
+      candidate =>
+        candidate.routeSpec === fallbackValue || candidate.model === fallbackValue,
+    ) ?? { model: fallbackValue }
+  )
 }
 
 export async function* query(
@@ -258,6 +315,8 @@ async function* queryLoop(
     systemContext,
     canUseTool,
     fallbackModels,
+    primaryRouteSpec,
+    fallbackRouteSpecs,
     querySource,
     maxTurns,
     skipCacheWrite,
@@ -605,8 +664,16 @@ async function* queryLoop(
         permissionMode === 'plan' &&
         doesMostRecentAssistantMessageExceed200k(messagesForQuery),
     })
-    let fallbackQueue = [...(fallbackModels ?? [])].filter(
-      candidate => candidate !== currentModel,
+    let currentRouteSpec = primaryRouteSpec
+    if (currentRouteSpec) {
+      applyProviderRoute(currentRouteSpec)
+    }
+    let fallbackQueue = buildFallbackQueue(
+      fallbackModels,
+      fallbackRouteSpecs,
+    ).filter(
+      candidate =>
+        candidate.model !== currentModel || candidate.routeSpec !== currentRouteSpec,
     )
 
     queryCheckpoint('query_setup_end')
@@ -706,7 +773,8 @@ async function* queryLoop(
               toolChoice: undefined,
                 isNonInteractiveSession:
                   toolUseContext.options.isNonInteractiveSession,
-                fallbackModel: fallbackQueue[0],
+                fallbackModel:
+                  fallbackQueue[0]?.routeSpec ?? fallbackQueue[0]?.model,
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },
@@ -746,7 +814,12 @@ async function* queryLoop(
               // These partial messages (especially thinking blocks) have invalid signatures
               // that would cause "thinking blocks cannot be modified" API errors.
               for (const msg of assistantMessages) {
-                yield { type: 'tombstone' as const, message: msg }
+                yield {
+                  type: 'tombstone' as const,
+                  uuid: msg.uuid,
+                  timestamp: new Date().toISOString(),
+                  message: msg,
+                }
               }
               logEvent('tengu_orphaned_messages_tombstoned', {
                 orphanedMessageCount: assistantMessages.length,
@@ -928,9 +1001,17 @@ async function* queryLoop(
             innerError.fallbackModel
           ) {
             // Fallback was triggered - switch model and retry
-            currentModel = innerError.fallbackModel
+            const nextFallback = resolveFallbackTarget(
+              innerError.fallbackModel,
+              fallbackQueue,
+            )
+            currentModel = nextFallback.model
+            if (nextFallback.routeSpec !== undefined) {
+              currentRouteSpec = nextFallback.routeSpec
+              applyProviderRoute(currentRouteSpec)
+            }
             fallbackQueue = fallbackQueue.filter(
-              candidate => candidate !== currentModel,
+              candidate => !sameFallbackTarget(candidate, nextFallback),
             )
             attemptWithFallback = true
 

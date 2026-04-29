@@ -19,6 +19,8 @@
     "start": "bun run ./src/dev-entry.ts",
     "version": "bun run ./src/dev-entry.ts --version",
     "typecheck": "tsc --noEmit",
+    "dev:auto": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-auto.ps1",
+    "version:auto": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-auto.ps1 -VersionOnly",
     "dev:free": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1",
     "version:free": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1 -VersionOnly",
     "dev:openrouter": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1",
