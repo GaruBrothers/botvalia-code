@@ -791,7 +791,7 @@ export async function main() {
       // Headless (-p) mode is not supported with SSH in v1 — reject early
       // so the flag doesn't silently cause local execution.
       if (rest.includes('-p') || rest.includes('--print')) {
-        process.stderr.write('Error: headless (-p/--print) mode is not supported with claude ssh\n');
+        process.stderr.write('Error: headless (-p/--print) mode is not supported with botvalia ssh\n');
         gracefulShutdownSync(1);
         return;
       }
@@ -927,7 +927,7 @@ async function run(): Promise<CommanderCommand> {
     // terminal shell integration may mirror the process name to the tab.
     // After init() so settings.json env can also gate this (gh-4765).
     if (!isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE)) {
-      process.title = 'claude';
+      process.title = 'botvalia';
     }
 
     // Attach logging sinks so subcommand handlers can use logEvent/logError.
@@ -972,7 +972,7 @@ async function run(): Promise<CommanderCommand> {
     }
     profileCheckpoint('preAction_after_settings_sync');
   });
-  program.name('claude').description(`BotValia Code - starts an interactive session by default, use -p/--print for non-interactive output`).argument('[prompt]', 'Your prompt', String)
+  program.name('botvalia').description(`BotValia Code - starts an interactive session by default, use -p/--print for non-interactive output`).argument('[prompt]', 'Your prompt', String)
   // Subcommands inherit helpOption via commander's copyInheritedSettings —
   // setting it once here covers mcp, plugin, auth, and all other subcommands.
   .helpOption('-h, --help', 'Display help for command').option('-d, --debug [filter]', 'Enable debug mode with optional category filtering (e.g., "api,hooks" or "!1p,!file")', (_value: string | true) => {
@@ -3403,7 +3403,7 @@ async function run(): Promise<CommanderCommand> {
           if (matches.length === 1) {
             // Exact match found - store full LogOption for cross-worktree resume
             matchedLog = matches[0]!;
-            maybeSessionId = getSessionIdFromLog(matchedLog) ?? null;
+            maybeSessionId = (getSessionIdFromLog(matchedLog) as typeof maybeSessionId) ?? null;
           } else {
             // No match or multiple matches - use as search term for picker
             searchTerm = trimmedValue;
@@ -4060,7 +4060,7 @@ async function run(): Promise<CommanderCommand> {
       // Argv rewriting in main() should have consumed `ssh <host>` before
       // commander runs. Reaching here means host was missing or the
       // rewrite predicate didn't match.
-      process.stderr.write('Usage: claude ssh <user@host | ssh-config-alias> [dir]\n\n' + "Runs BotValia Code on a remote Linux host. You don't need to install\n" + 'anything on the remote or run `botvalia auth login` there — the binary is\n' + 'deployed over SSH and API auth tunnels back through your local machine.\n');
+      process.stderr.write('Usage: botvalia ssh <user@host | ssh-config-alias> [dir]\n\n' + "Runs BotValia Code on a remote Linux host. You don't need to install\n" + 'anything on the remote or run `botvalia auth login` there — the binary is\n' + 'deployed over SSH and API auth tunnels back through your local machine.\n');
       process.exit(1);
     });
   }
@@ -4350,7 +4350,7 @@ async function run(): Promise<CommanderCommand> {
       // before commander runs. Reaching here means a root flag came first
       // (e.g. `--debug assistant`) and the position-0 predicate
       // didn't match. Print usage like the ssh stub does.
-      process.stderr.write('Usage: claude assistant [sessionId]\n\n' + 'Attach the REPL as a viewer client to a running bridge session.\n' + 'Omit sessionId to discover and pick from available sessions.\n');
+      process.stderr.write('Usage: botvalia assistant [sessionId]\n\n' + 'Attach the REPL as a viewer client to a running bridge session.\n' + 'Omit sessionId to discover and pick from available sessions.\n');
       process.exit(1);
     });
   }

@@ -252,7 +252,7 @@ if (args.includes('--help')) {
     console.log(`missing relative imports: ${missingImports.length}`)
     process.exit(0)
   }
-  console.log('Usage: claude [options] [prompt]')
+  console.log('Usage: botvalia [options] [prompt]')
   console.log('')
   console.log('Basic restored commands:')
   console.log('  --help       Show this help')
