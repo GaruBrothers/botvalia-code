@@ -119,17 +119,17 @@ export function getFreeOnlyModePickerOptions(): ModelPickerModeOption[] {
     {
       value: AUTO_ALL_MODEL_ALIAS,
       label: 'Auto (All)',
-      description: 'Recomendado · mezcla OpenRouter + Ollama · Fast, medio y pro',
+      description: 'Recomendado · mezcla OpenRouter + Ollama · Fast, medio y pro con multi-fallback',
     },
     {
       value: AUTO_OPENROUTER_MODEL_ALIAS,
       label: 'Auto (OpenRouter)',
-      description: 'Gratis en la nube · 1 primario + 2 fallbacks OpenRouter por tier',
+      description: 'Gratis en la nube · 1 primario + varios fallbacks OpenRouter por tier',
     },
     {
       value: AUTO_OLLAMA_MODEL_ALIAS,
       label: 'Auto (Ollama)',
-      description: 'Gratis y local · 1 primario + 2 fallbacks Ollama por tier',
+      description: 'Gratis y local · 1 primario + varios fallbacks Ollama por tier',
     },
     {
       value: MANUAL_MODEL_PICKER_VALUE,
@@ -149,19 +149,19 @@ function getFreeOnlyModelOptions(): ModelOption[] {
       value: AUTO_ALL_MODEL_ALIAS,
       label: 'Auto (All)',
       description:
-        'Recomendado · Hibrido gratis · Fast, medio y pro con OpenRouter y Ollama',
+        'Recomendado · Hibrido gratis · Fast, medio y pro con OpenRouter, Ollama y multi-fallback',
     },
     {
       value: AUTO_OPENROUTER_MODEL_ALIAS,
       label: 'Auto (OpenRouter)',
       description:
-        'Gratis en la nube · 2 fallbacks OpenRouter del mismo proveedor',
+        'Gratis en la nube · varios fallbacks OpenRouter del mismo proveedor',
     },
     {
       value: AUTO_OLLAMA_MODEL_ALIAS,
       label: 'Auto (Ollama)',
       description:
-        'Gratis y local · 2 fallbacks Ollama del mismo proveedor · requiere Ollama activo',
+        'Gratis y local · varios fallbacks Ollama del mismo proveedor · requiere Ollama activo',
     },
     ...FREE_ONLY_MANUAL_MODEL_OPTIONS,
   ]

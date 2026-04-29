@@ -61,13 +61,13 @@ bun run version:auto:ollama
 - **Medio**: general reasoning
 - **Pro**: coding / harder tasks
 
-Each lane uses **1 primary model + 2 fallbacks**.
+Each lane uses **1 primary model + multiple fallbacks**.
 
 When both providers are available, default `Auto (All)` chains are:
 
-- Fast: `openrouter::openrouter/free` -> `openrouter::openai/gpt-oss-20b:free` -> `ollama::llama3.2:3b`
-- Medio: `openrouter::qwen/qwen3.6-plus:free` -> `openrouter::openai/gpt-oss-120b:free` -> `ollama::deepseek-r1`
-- Pro: `openrouter::qwen/qwen3-coder:free` -> `ollama::qwen3-coder` -> `openrouter::openai/gpt-oss-120b:free`
+- Fast: `openrouter::openrouter/free` -> `openrouter::google/gemma-4-26b-a4b-it:free` -> `openrouter::openai/gpt-oss-20b:free` -> `openrouter::z-ai/glm-4.5-air:free` -> `openrouter::nvidia/nemotron-nano-9b-v2:free` -> `ollama::llama3.2:3b` -> `ollama::qwen2.5:3b`
+- Medio: `openrouter::qwen/qwen3.6-plus:free` -> `openrouter::openai/gpt-oss-120b:free` -> `openrouter::deepseek/deepseek-r1-0528:free` -> `openrouter::minimax/minimax-m2.5:free` -> `openrouter::nvidia/nemotron-3-super-120b-a12b:free` -> `ollama::deepseek-r1` -> `ollama::gpt-oss:20b`
+- Pro: `openrouter::qwen/qwen3-coder:free` -> `openrouter::poolside/laguna-m.1:free` -> `openrouter::qwen/qwen3.6-plus:free` -> `openrouter::openai/gpt-oss-120b:free` -> `openrouter::google/gemma-4-31b-it:free` -> `ollama::qwen3-coder` -> `ollama::qwen2.5-coder:7b`
 
 If only one provider is available, BotValia automatically collapses to same-provider routing.
 
@@ -135,6 +135,12 @@ Important note:
 - `openrouter/free` is a router, not one fixed model.
 - BotValia uses `openrouter/free` inside the automatic OpenRouter fast lane.
 - Manual mode uses exact fixed models such as `openrouter::qwen/qwen3-coder:free` or `ollama::qwen3-coder`.
+
+### Real-Time Swarm Roadmap
+
+There is now a technical implementation plan for turning the existing agent/team system into real-time collaborating subagents:
+
+- [REALTIME_SWARM_PLAN.md](REALTIME_SWARM_PLAN.md)
 
 Implementation note:
 

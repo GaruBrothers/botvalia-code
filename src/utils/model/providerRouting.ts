@@ -19,46 +19,61 @@ const OPENROUTER_AUTO_FAST_MODEL = 'openrouter::openrouter/free'
 const OPENROUTER_AUTO_FAST_FALLBACKS = [
   'openrouter::google/gemma-4-26b-a4b-it:free',
   'openrouter::openai/gpt-oss-20b:free',
+  'openrouter::z-ai/glm-4.5-air:free',
+  'openrouter::nvidia/nemotron-nano-9b-v2:free',
 ]
 const OPENROUTER_AUTO_COMPLEX_MODEL = 'openrouter::qwen/qwen3.6-plus:free'
 const OPENROUTER_AUTO_COMPLEX_FALLBACKS = [
   'openrouter::openai/gpt-oss-120b:free',
   'openrouter::deepseek/deepseek-r1-0528:free',
+  'openrouter::minimax/minimax-m2.5:free',
+  'openrouter::nvidia/nemotron-3-super-120b-a12b:free',
 ]
 const OPENROUTER_AUTO_CODE_MODEL = 'openrouter::qwen/qwen3-coder:free'
 const OPENROUTER_AUTO_CODE_FALLBACKS = [
+  'openrouter::poolside/laguna-m.1:free',
   'openrouter::qwen/qwen3.6-plus:free',
   'openrouter::openai/gpt-oss-120b:free',
+  'openrouter::google/gemma-4-31b-it:free',
 ]
 const OLLAMA_AUTO_FAST_MODEL = 'ollama::llama3.2:3b'
 const OLLAMA_AUTO_FAST_FALLBACKS = [
   'ollama::qwen2.5:3b',
+  'ollama::qwen2.5-coder:3b',
   'ollama::qwen2.5-coder:7b',
+  'ollama::gpt-oss:20b',
 ]
 const OLLAMA_AUTO_COMPLEX_MODEL = 'ollama::deepseek-r1'
 const OLLAMA_AUTO_COMPLEX_FALLBACKS = [
-  'ollama::qwen3-coder',
+  'ollama::gpt-oss:20b',
+  'ollama::qwen3:30b',
   'ollama::qwen2.5-coder:7b',
+  'ollama::deepseek-r1:14b',
 ]
 const OLLAMA_AUTO_CODE_MODEL = 'ollama::qwen3-coder'
 const OLLAMA_AUTO_CODE_FALLBACKS = [
   'ollama::qwen2.5-coder:7b',
-  'ollama::deepseek-coder-v2:16b',
+  'ollama::gpt-oss:20b',
+  'ollama::deepseek-r1:14b',
+  'ollama::qwen2.5-coder:3b',
 ]
 const ALL_AUTO_FAST_ROUTES = [
   OPENROUTER_AUTO_FAST_MODEL,
-  'openrouter::openai/gpt-oss-20b:free',
+  ...OPENROUTER_AUTO_FAST_FALLBACKS,
   OLLAMA_AUTO_FAST_MODEL,
+  OLLAMA_AUTO_FAST_FALLBACKS[0]!,
 ]
 const ALL_AUTO_COMPLEX_ROUTES = [
   OPENROUTER_AUTO_COMPLEX_MODEL,
-  'openrouter::openai/gpt-oss-120b:free',
-  'ollama::deepseek-r1',
+  ...OPENROUTER_AUTO_COMPLEX_FALLBACKS,
+  OLLAMA_AUTO_COMPLEX_MODEL,
+  OLLAMA_AUTO_COMPLEX_FALLBACKS[0]!,
 ]
 const ALL_AUTO_CODE_ROUTES = [
   OPENROUTER_AUTO_CODE_MODEL,
+  ...OPENROUTER_AUTO_CODE_FALLBACKS,
   OLLAMA_AUTO_CODE_MODEL,
-  'openrouter::openai/gpt-oss-120b:free',
+  OLLAMA_AUTO_CODE_FALLBACKS[0]!,
 ]
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {

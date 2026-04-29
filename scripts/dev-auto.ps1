@@ -200,18 +200,24 @@ function Get-OpenRouterTierRoutes {
       @(
         "google/gemma-4-26b-a4b-it:free"
         "openai/gpt-oss-20b:free"
+        "z-ai/glm-4.5-air:free"
+        "nvidia/nemotron-nano-9b-v2:free"
       )
     }
     "complex" {
       @(
         "openai/gpt-oss-120b:free"
         "deepseek/deepseek-r1-0528:free"
+        "minimax/minimax-m2.5:free"
+        "nvidia/nemotron-3-super-120b-a12b:free"
       )
     }
     default {
       @(
+        "poolside/laguna-m.1:free"
         "qwen/qwen3.6-plus:free"
         "openai/gpt-oss-120b:free"
+        "google/gemma-4-31b-it:free"
       )
     }
   }
@@ -251,19 +257,25 @@ function Get-OllamaTierRoutes {
     "fast" {
       @(
         "ollama::qwen2.5:3b"
+        "ollama::qwen2.5-coder:3b"
         "ollama::qwen2.5-coder:7b"
+        "ollama::gpt-oss:20b"
       )
     }
     "complex" {
       @(
-        "ollama::qwen3-coder"
+        "ollama::gpt-oss:20b"
+        "ollama::qwen3:30b"
         "ollama::qwen2.5-coder:7b"
+        "ollama::deepseek-r1:14b"
       )
     }
     default {
       @(
         "ollama::qwen2.5-coder:7b"
-        "ollama::deepseek-coder-v2:16b"
+        "ollama::gpt-oss:20b"
+        "ollama::deepseek-r1:14b"
+        "ollama::qwen2.5-coder:3b"
       )
     }
   }
@@ -303,22 +315,34 @@ function Get-AllTierRoutes {
       "fast" {
         @(
           $OpenRouterFastModel
+          "openrouter::google/gemma-4-26b-a4b-it:free"
           "openrouter::openai/gpt-oss-20b:free"
+          "openrouter::z-ai/glm-4.5-air:free"
+          "openrouter::nvidia/nemotron-nano-9b-v2:free"
           $OllamaFastModel
+          "ollama::qwen2.5:3b"
         )
       }
       "complex" {
         @(
           $OpenRouterComplexModel
           "openrouter::openai/gpt-oss-120b:free"
+          "openrouter::deepseek/deepseek-r1-0528:free"
+          "openrouter::minimax/minimax-m2.5:free"
+          "openrouter::nvidia/nemotron-3-super-120b-a12b:free"
           $OllamaComplexModel
+          "ollama::gpt-oss:20b"
         )
       }
       default {
         @(
           $OpenRouterCodeModel
-          $OllamaCodeModel
+          "openrouter::poolside/laguna-m.1:free"
+          "openrouter::qwen/qwen3.6-plus:free"
           "openrouter::openai/gpt-oss-120b:free"
+          "openrouter::google/gemma-4-31b-it:free"
+          $OllamaCodeModel
+          "ollama::qwen2.5-coder:7b"
         )
       }
     }
@@ -335,9 +359,9 @@ function Get-AllTierRoutes {
   }
 
   $fallbackDefaults = switch ($Tier) {
-    "fast" { @($OllamaFastModel, "ollama::qwen2.5:3b", "ollama::qwen2.5-coder:7b") }
-    "complex" { @($OllamaComplexModel, "ollama::qwen3-coder", "ollama::qwen2.5-coder:7b") }
-    default { @($OllamaCodeModel, "ollama::qwen2.5-coder:7b", "ollama::deepseek-coder-v2:16b") }
+    "fast" { @($OllamaFastModel, "ollama::qwen2.5:3b", "ollama::qwen2.5-coder:3b", "ollama::qwen2.5-coder:7b") }
+    "complex" { @($OllamaComplexModel, "ollama::gpt-oss:20b", "ollama::qwen3:30b", "ollama::qwen2.5-coder:7b") }
+    default { @($OllamaCodeModel, "ollama::qwen2.5-coder:7b", "ollama::gpt-oss:20b", "ollama::deepseek-r1:14b") }
   }
 
   return @(Get-UniqueRoutes -Routes $fallbackDefaults)
@@ -436,7 +460,7 @@ switch ($effectiveMode) {
       exit 1
     }
     if ($hasOpenRouter -and $hasOllama) {
-      $routePolicy = "Hybrid free routing: OpenRouter and Ollama. Each tier uses one primary route plus two fallbacks."
+      $routePolicy = "Hybrid free routing: OpenRouter and Ollama. Each tier uses one primary route plus multiple fallbacks."
     } elseif ($hasOpenRouter) {
       $routePolicy = "OpenRouter available only: Auto (All) collapses to same-provider OpenRouter routing."
     } else {
@@ -448,7 +472,7 @@ switch ($effectiveMode) {
   }
   "auto-openrouter" {
     $modeLabel = "Auto OpenRouter"
-    $routePolicy = "OpenRouter only: each tier uses one primary route plus two OpenRouter fallbacks"
+    $routePolicy = "OpenRouter only: each tier uses one primary route plus multiple OpenRouter fallbacks"
     if (-not $hasOpenRouter) {
       Write-Error "Auto (OpenRouter) requiere OPENROUTER_API_KEY o BOTVALIA_OPENROUTER_API_KEY."
       exit 1
@@ -459,7 +483,7 @@ switch ($effectiveMode) {
   }
   "auto-ollama" {
     $modeLabel = "Auto Ollama"
-    $routePolicy = "Ollama only: each tier uses one primary route plus two Ollama fallbacks"
+    $routePolicy = "Ollama only: each tier uses one primary route plus multiple Ollama fallbacks"
     if (-not $hasOllama) {
       Write-Error "Auto (Ollama) requiere un endpoint Ollama activo en $resolvedOllamaBaseUrl."
       exit 1

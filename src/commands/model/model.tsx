@@ -46,9 +46,9 @@ const FREE_ONLY_MODEL_HELP_TEXT = [
   'Run /model to open the mode selector, or /model [mode] to set it directly.',
   'Top-level options: Auto (All), Auto (OpenRouter), Auto (Ollama), Manual.',
   'Manual opens a second list with exact fixed models ordered by tier.',
-  'Auto (All): hybrid free routing with OpenRouter and Ollama. Each lane has one primary model plus two fallbacks.',
-  'Auto (OpenRouter): free OpenRouter routing with two same-provider fallbacks per tier.',
-  'Auto (Ollama): local Ollama routing with two same-provider fallbacks per tier.',
+  'Auto (All): hybrid free routing with OpenRouter and Ollama. Each lane has one primary model plus multiple fallbacks.',
+  'Auto (OpenRouter): free OpenRouter routing with multiple same-provider fallbacks per tier.',
+  'Auto (Ollama): local Ollama routing with multiple same-provider fallbacks per tier.',
   'openrouter/free is an OpenRouter router, not a fixed manual model. BotValia uses it inside the automatic OpenRouter fast lane.',
   'Direct examples: /model auto-all, /model auto-openrouter, /model auto-ollama, /model manual, /model openrouter::qwen/qwen3.6-plus:free, /model ollama::qwen3-coder',
 ].join('\n')
