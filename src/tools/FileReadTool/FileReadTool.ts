@@ -781,6 +781,15 @@ type ImageResult = {
   }
 }
 
+function isPdfFailure<T>(
+  result: { success: boolean } & (
+    | { success: true; data: T }
+    | { success: false; error: { message: string; reason: string } }
+  ),
+): result is { success: false; error: { message: string; reason: string } } {
+  return result.success === false
+}
+
 function createImageResponse(
   buffer: Buffer,
   mediaType: string,
@@ -898,7 +907,7 @@ async function callInner(
         resolvedFilePath,
         parsedRange ?? undefined,
       )
-      if (!extractResult.success) {
+      if (isPdfFailure(extractResult)) {
         throw new Error(extractResult.error.message)
       }
       logEvent('tengu_pdf_page_extraction', {
@@ -961,7 +970,7 @@ async function callInner(
 
     if (shouldExtractPages) {
       const extractResult = await extractPDFPages(resolvedFilePath)
-      if (extractResult.success) {
+      if (!isPdfFailure(extractResult)) {
         logEvent('tengu_pdf_page_extraction', {
           success: true,
           pageCount: extractResult.data.file.count,
@@ -985,7 +994,7 @@ async function callInner(
     }
 
     const readResult = await readPDF(resolvedFilePath)
-    if (!readResult.success) {
+    if (isPdfFailure(readResult)) {
       throw new Error(readResult.error.message)
     }
     const pdfData = readResult.data

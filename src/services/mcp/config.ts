@@ -1348,12 +1348,16 @@ export function parseMcpConfig(params: {
     }
 
     // Check for Windows-specific npx usage without cmd wrapper
+    const stdioConfig =
+      !configToCheck.type || configToCheck.type === 'stdio'
+        ? (configToCheck as McpStdioServerConfig)
+        : null
     if (
       getPlatform() === 'windows' &&
-      (!configToCheck.type || configToCheck.type === 'stdio') &&
-      (configToCheck.command === 'npx' ||
-        configToCheck.command.endsWith('\\npx') ||
-        configToCheck.command.endsWith('/npx'))
+      stdioConfig &&
+      (stdioConfig.command === 'npx' ||
+        stdioConfig.command.endsWith('\\npx') ||
+        stdioConfig.command.endsWith('/npx'))
     ) {
       errors.push({
         ...(filePath && { file: filePath }),

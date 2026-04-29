@@ -200,6 +200,16 @@ function isUserMessageWithArrayContent(
   return m.type === 'user' && 'message' in m && Array.isArray(m.message.content)
 }
 
+function hasArrayMessageContent(
+  message: Message,
+): message is Message & { message: { content: unknown[] } } {
+  if (!('message' in message)) {
+    return false
+  }
+  const payload = message.message as { content?: unknown } | undefined
+  return Array.isArray(payload?.content)
+}
+
 export function prepareMessagesForInjection(messages: Message[]): Message[] {
   // Find tool_use IDs that have SUCCESSFUL results (not errors/interruptions)
   // Pending tool_use blocks (no result) and interrupted ones will be stripped
@@ -254,7 +264,7 @@ export function prepareMessagesForInjection(messages: Message[]): Message[] {
 
   return messages
     .map(msg => {
-      if (!('message' in msg) || !Array.isArray(msg.message.content)) return msg
+      if (!hasArrayMessageContent(msg)) return msg
       const content = msg.message.content.filter(keep)
       if (content.length === msg.message.content.length) return msg
       if (content.length === 0) return null
@@ -265,7 +275,14 @@ export function prepareMessagesForInjection(messages: Message[]): Message[] {
           b.type !== 'text' || (b.text !== undefined && b.text.trim() !== ''),
       )
       if (!hasNonWhitespaceContent) return null
-      return { ...msg, message: { ...msg.message, content } } as typeof msg
+      const messagePayload = msg.message as Record<string, unknown>
+      return {
+        ...msg,
+        message: {
+          ...messagePayload,
+          content,
+        },
+      } as typeof msg
     })
     .filter((m): m is Message => m !== null)
 }

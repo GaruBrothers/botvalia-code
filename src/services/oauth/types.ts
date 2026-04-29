@@ -79,10 +79,15 @@ export type ReferralEligibilityResponse = {
   eligible: boolean
   remaining_passes?: number | null
   referrer_reward?: ReferrerRewardInfo | null
+  referral_code_details?: {
+    referral_link?: string | null
+    campaign?: ReferralCampaign | null
+  } | null
   [key: string]: unknown
 }
 
 export type ReferralRedemptionsResponse = {
   redemptions?: Array<Record<string, unknown>>
+  limit?: number | null
   [key: string]: unknown
 }

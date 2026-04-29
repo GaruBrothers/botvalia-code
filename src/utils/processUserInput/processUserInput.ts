@@ -241,23 +241,24 @@ export async function processUserInput({
 
     // TODO: Clean this up
     if (hookResult.message) {
-      switch (hookResult.message.attachment.type) {
-        case 'hook_success':
-          if (!hookResult.message.attachment.content) {
-            // Skip if there is no content
-            break
-          }
-          result.messages.push({
-            ...hookResult.message,
-            attachment: {
-              ...hookResult.message.attachment,
-              content: applyTruncation(hookResult.message.attachment.content),
-            },
-          })
-          break
-        default:
-          result.messages.push(hookResult.message)
-          break
+      const hookMessage = hookResult.message
+      if (
+        hookMessage.type === 'attachment' &&
+        hookMessage.attachment.type === 'hook_success'
+      ) {
+        if (typeof hookMessage.attachment.content !== 'string') {
+          // Skip if there is no content
+          continue
+        }
+        result.messages.push({
+          ...hookMessage,
+          attachment: {
+            ...hookMessage.attachment,
+            content: applyTruncation(hookMessage.attachment.content),
+          },
+        })
+      } else {
+        result.messages.push(hookMessage)
       }
     }
   }

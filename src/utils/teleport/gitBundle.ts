@@ -15,7 +15,11 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { type FilesApiConfig, uploadFile } from '../../services/api/filesApi.js'
+import {
+  type FilesApiConfig,
+  type UploadResult,
+  uploadFile,
+} from '../../services/api/filesApi.js'
 import { getCwd } from '../cwd.js'
 import { logForDebugging } from '../debug.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
@@ -28,20 +32,46 @@ const DEFAULT_BUNDLE_MAX_BYTES = 100 * 1024 * 1024
 type BundleScope = 'all' | 'head' | 'squashed'
 
 export type BundleUploadResult =
-  | {
-      success: true
-      fileId: string
-      bundleSizeBytes: number
-      scope: BundleScope
-      hasWip: boolean
-    }
-  | { success: false; error: string; failReason?: BundleFailReason }
+  | BundleUploadSuccessResult
+  | BundleUploadFailureResult
+
+export type BundleUploadSuccessResult = {
+  success: true
+  fileId: string
+  bundleSizeBytes: number
+  scope: BundleScope
+  hasWip: boolean
+}
+
+export type BundleUploadFailureResult = {
+  success: false
+  error: string
+  failReason?: BundleFailReason
+}
 
 type BundleFailReason = 'git_error' | 'too_large' | 'empty_repo'
 
 type BundleCreateResult =
   | { ok: true; size: number; scope: BundleScope }
   | { ok: false; error: string; failReason: BundleFailReason }
+
+function isBundleCreateFailure(
+  result: BundleCreateResult,
+): result is Extract<BundleCreateResult, { ok: false }> {
+  return result.ok === false
+}
+
+function isUploadFailure(
+  result: UploadResult,
+): result is Extract<UploadResult, { success: false }> {
+  return result.success === false
+}
+
+export function isBundleUploadFailure(
+  result: BundleUploadResult,
+): result is BundleUploadFailureResult {
+  return result.success === false
+}
 
 // Bundle --all → HEAD → squashed-root. HEAD drops side branches/tags but
 // keeps full current-branch history. Squashed-root is a single parentless
@@ -230,7 +260,7 @@ export async function createAndUploadGitBundle(
       opts?.signal,
     )
 
-    if (!bundle.ok) {
+    if (isBundleCreateFailure(bundle)) {
       logForDebugging(`[gitBundle] ${bundle.error}`)
       logEvent('tengu_ccr_bundle_upload', {
         outcome:
@@ -249,7 +279,7 @@ export async function createAndUploadGitBundle(
       signal: opts?.signal,
     })
 
-    if (!upload.success) {
+    if (isUploadFailure(upload)) {
       logEvent('tengu_ccr_bundle_upload', {
         outcome:
           'failed' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
