@@ -317,25 +317,20 @@ switch ($Preset) {
   default {
     if ($hasOpenRouter) {
       $fastRoutes += $OpenRouterFastModel
-    }
-    if ($hasOllama) {
-      $fastRoutes += $OllamaFastModel
-    }
-    if ($hasAnthropic) {
-      $fastRoutes += $AnthropicFastModel
-    }
-
-    if ($hasAnthropic) {
-      $complexRoutes += $AnthropicComplexModel
-      $codeRoutes += $AnthropicCodeModel
-    }
-    if ($hasOpenRouter) {
       $complexRoutes += $OpenRouterComplexModel
       $codeRoutes += $OpenRouterCodeModel
     }
     if ($hasOllama) {
+      $fastRoutes += $OllamaFastModel
       $complexRoutes += $OllamaComplexModel
       $codeRoutes += $OllamaCodeModel
+    }
+    if ($hasAnthropic) {
+      $fastRoutes += $AnthropicFastModel
+      # Keep free OpenRouter as primary in auto mode, then use Claude as a
+      # higher-quality fallback behind it for harder tasks.
+      $complexRoutes += $AnthropicComplexModel
+      $codeRoutes += $AnthropicCodeModel
     }
   }
 }
@@ -344,8 +339,8 @@ $fastRoutes = @($fastRoutes)
 $complexRoutes = @($complexRoutes)
 $codeRoutes = @($codeRoutes)
 
-$isOpenRouterOnlyAutoPreset = $Preset -eq "auto" -and $hasOpenRouter -and -not $hasAnthropic -and -not $hasOllama
-if ($isOpenRouterOnlyAutoPreset) {
+$isOpenRouterAutoPreset = $Preset -eq "auto" -and $hasOpenRouter
+if ($isOpenRouterAutoPreset) {
   $fastRoutes += Get-OpenRouterTierRoutes -Tier "fast"
   $complexRoutes += Get-OpenRouterTierRoutes -Tier "complex"
   $codeRoutes += Get-OpenRouterTierRoutes -Tier "code"
@@ -394,7 +389,7 @@ Write-Host "[botvalia auto] CODE=$($env:BOTVALIA_MODEL_ROUTER_CODE_MODEL)"
 Write-Host "[botvalia auto] CODE_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS)"
 Write-Host "[botvalia auto] BOOTSTRAP=$bootstrapRoute"
 Write-Host "[botvalia auto] ANTHROPIC_AVAILABLE=$hasAnthropic OPENROUTER_AVAILABLE=$hasOpenRouter OLLAMA_AVAILABLE=$hasOllama"
-Write-Host "[botvalia auto] OPENROUTER_ONLY_AUTO_ENRICHED=$isOpenRouterOnlyAutoPreset"
+Write-Host "[botvalia auto] OPENROUTER_AUTO_ENRICHED=$isOpenRouterAutoPreset"
 Write-Host "[botvalia auto] ANTHROPIC_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia auto] ANTHROPIC_MODEL=$($env:ANTHROPIC_MODEL)"
 Write-Host "[botvalia auto] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
