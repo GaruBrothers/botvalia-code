@@ -45,6 +45,104 @@ export type ModelOption = {
   descriptionForModel?: string
 }
 
+export const MANUAL_MODEL_PICKER_VALUE = '__manual_mode__'
+
+export type ModelPickerModeOption = Omit<ModelOption, 'value'> & {
+  value: string
+}
+
+const FREE_ONLY_MANUAL_MODEL_OPTIONS: ModelOption[] = [
+  {
+    value: 'openrouter::qwen/qwen3-coder:free',
+    label: 'Pro · Qwen 3 Coder (OpenRouter)',
+    description: 'Codigo · fijo · free',
+  },
+  {
+    value: 'openrouter::openai/gpt-oss-120b:free',
+    label: 'Pro · GPT-OSS 120B (OpenRouter)',
+    description: 'Razonamiento · fijo · free',
+  },
+  {
+    value: 'ollama::qwen3-coder',
+    label: 'Pro · Qwen 3 Coder (Ollama)',
+    description: 'Codigo local · fijo',
+  },
+  {
+    value: 'openrouter::qwen/qwen3.6-plus:free',
+    label: 'Medio · Qwen 3.6 Plus (OpenRouter)',
+    description: 'Generalista · fijo · free',
+  },
+  {
+    value: 'openrouter::deepseek/deepseek-r1-0528:free',
+    label: 'Medio · DeepSeek R1 (OpenRouter)',
+    description: 'Razonamiento · fijo · free',
+  },
+  {
+    value: 'ollama::deepseek-r1',
+    label: 'Medio · DeepSeek R1 (Ollama)',
+    description: 'Razonamiento local · fijo',
+  },
+  {
+    value: 'ollama::qwen2.5-coder:7b',
+    label: 'Medio · Qwen 2.5 Coder 7B (Ollama)',
+    description: 'Codigo local · fijo',
+  },
+  {
+    value: 'ollama::deepseek-coder-v2:16b',
+    label: 'Medio · DeepSeek Coder V2 16B (Ollama)',
+    description: 'Codigo local pesado · fijo',
+  },
+  {
+    value: 'openrouter::google/gemma-4-26b-a4b-it:free',
+    label: 'Fast · Gemma 4 26B (OpenRouter)',
+    description: 'Ligero · fijo · free',
+  },
+  {
+    value: 'openrouter::openai/gpt-oss-20b:free',
+    label: 'Fast · GPT-OSS 20B (OpenRouter)',
+    description: 'Rapido · fijo · free',
+  },
+  {
+    value: 'ollama::llama3.2:3b',
+    label: 'Fast · Llama 3.2 3B (Ollama)',
+    description: 'Local liviano · fijo',
+  },
+  {
+    value: 'ollama::qwen2.5:3b',
+    label: 'Fast · Qwen 2.5 3B (Ollama)',
+    description: 'Local liviano · fijo',
+  },
+]
+
+export function getFreeOnlyModePickerOptions(): ModelPickerModeOption[] {
+  return [
+    {
+      value: AUTO_ALL_MODEL_ALIAS,
+      label: 'Auto (All)',
+      description: 'Recomendado · mezcla OpenRouter + Ollama · Fast, medio y pro',
+    },
+    {
+      value: AUTO_OPENROUTER_MODEL_ALIAS,
+      label: 'Auto (OpenRouter)',
+      description: 'Gratis en la nube · 1 primario + 2 fallbacks OpenRouter por tier',
+    },
+    {
+      value: AUTO_OLLAMA_MODEL_ALIAS,
+      label: 'Auto (Ollama)',
+      description: 'Gratis y local · 1 primario + 2 fallbacks Ollama por tier',
+    },
+    {
+      value: MANUAL_MODEL_PICKER_VALUE,
+      label: 'Manual',
+      description: 'Abre la lista de modelos fijos ordenados por tier',
+    },
+  ]
+}
+
+export function getFreeOnlyManualModelOptions(): ModelOption[] {
+  return [...FREE_ONLY_MANUAL_MODEL_OPTIONS]
+}
+
 function getFreeOnlyModelOptions(): ModelOption[] {
   return [
     {
@@ -65,26 +163,7 @@ function getFreeOnlyModelOptions(): ModelOption[] {
       description:
         'Gratis y local · 2 fallbacks Ollama del mismo proveedor · requiere Ollama activo',
     },
-    {
-      value: 'openrouter::qwen/qwen3.6-plus:free',
-      label: 'Manual · Qwen 3.6 Plus',
-      description: 'OpenRouter fijo · sin auto ni fallback',
-    },
-    {
-      value: 'openrouter::qwen/qwen3-coder:free',
-      label: 'Manual · Qwen 3 Coder',
-      description: 'OpenRouter fijo para codigo · sin auto ni fallback',
-    },
-    {
-      value: 'ollama::llama3.2:3b',
-      label: 'Manual · Llama 3.2 3B',
-      description: 'Ollama fijo · sin auto ni fallback',
-    },
-    {
-      value: 'ollama::qwen3-coder',
-      label: 'Manual · Qwen 3 Coder (Ollama)',
-      description: 'Ollama fijo para codigo · sin auto ni fallback',
-    },
+    ...FREE_ONLY_MANUAL_MODEL_OPTIONS,
   ]
 }
 

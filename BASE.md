@@ -37,10 +37,12 @@ bun run version
 
 ## Model Routing
 
+- `/model` top level: `Auto (All)`, `Auto (OpenRouter)`, `Auto (Ollama)`, `Manual`.
 - `Auto (All)`: recommended hybrid free routing across OpenRouter and Ollama.
 - `Auto (OpenRouter)`: same-provider OpenRouter routing with two fallbacks per lane.
 - `Auto (Ollama)`: same-provider Ollama routing with two fallbacks per lane.
-- `Manual`: pin one exact route like `openrouter::MODEL` or `ollama::MODEL`.
+- `Manual`: opens a second list with fixed models ordered by tier (`Pro`, `Medio`, `Fast`).
+- `openrouter/free`: OpenRouter router for free models, not a fixed manual model.
 
 ## Validation
 

@@ -121,12 +121,20 @@ bun run dev:auto:ollama
 bun run dev:auto
 ```
 
-`/model` now exposes:
+`/model` now exposes exactly four top-level options:
 
 - `Auto (All)` recommended
 - `Auto (OpenRouter)`
 - `Auto (Ollama)`
-- `Manual` routes like `openrouter::MODEL` or `ollama::MODEL`
+- `Manual`
+
+Inside `Manual`, BotValia opens a second list with fixed OpenRouter/Ollama models ordered by tier (`Pro`, `Medio`, `Fast`).
+
+Important note:
+
+- `openrouter/free` is a router, not one fixed model.
+- BotValia uses `openrouter/free` inside the automatic OpenRouter fast lane.
+- Manual mode uses exact fixed models such as `openrouter::qwen/qwen3-coder:free` or `ollama::qwen3-coder`.
 
 Implementation note:
 
