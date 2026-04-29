@@ -21,102 +21,117 @@ Complete TypeScript source code of the BotValia CLI, reconstructed from source m
 
 ```bash
 $ bun install       # Install dependencies
-$ bun run dev       # Start CLI (Interactive)
+$ bun run dev:auto  # Start CLI with Auto (All)
 $ bun run version   # Verify version number
 ```
 
-### Free Model Mode (Ollama + LiteLLM)
+### Free Routing Modes
 
-This repo can run against a custom Anthropic-compatible base URL, so you can use local/free models.
+BotValia now targets a free-first model strategy. The main entrypoint is:
 
-1. Start Ollama with a local model (example: `llama3.2:3b`).
-2. Start LiteLLM proxy using [scripts/litellm.free.example.yaml](scripts/litellm.free.example.yaml), for example:
 ```bash
-litellm --config scripts/litellm.free.example.yaml --port 4000
+bun run dev:auto
 ```
-3. Run BotValia in free mode:
+
+That launches **Auto (All)**, the recommended mode in `/model`.
+
+Available launchers:
+
 ```bash
-bun run dev:free
+bun run dev:auto          # Auto (All)   -> OpenRouter + Ollama
+bun run dev:auto:all      # same as above
+bun run dev:auto:openrouter
+bun run dev:auto:ollama
 ```
 
-Optional:
-- `bun run version:free` to verify startup with free-mode env vars.
-- Override defaults:
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-free.ps1 -BaseUrl "http://localhost:4000" -Model "ollama/llama3.2:3b" -ApiKey "sk-local"
+Startup-only checks:
+
+```bash
+bun run version:auto
+bun run version:auto:all
+bun run version:auto:openrouter
+bun run version:auto:ollama
 ```
 
-### OpenRouter Mode
+#### Auto (All)
 
-1. Set your API key in PowerShell:
+`Auto (All)` is a hybrid free router with three lanes:
+
+- **Fast**: lightweight prompts
+- **Medio**: general reasoning
+- **Pro**: coding / harder tasks
+
+Each lane uses **1 primary model + 2 fallbacks**.
+
+When both providers are available, default `Auto (All)` chains are:
+
+- Fast: `openrouter::openrouter/free` -> `openrouter::openai/gpt-oss-20b:free` -> `ollama::llama3.2:3b`
+- Medio: `openrouter::qwen/qwen3.6-plus:free` -> `openrouter::openai/gpt-oss-120b:free` -> `ollama::deepseek-r1`
+- Pro: `openrouter::qwen/qwen3-coder:free` -> `ollama::qwen3-coder` -> `openrouter::openai/gpt-oss-120b:free`
+
+If only one provider is available, BotValia automatically collapses to same-provider routing.
+
+#### OpenRouter Setup
+
+1. Set your key:
+
 ```powershell
 $env:OPENROUTER_API_KEY = "sk-or-..."
 ```
-2. Start BotValia with OpenRouter:
+
+2. Start BotValia:
+
 ```bash
-bun run dev:openrouter
+bun run dev:auto:openrouter
 ```
 
-To list currently available free models from your account:
+3. Or use the hybrid mode:
+
+```bash
+bun run dev:auto
+```
+
+Useful helpers:
+
 ```bash
 bun run models:openrouter:free
-```
-
-To pin one model (fixed across sessions until you change it):
-```bash
-bun run model:openrouter:set -- -Model "openai/gpt-oss-20b:free"
-```
-
-To remove pinned mode and return to auto selection:
-```bash
+bun run model:openrouter:set -- -Model "qwen/qwen3.6-plus:free"
 bun run model:openrouter:clear
 ```
 
-BotValia quality router (enabled by default in `dev:openrouter`):
-- Coding/debug prompts -> `openai/gpt-oss-120b:free`
-- General/light prompts -> `minimax/minimax-m2.7:cloud`
-- Coding fallback chain -> `minimax/minimax-m2.7:cloud`, then `kimi/kimi-k2:free`, then `openai/gpt-oss-20b:free`
-- General fallback chain -> `kimi/kimi-k2:free`, then `openai/gpt-oss-20b:free`
+#### Ollama Setup
 
-Override examples:
-```powershell
-$env:BOTVALIA_MODEL_ROUTER_ENABLED = "1"
-$env:BOTVALIA_MODEL_ROUTER_CODE_MODEL = "openai/gpt-oss-120b:free"
-$env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = "minimax/minimax-m2.7:cloud"
-$env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = "minimax/minimax-m2.7:cloud,kimi/kimi-k2:free,openai/gpt-oss-20b:free"
-$env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = "kimi/kimi-k2:free,openai/gpt-oss-20b:free"
+1. Start Ollama and pull the models you want, for example:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull qwen3-coder
+ollama pull deepseek-r1
 ```
 
-Optional:
-- Verify startup only: `bun run version:openrouter`
-- Free + fast is now the default behavior in `dev:openrouter`:
-  - Preset: `free-fast`
-  - Output tokens: `2048`
-  - Thinking tokens: `512`
-  - Auto-selects a `:free` model from OpenRouter model list, prioritizing lightweight options first.
-  - If a pinned model exists, it is used first and does not rotate automatically.
-- Override preset/model/base URL:
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "free-fast" -BaseUrl "https://openrouter.ai/api" -ApiKey "sk-or-..." -MaxOutputTokens 2048 -MaxThinkingTokens 512
-```
-- Customize free-model priority order:
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "free-fast" -PreferredFreeModels @("liquidai/lfm2.5-1.2b-instruct:free","google/gemma-3n-2b:free","openai/gpt-oss-20b:free")
-```
-- Force OpenRouter automatic routing:
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "auto"
-```
-- Force a specific model:
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/dev-openrouter.ps1 -Preset "custom" -Model "google/gemma-3-4b-it:free"
+2. Run Ollama-only routing:
+
+```bash
+bun run dev:auto:ollama
 ```
 
-Note:
-- This mode uses Anthropic-compatible envs for OpenRouter:
-  - `ANTHROPIC_BASE_URL=https://openrouter.ai/api`
-  - `ANTHROPIC_AUTH_TOKEN=<OPENROUTER_API_KEY>`
-  - `ANTHROPIC_API_KEY` is intentionally cleared.
+3. Or let the hybrid router use Ollama as fallback:
+
+```bash
+bun run dev:auto
+```
+
+`/model` now exposes:
+
+- `Auto (All)` recommended
+- `Auto (OpenRouter)`
+- `Auto (Ollama)`
+- `Manual` routes like `openrouter::MODEL` or `ollama::MODEL`
+
+Implementation note:
+
+- OpenRouter and Ollama are both wired through Anthropic-compatible envs.
+- Ollama compatibility follows the current `/v1/messages` Anthropic-compatible API.
 
 ### Infinite Memory (BotValia)
 

@@ -18,7 +18,7 @@ Describe here what this project does, who it is for, and the main problem it sol
 
 ```bash
 bun install
-bun run dev
+bun run dev:auto
 bun run version
 ```
 
@@ -35,10 +35,18 @@ bun run version
 - This repository is reconstructed, so changes should stay minimal and auditable.
 - Manual validation is preferred for each changed path.
 
+## Model Routing
+
+- `Auto (All)`: recommended hybrid free routing across OpenRouter and Ollama.
+- `Auto (OpenRouter)`: same-provider OpenRouter routing with two fallbacks per lane.
+- `Auto (Ollama)`: same-provider Ollama routing with two fallbacks per lane.
+- `Manual`: pin one exact route like `openrouter::MODEL` or `ollama::MODEL`.
+
 ## Validation
 
 ```bash
 bun run version
+bun run version:auto
 ```
 
 Document here any extra manual checks needed for the specific feature being worked on.

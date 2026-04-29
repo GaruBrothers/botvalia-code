@@ -17,6 +17,7 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
 import { getAPIProvider } from './providers.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
+  AUTO_ALL_MODEL_ALIAS,
   AUTO_OLLAMA_MODEL_ALIAS,
   AUTO_OPENROUTER_MODEL_ALIAS,
   getCanonicalName,
@@ -47,10 +48,16 @@ export type ModelOption = {
 function getFreeOnlyModelOptions(): ModelOption[] {
   return [
     {
+      value: AUTO_ALL_MODEL_ALIAS,
+      label: 'Auto (All)',
+      description:
+        'Recomendado · Hibrido gratis · Fast, medio y pro con OpenRouter y Ollama',
+    },
+    {
       value: AUTO_OPENROUTER_MODEL_ALIAS,
       label: 'Auto (OpenRouter)',
       description:
-        'Gratis con router automatico · 2 fallbacks OpenRouter del mismo proveedor',
+        'Gratis en la nube · 2 fallbacks OpenRouter del mismo proveedor',
     },
     {
       value: AUTO_OLLAMA_MODEL_ALIAS,
@@ -87,6 +94,7 @@ function isSafeFreeOnlyModelSetting(model: ModelSetting): boolean {
   }
 
   if (
+    model === AUTO_ALL_MODEL_ALIAS ||
     model === AUTO_OPENROUTER_MODEL_ALIAS ||
     model === AUTO_OLLAMA_MODEL_ALIAS
   ) {

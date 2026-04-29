@@ -33,6 +33,7 @@ export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
+export const AUTO_ALL_MODEL_ALIAS = 'auto-all'
 export const AUTO_OPENROUTER_MODEL_ALIAS = 'auto-openrouter'
 export const AUTO_OLLAMA_MODEL_ALIAS = 'auto-ollama'
 
@@ -56,18 +57,76 @@ function isProviderRouteLike(candidate: string | undefined): boolean {
 
 export function isAutoProviderModelSetting(
   model: string | null | undefined,
-): model is typeof AUTO_OPENROUTER_MODEL_ALIAS | typeof AUTO_OLLAMA_MODEL_ALIAS {
+): model is
+  | typeof AUTO_ALL_MODEL_ALIAS
+  | typeof AUTO_OPENROUTER_MODEL_ALIAS
+  | typeof AUTO_OLLAMA_MODEL_ALIAS {
   return (
-    model === AUTO_OPENROUTER_MODEL_ALIAS || model === AUTO_OLLAMA_MODEL_ALIAS
+    model === AUTO_ALL_MODEL_ALIAS ||
+    model === AUTO_OPENROUTER_MODEL_ALIAS ||
+    model === AUTO_OLLAMA_MODEL_ALIAS
   )
 }
 
 export function getAutoProviderModelLabel(
-  model: typeof AUTO_OPENROUTER_MODEL_ALIAS | typeof AUTO_OLLAMA_MODEL_ALIAS,
+  model:
+    | typeof AUTO_ALL_MODEL_ALIAS
+    | typeof AUTO_OPENROUTER_MODEL_ALIAS
+    | typeof AUTO_OLLAMA_MODEL_ALIAS,
 ): string {
+  if (model === AUTO_ALL_MODEL_ALIAS) {
+    return 'Auto (All)'
+  }
+
   return model === AUTO_OPENROUTER_MODEL_ALIAS
     ? 'Auto (OpenRouter)'
     : 'Auto (Ollama)'
+}
+
+function getAutoRouteBootstrapModel(routeSpec: string | undefined): string | undefined {
+  if (!routeSpec) {
+    return undefined
+  }
+
+  const separatorIndex = routeSpec.indexOf('::')
+  if (separatorIndex <= 0) {
+    return undefined
+  }
+
+  const provider = routeSpec.slice(0, separatorIndex).trim().toLowerCase()
+  const routeModel = routeSpec.slice(separatorIndex + 2).trim()
+  if (!routeModel) {
+    return undefined
+  }
+
+  if (provider === 'openrouter' || provider === 'anthropic') {
+    return routeModel
+  }
+
+  if (provider === 'ollama') {
+    return routeModel.startsWith('ollama/') ? routeModel : `ollama/${routeModel}`
+  }
+
+  return undefined
+}
+
+function getAutoSelectionBootstrapModel(
+  fallbackRouteSpec: string,
+  envKeys: string[],
+): string {
+  for (const key of envKeys) {
+    const value = process.env[key]?.trim()
+    if (!value) {
+      continue
+    }
+
+    const resolvedRouteModel = getAutoRouteBootstrapModel(value)
+    if (resolvedRouteModel) {
+      return resolvedRouteModel
+    }
+  }
+
+  return getAutoRouteBootstrapModel(fallbackRouteSpec) ?? fallbackRouteSpec
 }
 
 function getManualProviderRouteLabel(model: string): string | undefined {
@@ -542,11 +601,26 @@ export function parseUserSpecifiedModel(
   const normalizedModel = modelInputTrimmed.toLowerCase()
 
   if (normalizedModel === AUTO_OPENROUTER_MODEL_ALIAS) {
-    return 'openrouter/free'
+    return getAutoSelectionBootstrapModel('openrouter::openrouter/free', [
+      'BOTVALIA_MODEL_ROUTER_FAST_MODEL',
+      'BOTVALIA_AUTO_OPENROUTER_FAST_CHAIN',
+    ])
   }
 
   if (normalizedModel === AUTO_OLLAMA_MODEL_ALIAS) {
-    return 'ollama/llama3.2:3b'
+    return getAutoSelectionBootstrapModel('ollama::llama3.2:3b', [
+      'BOTVALIA_MODEL_ROUTER_FAST_MODEL',
+      'BOTVALIA_AUTO_OLLAMA_FAST_CHAIN',
+    ])
+  }
+
+  if (normalizedModel === AUTO_ALL_MODEL_ALIAS) {
+    return getAutoSelectionBootstrapModel('openrouter::openrouter/free', [
+      'BOTVALIA_MODEL_ROUTER_FAST_MODEL',
+      'BOTVALIA_AUTO_ALL_FAST_CHAIN',
+      'BOTVALIA_AUTO_OPENROUTER_FAST_CHAIN',
+      'BOTVALIA_AUTO_OLLAMA_FAST_CHAIN',
+    ])
   }
 
   const has1mTag = has1mContext(normalizedModel)

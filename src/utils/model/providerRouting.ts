@@ -1,5 +1,10 @@
 import { isEnvTruthy } from '../envUtils.js'
-import { parseUserSpecifiedModel } from './model.js'
+import {
+  AUTO_ALL_MODEL_ALIAS,
+  AUTO_OLLAMA_MODEL_ALIAS,
+  AUTO_OPENROUTER_MODEL_ALIAS,
+  parseUserSpecifiedModel,
+} from './model.js'
 
 export type ProviderRouteKind = 'anthropic' | 'openrouter' | 'ollama'
 
@@ -30,15 +35,30 @@ const OLLAMA_AUTO_FAST_FALLBACKS = [
   'ollama::qwen2.5:3b',
   'ollama::qwen2.5-coder:7b',
 ]
-const OLLAMA_AUTO_COMPLEX_MODEL = 'ollama::qwen2.5-coder:7b'
+const OLLAMA_AUTO_COMPLEX_MODEL = 'ollama::deepseek-r1'
 const OLLAMA_AUTO_COMPLEX_FALLBACKS = [
   'ollama::qwen3-coder',
-  'ollama::llama3.1:8b',
+  'ollama::qwen2.5-coder:7b',
 ]
 const OLLAMA_AUTO_CODE_MODEL = 'ollama::qwen3-coder'
 const OLLAMA_AUTO_CODE_FALLBACKS = [
   'ollama::qwen2.5-coder:7b',
   'ollama::deepseek-coder-v2:16b',
+]
+const ALL_AUTO_FAST_ROUTES = [
+  OPENROUTER_AUTO_FAST_MODEL,
+  'openrouter::openai/gpt-oss-20b:free',
+  OLLAMA_AUTO_FAST_MODEL,
+]
+const ALL_AUTO_COMPLEX_ROUTES = [
+  OPENROUTER_AUTO_COMPLEX_MODEL,
+  'openrouter::openai/gpt-oss-120b:free',
+  'ollama::deepseek-r1',
+]
+const ALL_AUTO_CODE_ROUTES = [
+  OPENROUTER_AUTO_CODE_MODEL,
+  OLLAMA_AUTO_CODE_MODEL,
+  'openrouter::openai/gpt-oss-120b:free',
 ]
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
@@ -97,37 +117,52 @@ function clearFreeOnlyModeEnvironment(): void {
   delete process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS
 }
 
-function configureOpenRouterAutoRouting(): void {
+function applyModelRouterRoutes(routes: {
+  selection: string
+  fast: string[]
+  complex: string[]
+  code: string[]
+}): void {
   clearModelRouterEnvironment()
-  setFreeOnlyModeEnvironment(true, 'auto-openrouter')
+  setFreeOnlyModeEnvironment(true, routes.selection)
   process.env.BOTVALIA_MODEL_ROUTER_ENABLED = '1'
-  process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL = OPENROUTER_AUTO_FAST_MODEL
-  process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS =
-    OPENROUTER_AUTO_FAST_FALLBACKS.join(',')
-  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL =
-    OPENROUTER_AUTO_COMPLEX_MODEL
-  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS =
-    OPENROUTER_AUTO_COMPLEX_FALLBACKS.join(',')
-  process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL = OPENROUTER_AUTO_CODE_MODEL
-  process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS =
-    OPENROUTER_AUTO_CODE_FALLBACKS.join(',')
-  applyProviderRoute(OPENROUTER_AUTO_FAST_MODEL)
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL = routes.fast[0] ?? ''
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = routes.fast
+    .slice(1)
+    .join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL = routes.complex[0] ?? ''
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS = routes.complex
+    .slice(1)
+    .join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL = routes.code[0] ?? ''
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = routes.code
+    .slice(1)
+    .join(',')
+  applyProviderRoute(routes.fast[0])
+}
+
+function configureOpenRouterAutoRouting(): void {
+  applyModelRouterRoutes({
+    selection: AUTO_OPENROUTER_MODEL_ALIAS,
+    fast: [
+      OPENROUTER_AUTO_FAST_MODEL,
+      ...OPENROUTER_AUTO_FAST_FALLBACKS,
+    ],
+    complex: [
+      OPENROUTER_AUTO_COMPLEX_MODEL,
+      ...OPENROUTER_AUTO_COMPLEX_FALLBACKS,
+    ],
+    code: [OPENROUTER_AUTO_CODE_MODEL, ...OPENROUTER_AUTO_CODE_FALLBACKS],
+  })
 }
 
 function configureOllamaAutoRouting(): void {
-  clearModelRouterEnvironment()
-  setFreeOnlyModeEnvironment(true, 'auto-ollama')
-  process.env.BOTVALIA_MODEL_ROUTER_ENABLED = '1'
-  process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL = OLLAMA_AUTO_FAST_MODEL
-  process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS =
-    OLLAMA_AUTO_FAST_FALLBACKS.join(',')
-  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL = OLLAMA_AUTO_COMPLEX_MODEL
-  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS =
-    OLLAMA_AUTO_COMPLEX_FALLBACKS.join(',')
-  process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL = OLLAMA_AUTO_CODE_MODEL
-  process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS =
-    OLLAMA_AUTO_CODE_FALLBACKS.join(',')
-  applyProviderRoute(OLLAMA_AUTO_FAST_MODEL)
+  applyModelRouterRoutes({
+    selection: AUTO_OLLAMA_MODEL_ALIAS,
+    fast: [OLLAMA_AUTO_FAST_MODEL, ...OLLAMA_AUTO_FAST_FALLBACKS],
+    complex: [OLLAMA_AUTO_COMPLEX_MODEL, ...OLLAMA_AUTO_COMPLEX_FALLBACKS],
+    code: [OLLAMA_AUTO_CODE_MODEL, ...OLLAMA_AUTO_CODE_FALLBACKS],
+  })
 }
 
 function getOpenRouterBaseUrl(): string {
@@ -199,6 +234,68 @@ function getOllamaApiKey(): string {
       process.env.ANTHROPIC_API_KEY,
     ) || 'sk-local'
   )
+}
+
+function hasOpenRouterConfigured(): boolean {
+  if (process.env.BOTVALIA_OPENROUTER_AVAILABLE !== undefined) {
+    return isEnvTruthy(process.env.BOTVALIA_OPENROUTER_AVAILABLE)
+  }
+
+  return Boolean(getOpenRouterAuthToken())
+}
+
+function hasOllamaConfigured(): boolean {
+  if (process.env.BOTVALIA_OLLAMA_AVAILABLE !== undefined) {
+    return isEnvTruthy(process.env.BOTVALIA_OLLAMA_AVAILABLE)
+  }
+
+  return Boolean(
+    firstNonEmpty(
+      process.env.BOTVALIA_OLLAMA_BASE_URL,
+      process.env.OLLAMA_BASE_URL,
+      process.env.BOTVALIA_LITELLM_BASE_URL,
+      process.env.LITELLM_BASE_URL,
+      process.env.BOTVALIA_OLLAMA_API_KEY,
+      process.env.OLLAMA_API_KEY,
+      process.env.BOTVALIA_LITELLM_API_KEY,
+      process.env.LITELLM_API_KEY,
+    ),
+  )
+}
+
+function configureAutoAllRouting(): void {
+  const preferOpenRouter = hasOpenRouterConfigured()
+  const allowOllama = hasOllamaConfigured()
+
+  if (preferOpenRouter && allowOllama) {
+    applyModelRouterRoutes({
+      selection: AUTO_ALL_MODEL_ALIAS,
+      fast: ALL_AUTO_FAST_ROUTES,
+      complex: ALL_AUTO_COMPLEX_ROUTES,
+      code: ALL_AUTO_CODE_ROUTES,
+    })
+    return
+  }
+
+  if (preferOpenRouter) {
+    applyModelRouterRoutes({
+      selection: AUTO_ALL_MODEL_ALIAS,
+      fast: [OPENROUTER_AUTO_FAST_MODEL, ...OPENROUTER_AUTO_FAST_FALLBACKS],
+      complex: [
+        OPENROUTER_AUTO_COMPLEX_MODEL,
+        ...OPENROUTER_AUTO_COMPLEX_FALLBACKS,
+      ],
+      code: [OPENROUTER_AUTO_CODE_MODEL, ...OPENROUTER_AUTO_CODE_FALLBACKS],
+    })
+    return
+  }
+
+  applyModelRouterRoutes({
+    selection: AUTO_ALL_MODEL_ALIAS,
+    fast: [OLLAMA_AUTO_FAST_MODEL, ...OLLAMA_AUTO_FAST_FALLBACKS],
+    complex: [OLLAMA_AUTO_COMPLEX_MODEL, ...OLLAMA_AUTO_COMPLEX_FALLBACKS],
+    code: [OLLAMA_AUTO_CODE_MODEL, ...OLLAMA_AUTO_CODE_FALLBACKS],
+  })
 }
 
 export function isProviderRouteSpec(candidate: string | undefined): boolean {
@@ -342,12 +439,17 @@ export function applyProviderRoute(routeSpec: string | undefined): void {
 export function applyModelSelectionEnvironment(
   modelSetting: string | null | undefined,
 ): void {
-  if (modelSetting === 'auto-openrouter') {
+  if (modelSetting === AUTO_ALL_MODEL_ALIAS) {
+    configureAutoAllRouting()
+    return
+  }
+
+  if (modelSetting === AUTO_OPENROUTER_MODEL_ALIAS) {
     configureOpenRouterAutoRouting()
     return
   }
 
-  if (modelSetting === 'auto-ollama') {
+  if (modelSetting === AUTO_OLLAMA_MODEL_ALIAS) {
     configureOllamaAutoRouting()
     return
   }

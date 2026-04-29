@@ -1,6 +1,6 @@
 param(
-  [ValidateSet("auto", "auto-openrouter", "auto-ollama")]
-  [string]$Preset = "auto-openrouter",
+  [ValidateSet("auto", "auto-all", "auto-openrouter", "auto-ollama")]
+  [string]$Preset = "auto-all",
   [string]$AnthropicFastModel = "anthropic::haiku",
   [string]$AnthropicComplexModel = "anthropic::sonnet",
   [string]$AnthropicCodeModel = "anthropic::sonnet",
@@ -8,7 +8,7 @@ param(
   [string]$OpenRouterComplexModel = "openrouter::qwen/qwen3.6-plus:free",
   [string]$OpenRouterCodeModel = "openrouter::qwen/qwen3-coder:free",
   [string]$OllamaFastModel = "ollama::llama3.2:3b",
-  [string]$OllamaComplexModel = "ollama::qwen2.5-coder:7b",
+  [string]$OllamaComplexModel = "ollama::deepseek-r1",
   [string]$OllamaCodeModel = "ollama::qwen3-coder",
   [string]$OllamaBaseUrl = "",
   [string]$OllamaApiKey = "",
@@ -97,6 +97,21 @@ function Get-UniqueRoutes {
 }
 
 function Normalize-OpenRouterRoute {
+  param([string]$Route)
+
+  if ([string]::IsNullOrWhiteSpace($Route)) {
+    return ""
+  }
+
+  $trimmed = $Route.Trim()
+  if ($trimmed.Contains("::")) {
+    return $trimmed
+  }
+
+  return "openrouter::$trimmed"
+}
+
+function Normalize-ProviderRoute {
   param([string]$Route)
 
   if ([string]::IsNullOrWhiteSpace($Route)) {
@@ -242,7 +257,7 @@ function Get-OllamaTierRoutes {
     "complex" {
       @(
         "ollama::qwen3-coder"
-        "ollama::llama3.1:8b"
+        "ollama::qwen2.5-coder:7b"
       )
     }
     default {
@@ -258,6 +273,74 @@ function Get-OllamaTierRoutes {
   }
 
   return @(Get-UniqueRoutes -Routes @($primaryRoute + $tierOverrideRoutes))
+}
+
+function Get-AllTierRoutes {
+  param(
+    [ValidateSet("fast", "complex", "code")]
+    [string]$Tier,
+    [bool]$HasOpenRouter,
+    [bool]$HasOllama
+  )
+
+  $tierOverrideRaw = switch ($Tier) {
+    "fast" { $env:BOTVALIA_AUTO_ALL_FAST_CHAIN }
+    "complex" { $env:BOTVALIA_AUTO_ALL_COMPLEX_CHAIN }
+    default { $env:BOTVALIA_AUTO_ALL_CODE_CHAIN }
+  }
+  $tierOverrideRoutes = @(Split-RouteValues -Raw $tierOverrideRaw)
+  if ($tierOverrideRoutes.Count -gt 0) {
+    return @(
+      Get-UniqueRoutes -Routes @(
+        $tierOverrideRoutes |
+          ForEach-Object { Normalize-ProviderRoute -Route $_ }
+      )
+    )
+  }
+
+  if ($HasOpenRouter -and $HasOllama) {
+    $hybridDefaults = switch ($Tier) {
+      "fast" {
+        @(
+          $OpenRouterFastModel
+          "openrouter::openai/gpt-oss-20b:free"
+          $OllamaFastModel
+        )
+      }
+      "complex" {
+        @(
+          $OpenRouterComplexModel
+          "openrouter::openai/gpt-oss-120b:free"
+          $OllamaComplexModel
+        )
+      }
+      default {
+        @(
+          $OpenRouterCodeModel
+          $OllamaCodeModel
+          "openrouter::openai/gpt-oss-120b:free"
+        )
+      }
+    }
+
+    return @(Get-UniqueRoutes -Routes $hybridDefaults)
+  }
+
+  if ($HasOpenRouter) {
+    return @(Get-OpenRouterTierRoutes -Tier $Tier)
+  }
+
+  if ($HasOllama) {
+    return @(Get-OllamaTierRoutes -Tier $Tier)
+  }
+
+  $fallbackDefaults = switch ($Tier) {
+    "fast" { @($OllamaFastModel, "ollama::qwen2.5:3b", "ollama::qwen2.5-coder:7b") }
+    "complex" { @($OllamaComplexModel, "ollama::qwen3-coder", "ollama::qwen2.5-coder:7b") }
+    default { @($OllamaCodeModel, "ollama::qwen2.5-coder:7b", "ollama::deepseek-coder-v2:16b") }
+  }
+
+  return @(Get-UniqueRoutes -Routes $fallbackDefaults)
 }
 
 function Apply-BootstrapRoute {
@@ -339,13 +422,30 @@ $hasOllama = Test-TcpEndpoint -Url $resolvedOllamaBaseUrl
 $fastRoutes = @()
 $complexRoutes = @()
 $codeRoutes = @()
-$effectiveMode = if ($Preset -eq "auto") { "auto-openrouter" } else { $Preset }
+$effectiveMode = if ($Preset -eq "auto") { "auto-all" } else { $Preset }
 $modeLabel = $effectiveMode
 $costPolicy = "free-only"
 $routePolicy = ""
 $anthropicExcludedFromAuto = $hasAnthropic
 
 switch ($effectiveMode) {
+  "auto-all" {
+    $modeLabel = "Auto All"
+    if (-not $hasOpenRouter -and -not $hasOllama) {
+      Write-Error "Auto (All) requiere OpenRouter configurado o un endpoint Ollama activo en $resolvedOllamaBaseUrl."
+      exit 1
+    }
+    if ($hasOpenRouter -and $hasOllama) {
+      $routePolicy = "Hybrid free routing: OpenRouter and Ollama. Each tier uses one primary route plus two fallbacks."
+    } elseif ($hasOpenRouter) {
+      $routePolicy = "OpenRouter available only: Auto (All) collapses to same-provider OpenRouter routing."
+    } else {
+      $routePolicy = "Ollama available only: Auto (All) collapses to same-provider Ollama routing."
+    }
+    $fastRoutes = @(Get-AllTierRoutes -Tier "fast" -HasOpenRouter $hasOpenRouter -HasOllama $hasOllama)
+    $complexRoutes = @(Get-AllTierRoutes -Tier "complex" -HasOpenRouter $hasOpenRouter -HasOllama $hasOllama)
+    $codeRoutes = @(Get-AllTierRoutes -Tier "code" -HasOpenRouter $hasOpenRouter -HasOllama $hasOllama)
+  }
   "auto-openrouter" {
     $modeLabel = "Auto OpenRouter"
     $routePolicy = "OpenRouter only: each tier uses one primary route plus two OpenRouter fallbacks"
@@ -374,6 +474,7 @@ $fastRoutes = @($fastRoutes)
 $complexRoutes = @($complexRoutes)
 $codeRoutes = @($codeRoutes)
 
+$isAutoAllPreset = $effectiveMode -eq "auto-all"
 $isOpenRouterAutoPreset = $effectiveMode -eq "auto-openrouter"
 
 $fastRoutes = @(Get-UniqueRoutes -Routes $fastRoutes)
@@ -401,6 +502,8 @@ $bootstrapProvider = Get-RouteProvider -Route $bootstrapRoute
 $transportMode = if ($bootstrapProvider -eq "anthropic") { "anthropic-native" } else { "anthropic-compat-env" }
 
 $env:BOTVALIA_FREE_ONLY_MODE = "1"
+$env:BOTVALIA_OPENROUTER_AVAILABLE = if ($hasOpenRouter) { "1" } else { "0" }
+$env:BOTVALIA_OLLAMA_AVAILABLE = if ($hasOllama) { "1" } else { "0" }
 $env:BOTVALIA_MODEL_SELECTION = $effectiveMode
 $env:BOTVALIA_DEFAULT_MODEL_SELECTION = $effectiveMode
 $env:BOTVALIA_DEFAULT_FALLBACK_MODELS = "0"
@@ -437,6 +540,7 @@ Write-Host "[botvalia auto] BOOTSTRAP=$bootstrapRoute"
 Write-Host "[botvalia auto] BOOTSTRAP_PROVIDER=$bootstrapProvider"
 Write-Host "[botvalia auto] PROVIDERS_AVAILABLE=anthropic:$hasAnthropic openrouter:$hasOpenRouter ollama:$hasOllama"
 Write-Host "[botvalia auto] ANTHROPIC_EXCLUDED_FROM_AUTO=$anthropicExcludedFromAuto"
+Write-Host "[botvalia auto] AUTO_ALL_CHAIN_ENRICHED=$isAutoAllPreset"
 Write-Host "[botvalia auto] AUTO_OPENROUTER_CHAIN_ENRICHED=$isOpenRouterAutoPreset"
 Write-Host "[botvalia auto] TRANSPORT=$transportMode"
 Write-Host "[botvalia auto] ACTIVE_BASE_URL=$($env:ANTHROPIC_BASE_URL)"

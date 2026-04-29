@@ -12,18 +12,18 @@ import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { clearFastModeCooldown, isFastModeAvailable, isFastModeEnabled, isFastModeSupportedByModel } from '../../utils/fastMode.js';
 import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1mAccess.js';
-import { AUTO_OLLAMA_MODEL_ALIAS, AUTO_OPENROUTER_MODEL_ALIAS, getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
+import { AUTO_ALL_MODEL_ALIAS, AUTO_OLLAMA_MODEL_ALIAS, AUTO_OPENROUTER_MODEL_ALIAS, getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { isProviderRouteSpec, parseProviderRoute } from '../../utils/model/providerRouting.js';
 import { validateModel } from '../../utils/model/validateModel.js';
-const FREE_ONLY_MODEL_HEADER_TEXT = 'Free-only mode: Auto (OpenRouter) uses free OpenRouter routes with fallbacks, Auto (Ollama) uses local Ollama routes with fallbacks, and Manual pins one exact model.';
-const FREE_ONLY_MODEL_HELP_TEXT = ['Run /model to open the model selection menu, or /model [mode] to set it directly.', 'Auto (OpenRouter): free OpenRouter routing with fallbacks.', 'Auto (Ollama): local Ollama routing with fallbacks.', 'Manual: pin one exact OpenRouter or Ollama model with no auto routing or fallbacks.', 'Direct examples: /model auto-openrouter, /model auto-ollama, /model openrouter::qwen/qwen3.6-plus:free, /model ollama::qwen3-coder'].join('\n');
-const FREE_ONLY_MODEL_DIRECT_HINT = 'Tip: use /model auto-openrouter, /model auto-ollama, /model openrouter::MODEL, or /model ollama::MODEL.';
+const FREE_ONLY_MODEL_HEADER_TEXT = 'Free-only mode: Auto (All) mezcla OpenRouter y Ollama, Auto (OpenRouter) se queda en OpenRouter, Auto (Ollama) se queda local, y Manual fija un solo modelo.';
+const FREE_ONLY_MODEL_HELP_TEXT = ['Run /model to open the model selection menu, or /model [mode] to set it directly.', 'Auto (All): hybrid free routing with OpenRouter and Ollama. Each lane has one primary model plus two fallbacks.', 'Auto (OpenRouter): free OpenRouter routing with fallbacks from the same provider.', 'Auto (Ollama): local Ollama routing with fallbacks from the same provider.', 'Manual: pin one exact OpenRouter or Ollama model with no auto routing or fallbacks.', 'Direct examples: /model auto-all, /model auto-openrouter, /model auto-ollama, /model openrouter::qwen/qwen3.6-plus:free, /model ollama::qwen3-coder'].join('\n');
+const FREE_ONLY_MODEL_DIRECT_HINT = 'Tip: use /model auto-all, /model auto-openrouter, /model auto-ollama, /model openrouter::MODEL, or /model ollama::MODEL.';
 function isFreeOnlyModeEnabled() {
   return process.env.BOTVALIA_FREE_ONLY_MODE === '1';
 }
 function isAllowedFreeOnlyDirectModel(model) {
-  if (model === AUTO_OPENROUTER_MODEL_ALIAS || model === AUTO_OLLAMA_MODEL_ALIAS) {
+  if (model === AUTO_ALL_MODEL_ALIAS || model === AUTO_OPENROUTER_MODEL_ALIAS || model === AUTO_OLLAMA_MODEL_ALIAS) {
     return true;
   }
   const providerRoute = parseProviderRoute(model ?? undefined);
@@ -37,6 +37,9 @@ function appendDirectSetHint(message) {
   return `${message}\n${chalk.dim(FREE_ONLY_MODEL_DIRECT_HINT)}`;
 }
 function getModelModeSummary(model) {
+  if (model === AUTO_ALL_MODEL_ALIAS) {
+    return 'Automatic hybrid free routing with OpenRouter and Ollama fallbacks.';
+  }
   if (model === AUTO_OPENROUTER_MODEL_ALIAS) {
     return 'Automatic free OpenRouter routing with fallbacks.';
   }
@@ -188,7 +191,7 @@ function SetModelAndClose({
         return;
       }
       if (model && isFreeOnlyModeEnabled() && !isAllowedFreeOnlyDirectModel(model)) {
-        onDone(appendDirectSetHint(`Free-only mode only allows Auto (OpenRouter), Auto (Ollama), or manual OpenRouter/Ollama routes.`), {
+        onDone(appendDirectSetHint(`Free-only mode only allows Auto (All), Auto (OpenRouter), Auto (Ollama), or manual OpenRouter/Ollama routes.`), {
           display: 'system'
         });
         return;

@@ -18,6 +18,7 @@ import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { getLastAssistantMessage } from '../../utils/messages.js';
 import {
+  AUTO_ALL_MODEL_ALIAS,
   AUTO_OLLAMA_MODEL_ALIAS,
   AUTO_OPENROUTER_MODEL_ALIAS,
   getDefaultMainLoopModelSetting,
@@ -69,6 +70,9 @@ type Props = {
   onOpenTasksDialog?: (taskId?: string) => void;
 };
 function getFooterModeLabel(modelSetting: string | null | undefined): string {
+  if (modelSetting === AUTO_ALL_MODEL_ALIAS) {
+    return 'Auto (All)';
+  }
   if (modelSetting === AUTO_OPENROUTER_MODEL_ALIAS) {
     return 'Auto (OpenRouter)';
   }
