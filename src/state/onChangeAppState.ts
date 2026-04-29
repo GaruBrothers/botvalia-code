@@ -1,4 +1,6 @@
 import { setMainLoopModelOverride } from '../bootstrap/state.js'
+import { getDefaultMainLoopModelSetting } from '../utils/model/model.js'
+import { applyModelSelectionEnvironment } from '../utils/model/providerRouting.js'
 import {
   clearApiKeyHelperCache,
   clearAwsCredentialsCache,
@@ -96,6 +98,7 @@ export function onChangeAppState({
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel === null
   ) {
+    applyModelSelectionEnvironment(getDefaultMainLoopModelSetting())
     // Remove from settings
     updateSettingsForSource('userSettings', { model: undefined })
     setMainLoopModelOverride(null)
@@ -106,6 +109,7 @@ export function onChangeAppState({
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel !== null
   ) {
+    applyModelSelectionEnvironment(newState.mainLoopModel)
     // Save to settings
     updateSettingsForSource('userSettings', { model: newState.mainLoopModel })
     setMainLoopModelOverride(newState.mainLoopModel)

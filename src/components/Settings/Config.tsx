@@ -19,7 +19,7 @@ import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
-import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
+import { AUTO_OLLAMA_MODEL_ALIAS, AUTO_OPENROUTER_MODEL_ALIAS, modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialog.js';
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
@@ -82,6 +82,10 @@ type Setting = (SettingBase & {
   type: 'managedEnum';
 });
 type SubMenu = 'Theme' | 'Model' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'ChannelDowngrade' | 'Language' | 'EnableAutoUpdates';
+type ConfigModelDisplay = {
+  primary: string;
+  secondary?: string;
+};
 export function Config({
   onClose,
   context,
@@ -200,6 +204,7 @@ export function Config({
   const memoryFiles = React.use(getMemoryFiles(true));
   const shouldShowExternalIncludesToggle = hasExternalClaudeMdIncludes(memoryFiles);
   const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason();
+  const selectedModelConfigDisplay = getConfigModelDisplay(mainLoopModel);
   function onChangeMainModelConfig(value: string | null): void {
     const previousModel = mainLoopModel;
     logEvent('tengu_config_model_changed', {
@@ -824,7 +829,7 @@ export function Config({
   }, {
     id: 'model',
     label: 'Model',
-    value: mainLoopModel === null ? 'Default (recommended)' : mainLoopModel,
+    value: selectedModelConfigDisplay.primary,
     type: 'managedEnum' as const,
     onChange: onChangeMainModelConfig
   }, ...(isConnectedToIde ? [{
@@ -1702,7 +1707,14 @@ export function Config({
                                 <NotifChannelLabel value={setting_2.value.toString()} />
                               </Text> : setting_2.id === 'defaultPermissionMode' ? <Text color={isSelected ? 'suggestion' : undefined}>
                                 {permissionModeTitle(setting_2.value as PermissionMode)}
-                              </Text> : setting_2.id === 'autoUpdatesChannel' && autoUpdaterDisabledReason ? <Box flexDirection="column">
+                              </Text> : setting_2.id === 'model' ? <Box flexDirection="column">
+                                <Text color={isSelected ? 'suggestion' : undefined}>
+                                  {selectedModelConfigDisplay.primary}
+                                </Text>
+                                {selectedModelConfigDisplay.secondary && <Text color={isSelected ? 'suggestion' : 'subtle'}>
+                                    {selectedModelConfigDisplay.secondary}
+                                  </Text>}
+                              </Box> : setting_2.id === 'autoUpdatesChannel' && autoUpdaterDisabledReason ? <Box flexDirection="column">
                                 <Text color={isSelected ? 'suggestion' : undefined}>
                                   disabled
                                 </Text>
@@ -1748,6 +1760,71 @@ export function Config({
             </Text>}
         </Box>}
     </Box>;
+}
+function getConfigModelDisplay(model: string | null): ConfigModelDisplay {
+  const primary = modelDisplayString(model);
+  if (model === AUTO_OPENROUTER_MODEL_ALIAS) {
+    return {
+      primary,
+      secondary: 'free-only auto routing with OpenRouter fallbacks'
+    };
+  }
+  if (model === AUTO_OLLAMA_MODEL_ALIAS) {
+    return {
+      primary,
+      secondary: 'free-only local auto routing with Ollama fallbacks'
+    };
+  }
+  if (model === null) {
+    return {
+      primary
+    };
+  }
+  const manualProviderRoute = getManualProviderRoute(model);
+  if (manualProviderRoute === undefined) {
+    return {
+      primary
+    };
+  }
+  switch (manualProviderRoute.provider) {
+    case 'openrouter':
+      return {
+        primary,
+        secondary: manualProviderRoute.routeModel.toLowerCase().endsWith(':free') ? 'free-only fixed route · no auto routing or fallbacks' : 'fixed route · no auto routing or fallbacks'
+      };
+    case 'ollama':
+      return {
+        primary,
+        secondary: 'local fixed route · no auto routing or fallbacks'
+      };
+    case 'anthropic':
+      return {
+        primary,
+        secondary: 'fixed route · no auto routing or fallbacks'
+      };
+    default:
+      return {
+        primary
+      };
+  }
+}
+function getManualProviderRoute(model: string): {
+  provider: 'anthropic' | 'openrouter' | 'ollama';
+  routeModel: string;
+} | undefined {
+  const separatorIndex = model.indexOf('::');
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+  const provider = model.slice(0, separatorIndex).trim().toLowerCase();
+  const routeModel = model.slice(separatorIndex + 2).trim();
+  if (!routeModel || provider !== 'anthropic' && provider !== 'openrouter' && provider !== 'ollama') {
+    return undefined;
+  }
+  return {
+    provider,
+    routeModel
+  };
 }
 function teammateModelDisplayString(value: string | null | undefined): string {
   if (value === undefined) {

@@ -10,6 +10,36 @@ export type ProviderRoute = {
 }
 
 const ROUTE_SEPARATOR = '::'
+const OPENROUTER_AUTO_FAST_MODEL = 'openrouter::openrouter/free'
+const OPENROUTER_AUTO_FAST_FALLBACKS = [
+  'openrouter::google/gemma-4-26b-a4b-it:free',
+  'openrouter::openai/gpt-oss-20b:free',
+]
+const OPENROUTER_AUTO_COMPLEX_MODEL = 'openrouter::qwen/qwen3.6-plus:free'
+const OPENROUTER_AUTO_COMPLEX_FALLBACKS = [
+  'openrouter::openai/gpt-oss-120b:free',
+  'openrouter::deepseek/deepseek-r1-0528:free',
+]
+const OPENROUTER_AUTO_CODE_MODEL = 'openrouter::qwen/qwen3-coder:free'
+const OPENROUTER_AUTO_CODE_FALLBACKS = [
+  'openrouter::qwen/qwen3.6-plus:free',
+  'openrouter::openai/gpt-oss-120b:free',
+]
+const OLLAMA_AUTO_FAST_MODEL = 'ollama::llama3.2:3b'
+const OLLAMA_AUTO_FAST_FALLBACKS = [
+  'ollama::qwen2.5:3b',
+  'ollama::qwen2.5-coder:7b',
+]
+const OLLAMA_AUTO_COMPLEX_MODEL = 'ollama::qwen2.5-coder:7b'
+const OLLAMA_AUTO_COMPLEX_FALLBACKS = [
+  'ollama::qwen3-coder',
+  'ollama::llama3.1:8b',
+]
+const OLLAMA_AUTO_CODE_MODEL = 'ollama::qwen3-coder'
+const OLLAMA_AUTO_CODE_FALLBACKS = [
+  'ollama::qwen2.5-coder:7b',
+  'ollama::deepseek-coder-v2:16b',
+]
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
   for (const value of values) {
@@ -26,6 +56,78 @@ function applyEnvValue(key: string, value: string | undefined): void {
     return
   }
   process.env[key] = value
+}
+
+function clearModelRouterEnvironment(): void {
+  delete process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL
+  delete process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS
+  delete process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL
+  delete process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS
+  delete process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL
+  delete process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
+  delete process.env.BOTVALIA_MODEL_ROUTER_FAST_CHAIN
+  delete process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_CHAIN
+  delete process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN
+}
+
+function disableModelRouterEnvironment(): void {
+  clearModelRouterEnvironment()
+  process.env.BOTVALIA_MODEL_ROUTER_ENABLED = '0'
+}
+
+function setFreeOnlyModeEnvironment(
+  allowAutomaticFallbacks: boolean,
+  modelSelection: string,
+): void {
+  process.env.BOTVALIA_FREE_ONLY_MODE = '1'
+  process.env.BOTVALIA_MODEL_SELECTION = modelSelection
+  process.env.BOTVALIA_DEFAULT_FALLBACK_MODELS = '0'
+  process.env.BOTVALIA_FALLBACK_FOR_ALL_PRIMARY_MODELS =
+    allowAutomaticFallbacks ? '1' : '0'
+  process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS = allowAutomaticFallbacks
+    ? '1'
+    : '0'
+  delete process.env.BOTVALIA_FALLBACK_MODELS
+}
+
+function clearFreeOnlyModeEnvironment(): void {
+  delete process.env.BOTVALIA_FREE_ONLY_MODE
+  delete process.env.BOTVALIA_DEFAULT_FALLBACK_MODELS
+  delete process.env.BOTVALIA_FALLBACK_FOR_ALL_PRIMARY_MODELS
+  delete process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS
+}
+
+function configureOpenRouterAutoRouting(): void {
+  clearModelRouterEnvironment()
+  setFreeOnlyModeEnvironment(true, 'auto-openrouter')
+  process.env.BOTVALIA_MODEL_ROUTER_ENABLED = '1'
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL = OPENROUTER_AUTO_FAST_MODEL
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS =
+    OPENROUTER_AUTO_FAST_FALLBACKS.join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL =
+    OPENROUTER_AUTO_COMPLEX_MODEL
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS =
+    OPENROUTER_AUTO_COMPLEX_FALLBACKS.join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL = OPENROUTER_AUTO_CODE_MODEL
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS =
+    OPENROUTER_AUTO_CODE_FALLBACKS.join(',')
+  applyProviderRoute(OPENROUTER_AUTO_FAST_MODEL)
+}
+
+function configureOllamaAutoRouting(): void {
+  clearModelRouterEnvironment()
+  setFreeOnlyModeEnvironment(true, 'auto-ollama')
+  process.env.BOTVALIA_MODEL_ROUTER_ENABLED = '1'
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL = OLLAMA_AUTO_FAST_MODEL
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS =
+    OLLAMA_AUTO_FAST_FALLBACKS.join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL = OLLAMA_AUTO_COMPLEX_MODEL
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS =
+    OLLAMA_AUTO_COMPLEX_FALLBACKS.join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL = OLLAMA_AUTO_CODE_MODEL
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS =
+    OLLAMA_AUTO_CODE_FALLBACKS.join(',')
+  applyProviderRoute(OLLAMA_AUTO_FAST_MODEL)
 }
 
 function getOpenRouterBaseUrl(): string {
@@ -83,7 +185,7 @@ function getOllamaBaseUrl(): string {
       process.env.OLLAMA_BASE_URL,
       process.env.BOTVALIA_LITELLM_BASE_URL,
       process.env.LITELLM_BASE_URL,
-    ) || 'http://localhost:4000'
+    ) || 'http://localhost:11434'
   )
 }
 
@@ -168,6 +270,9 @@ export function applyProviderRoute(routeSpec: string | undefined): void {
   if (!route) {
     delete process.env.BOTVALIA_ACTIVE_PROVIDER
     delete process.env.BOTVALIA_ACTIVE_PROVIDER_ROUTE
+    delete process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
+    delete process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME
+    delete process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION
     return
   }
 
@@ -227,9 +332,34 @@ export function applyProviderRoute(routeSpec: string | undefined): void {
   )
   applyEnvValue(
     'ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION',
-    'Custom model over Ollama-compatible proxy',
+    'Custom model over Ollama Anthropic-compatible API',
   )
   process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = '1'
   process.env.DISABLE_TELEMETRY = '1'
   process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+}
+
+export function applyModelSelectionEnvironment(
+  modelSetting: string | null | undefined,
+): void {
+  if (modelSetting === 'auto-openrouter') {
+    configureOpenRouterAutoRouting()
+    return
+  }
+
+  if (modelSetting === 'auto-ollama') {
+    configureOllamaAutoRouting()
+    return
+  }
+
+  disableModelRouterEnvironment()
+  delete process.env.BOTVALIA_MODEL_SELECTION
+  if (isProviderRouteSpec(modelSetting ?? undefined)) {
+    setFreeOnlyModeEnvironment(false, modelSetting ?? '')
+    applyProviderRoute(modelSetting ?? undefined)
+    return
+  }
+
+  clearFreeOnlyModeEnvironment()
+  applyProviderRoute(undefined)
 }

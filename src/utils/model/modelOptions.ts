@@ -17,6 +17,8 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
 import { getAPIProvider } from './providers.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
+  AUTO_OLLAMA_MODEL_ALIAS,
+  AUTO_OPENROUTER_MODEL_ALIAS,
   getCanonicalName,
   getClaudeAiUserDefaultModelDescription,
   getDefaultSonnetModel,
@@ -40,6 +42,61 @@ export type ModelOption = {
   label: string
   description: string
   descriptionForModel?: string
+}
+
+function getFreeOnlyModelOptions(): ModelOption[] {
+  return [
+    {
+      value: AUTO_OPENROUTER_MODEL_ALIAS,
+      label: 'Auto (OpenRouter)',
+      description:
+        'Gratis con router automatico · 2 fallbacks OpenRouter del mismo proveedor',
+    },
+    {
+      value: AUTO_OLLAMA_MODEL_ALIAS,
+      label: 'Auto (Ollama)',
+      description:
+        'Gratis y local · 2 fallbacks Ollama del mismo proveedor · requiere Ollama activo',
+    },
+    {
+      value: 'openrouter::qwen/qwen3.6-plus:free',
+      label: 'Manual · Qwen 3.6 Plus',
+      description: 'OpenRouter fijo · sin auto ni fallback',
+    },
+    {
+      value: 'openrouter::qwen/qwen3-coder:free',
+      label: 'Manual · Qwen 3 Coder',
+      description: 'OpenRouter fijo para codigo · sin auto ni fallback',
+    },
+    {
+      value: 'ollama::llama3.2:3b',
+      label: 'Manual · Llama 3.2 3B',
+      description: 'Ollama fijo · sin auto ni fallback',
+    },
+    {
+      value: 'ollama::qwen3-coder',
+      label: 'Manual · Qwen 3 Coder (Ollama)',
+      description: 'Ollama fijo para codigo · sin auto ni fallback',
+    },
+  ]
+}
+
+function isSafeFreeOnlyModelSetting(model: ModelSetting): boolean {
+  if (!model) {
+    return false
+  }
+
+  if (
+    model === AUTO_OPENROUTER_MODEL_ALIAS ||
+    model === AUTO_OLLAMA_MODEL_ALIAS
+  ) {
+    return true
+  }
+
+  return (
+    typeof model === 'string' &&
+    (model.startsWith('openrouter::') || model.startsWith('ollama::'))
+  )
 }
 
 export function getDefaultOptionForUser(fastMode = false): ModelOption {
@@ -287,92 +344,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     ]
   }
 
-  if (isClaudeAISubscriber()) {
-    if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
-      // Max and Team Premium users: Opus is default, show Sonnet as alternative
-      const premiumOptions = [getDefaultOptionForUser(fastMode)]
-      if (!isOpus1mMergeEnabled() && checkOpus1mAccess()) {
-        premiumOptions.push(getMaxOpus46_1MOption(fastMode))
-      }
-
-      premiumOptions.push(MaxSonnet46Option)
-      if (checkSonnet1mAccess()) {
-        premiumOptions.push(getMaxSonnet46_1MOption())
-      }
-
-      premiumOptions.push(MaxHaiku45Option)
-      return premiumOptions
-    }
-
-    // Pro/Team Standard/Enterprise users: Sonnet is default, show Opus as alternative
-    const standardOptions = [getDefaultOptionForUser(fastMode)]
-    if (checkSonnet1mAccess()) {
-      standardOptions.push(getMaxSonnet46_1MOption())
-    }
-
-    if (isOpus1mMergeEnabled()) {
-      standardOptions.push(getMergedOpus1MOption(fastMode))
-    } else {
-      standardOptions.push(getMaxOpusOption(fastMode))
-      if (checkOpus1mAccess()) {
-        standardOptions.push(getMaxOpus46_1MOption(fastMode))
-      }
-    }
-
-    standardOptions.push(MaxHaiku45Option)
-    return standardOptions
-  }
-
-  // PAYG 1P API: Default (Sonnet) + Sonnet 1M + Opus 4.6 + Opus 1M + Haiku
-  if (getAPIProvider() === 'firstParty') {
-    const payg1POptions = [getDefaultOptionForUser(fastMode)]
-    if (checkSonnet1mAccess()) {
-      payg1POptions.push(getSonnet46_1MOption())
-    }
-    if (isOpus1mMergeEnabled()) {
-      payg1POptions.push(getMergedOpus1MOption(fastMode))
-    } else {
-      payg1POptions.push(getOpus46Option(fastMode))
-      if (checkOpus1mAccess()) {
-        payg1POptions.push(getOpus46_1MOption(fastMode))
-      }
-    }
-    payg1POptions.push(getHaiku45Option())
-    return payg1POptions
-  }
-
-  // PAYG 3P: Default (Sonnet 4.5) + Sonnet (3P custom) or Sonnet 4.6/1M + Opus (3P custom) or Opus 4.1/Opus 4.6/Opus1M + Haiku + Opus 4.1
-  const payg3pOptions = [getDefaultOptionForUser(fastMode)]
-
-  const customSonnet = getCustomSonnetOption()
-  if (customSonnet !== undefined) {
-    payg3pOptions.push(customSonnet)
-  } else {
-    // Add Sonnet 4.6 since Sonnet 4.5 is the default
-    payg3pOptions.push(getSonnet46Option())
-    if (checkSonnet1mAccess()) {
-      payg3pOptions.push(getSonnet46_1MOption())
-    }
-  }
-
-  const customOpus = getCustomOpusOption()
-  if (customOpus !== undefined) {
-    payg3pOptions.push(customOpus)
-  } else {
-    // Add Opus 4.1, Opus 4.6 and Opus 4.6 1M
-    payg3pOptions.push(getOpus41Option()) // This is the default opus
-    payg3pOptions.push(getOpus46Option(fastMode))
-    if (checkOpus1mAccess()) {
-      payg3pOptions.push(getOpus46_1MOption(fastMode))
-    }
-  }
-  const customHaiku = getCustomHaikuOption()
-  if (customHaiku !== undefined) {
-    payg3pOptions.push(customHaiku)
-  } else {
-    payg3pOptions.push(getHaikuOption())
-  }
-  return payg3pOptions
+  return getFreeOnlyModelOptions()
 }
 
 // @[MODEL LAUNCH]: Add the new model ID to the appropriate family pattern below
@@ -494,6 +466,11 @@ export function getModelOptions(fastMode = false): ModelOption[] {
     customModel = initialMainLoopModel
   }
   if (customModel === null || options.some(opt => opt.value === customModel)) {
+    return filterModelOptionsByAllowlist(options)
+  } else if (
+    process.env.BOTVALIA_FREE_ONLY_MODE === '1' &&
+    !isSafeFreeOnlyModelSetting(customModel)
+  ) {
     return filterModelOptionsByAllowlist(options)
   } else if (customModel === 'opusplan') {
     return filterModelOptionsByAllowlist([...options, getOpusPlanOption()])

@@ -33,6 +33,70 @@ export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
+export const AUTO_OPENROUTER_MODEL_ALIAS = 'auto-openrouter'
+export const AUTO_OLLAMA_MODEL_ALIAS = 'auto-ollama'
+
+function isProviderRouteLike(candidate: string | undefined): boolean {
+  if (!candidate) {
+    return false
+  }
+
+  const separatorIndex = candidate.indexOf('::')
+  if (separatorIndex <= 0) {
+    return false
+  }
+
+  const provider = candidate.slice(0, separatorIndex).trim().toLowerCase()
+  return (
+    provider === 'openrouter' ||
+    provider === 'ollama' ||
+    provider === 'anthropic'
+  )
+}
+
+export function isAutoProviderModelSetting(
+  model: string | null | undefined,
+): model is typeof AUTO_OPENROUTER_MODEL_ALIAS | typeof AUTO_OLLAMA_MODEL_ALIAS {
+  return (
+    model === AUTO_OPENROUTER_MODEL_ALIAS || model === AUTO_OLLAMA_MODEL_ALIAS
+  )
+}
+
+export function getAutoProviderModelLabel(
+  model: typeof AUTO_OPENROUTER_MODEL_ALIAS | typeof AUTO_OLLAMA_MODEL_ALIAS,
+): string {
+  return model === AUTO_OPENROUTER_MODEL_ALIAS
+    ? 'Auto (OpenRouter)'
+    : 'Auto (Ollama)'
+}
+
+function getManualProviderRouteLabel(model: string): string | undefined {
+  const separatorIndex = model.indexOf('::')
+  if (separatorIndex <= 0) {
+    return undefined
+  }
+
+  const provider = model.slice(0, separatorIndex).trim().toLowerCase()
+  const routeModel = model.slice(separatorIndex + 2).trim()
+  if (!routeModel) {
+    return undefined
+  }
+
+  if (provider === 'openrouter') {
+    return `Manual (OpenRouter · ${routeModel})`
+  }
+
+  if (provider === 'ollama') {
+    return `Manual (Ollama · ${routeModel})`
+  }
+
+  if (provider === 'anthropic') {
+    return `Manual (Anthropic · ${routeModel})`
+  }
+
+  return undefined
+}
+
 export function getSmallFastModel(): ModelName {
   return process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()
 }
@@ -66,7 +130,11 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    specifiedModel =
+      process.env.BOTVALIA_MODEL_SELECTION ||
+      process.env.ANTHROPIC_MODEL ||
+      settings.model ||
+      undefined
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
@@ -176,6 +244,15 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+  const configuredDefaultSelection = process.env.BOTVALIA_DEFAULT_MODEL_SELECTION
+  if (
+    configuredDefaultSelection &&
+    (isModelAlias(configuredDefaultSelection) ||
+      isProviderRouteLike(configuredDefaultSelection))
+  ) {
+    return configuredDefaultSelection
+  }
+
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (
@@ -298,6 +375,13 @@ export function getClaudeAiUserDefaultModelDescription(
 export function renderDefaultModelSetting(
   setting: ModelName | ModelAlias,
 ): string {
+  if (isAutoProviderModelSetting(setting)) {
+    return getAutoProviderModelLabel(setting)
+  }
+  const manualRouteLabel = getManualProviderRouteLabel(setting)
+  if (manualRouteLabel) {
+    return manualRouteLabel
+  }
   if (setting === 'opusplan') {
     return 'Opus 4.6 in plan mode, else Sonnet 4.6'
   }
@@ -332,6 +416,15 @@ export function isOpus1mMergeEnabled(): boolean {
 }
 
 export function renderModelSetting(setting: ModelName | ModelAlias): string {
+  if (isAutoProviderModelSetting(setting)) {
+    return getAutoProviderModelLabel(setting)
+  }
+
+  const manualRouteLabel = getManualProviderRouteLabel(setting)
+  if (manualRouteLabel) {
+    return manualRouteLabel
+  }
+
   if (setting === 'opusplan') {
     return 'Opus Plan'
   }
@@ -448,10 +541,36 @@ export function parseUserSpecifiedModel(
   const modelInputTrimmed = modelInput.trim()
   const normalizedModel = modelInputTrimmed.toLowerCase()
 
+  if (normalizedModel === AUTO_OPENROUTER_MODEL_ALIAS) {
+    return 'openrouter/free'
+  }
+
+  if (normalizedModel === AUTO_OLLAMA_MODEL_ALIAS) {
+    return 'ollama/llama3.2:3b'
+  }
+
   const has1mTag = has1mContext(normalizedModel)
   const modelString = has1mTag
     ? normalizedModel.replace(/\[1m]$/i, '').trim()
     : normalizedModel
+
+  const providerRouteSeparatorIndex = modelString.indexOf('::')
+  if (providerRouteSeparatorIndex > 0) {
+    const provider = modelString.slice(0, providerRouteSeparatorIndex)
+    const providerModel = modelInputTrimmed
+      .slice(providerRouteSeparatorIndex + 2)
+      .trim()
+
+    if (provider === 'openrouter' || provider === 'anthropic') {
+      return providerModel
+    }
+
+    if (provider === 'ollama') {
+      return providerModel.startsWith('ollama/')
+        ? providerModel
+        : `ollama/${providerModel}`
+    }
+  }
 
   if (isModelAlias(modelString)) {
     switch (modelString) {
@@ -561,6 +680,13 @@ export function modelDisplayString(model: ModelSetting): string {
       return `Default (${getClaudeAiUserDefaultModelDescription()})`
     }
     return `Default (${getDefaultMainLoopModel()})`
+  }
+  if (isAutoProviderModelSetting(model)) {
+    return getAutoProviderModelLabel(model)
+  }
+  const manualRouteLabel = getManualProviderRouteLabel(model)
+  if (manualRouteLabel) {
+    return manualRouteLabel
   }
   const resolvedModel = parseUserSpecifiedModel(model)
   return model === resolvedModel ? resolvedModel : `${model} (${resolvedModel})`

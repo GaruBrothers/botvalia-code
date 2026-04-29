@@ -12,9 +12,49 @@ import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { clearFastModeCooldown, isFastModeAvailable, isFastModeEnabled, isFastModeSupportedByModel } from '../../utils/fastMode.js';
 import { MODEL_ALIASES } from '../../utils/model/aliases.js';
 import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1mAccess.js';
-import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
+import { AUTO_OLLAMA_MODEL_ALIAS, AUTO_OPENROUTER_MODEL_ALIAS, getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
+import { isProviderRouteSpec, parseProviderRoute } from '../../utils/model/providerRouting.js';
 import { validateModel } from '../../utils/model/validateModel.js';
+const FREE_ONLY_MODEL_HEADER_TEXT = 'Free-only mode: Auto (OpenRouter) uses free OpenRouter routes with fallbacks, Auto (Ollama) uses local Ollama routes with fallbacks, and Manual pins one exact model.';
+const FREE_ONLY_MODEL_HELP_TEXT = ['Run /model to open the model selection menu, or /model [mode] to set it directly.', 'Auto (OpenRouter): free OpenRouter routing with fallbacks.', 'Auto (Ollama): local Ollama routing with fallbacks.', 'Manual: pin one exact OpenRouter or Ollama model with no auto routing or fallbacks.', 'Direct examples: /model auto-openrouter, /model auto-ollama, /model openrouter::qwen/qwen3.6-plus:free, /model ollama::qwen3-coder'].join('\n');
+const FREE_ONLY_MODEL_DIRECT_HINT = 'Tip: use /model auto-openrouter, /model auto-ollama, /model openrouter::MODEL, or /model ollama::MODEL.';
+function isFreeOnlyModeEnabled() {
+  return process.env.BOTVALIA_FREE_ONLY_MODE === '1';
+}
+function isAllowedFreeOnlyDirectModel(model) {
+  if (model === AUTO_OPENROUTER_MODEL_ALIAS || model === AUTO_OLLAMA_MODEL_ALIAS) {
+    return true;
+  }
+  const providerRoute = parseProviderRoute(model ?? undefined);
+  return providerRoute?.kind === 'openrouter' || providerRoute?.kind === 'ollama';
+}
+function appendModelModeSummary(message, model) {
+  const summary = getModelModeSummary(model);
+  return summary ? `${message}\n${chalk.dim(`Mode: ${summary}`)}` : message;
+}
+function appendDirectSetHint(message) {
+  return `${message}\n${chalk.dim(FREE_ONLY_MODEL_DIRECT_HINT)}`;
+}
+function getModelModeSummary(model) {
+  if (model === AUTO_OPENROUTER_MODEL_ALIAS) {
+    return 'Automatic free OpenRouter routing with fallbacks.';
+  }
+  if (model === AUTO_OLLAMA_MODEL_ALIAS) {
+    return 'Automatic local Ollama routing with fallbacks.';
+  }
+  const providerRoute = parseProviderRoute(model ?? undefined);
+  if (!providerRoute) {
+    return undefined;
+  }
+  if (providerRoute.kind === 'openrouter') {
+    return 'Manual OpenRouter route pinned to one exact model with no auto routing or fallbacks.';
+  }
+  if (providerRoute.kind === 'ollama') {
+    return 'Manual Ollama route pinned to one exact local model with no auto routing or fallbacks.';
+  }
+  return 'Manual Anthropic route pinned to one exact model with no auto routing or fallbacks.';
+}
 function ModelPickerWrapper(t0) {
   const $ = _c(17);
   const {
@@ -78,7 +118,7 @@ function ModelPickerWrapper(t0) {
       if (wasFastModeToggledOn === false) {
         message = message + " \xB7 Fast mode OFF";
       }
-      onDone(message);
+      onDone(appendModelModeSummary(message, model));
     };
     $[3] = isFastMode;
     $[4] = mainLoopModel;
@@ -100,7 +140,7 @@ function ModelPickerWrapper(t0) {
   }
   let t4;
   if ($[11] !== handleCancel || $[12] !== handleSelect || $[13] !== mainLoopModel || $[14] !== mainLoopModelForSession || $[15] !== t3) {
-    t4 = <ModelPicker initial={mainLoopModel} sessionModel={mainLoopModelForSession} onSelect={handleSelect} onCancel={handleCancel} isStandaloneCommand={true} showFastModeNotice={t3} />;
+    t4 = <ModelPicker initial={mainLoopModel} sessionModel={mainLoopModelForSession} onSelect={handleSelect} onCancel={handleCancel} isStandaloneCommand={true} showFastModeNotice={t3} headerText={FREE_ONLY_MODEL_HEADER_TEXT} />;
     $[11] = handleCancel;
     $[12] = handleSelect;
     $[13] = mainLoopModel;
@@ -147,6 +187,12 @@ function SetModelAndClose({
         });
         return;
       }
+      if (model && isFreeOnlyModeEnabled() && !isAllowedFreeOnlyDirectModel(model)) {
+        onDone(appendDirectSetHint(`Free-only mode only allows Auto (OpenRouter), Auto (Ollama), or manual OpenRouter/Ollama routes.`), {
+          display: 'system'
+        });
+        return;
+      }
 
       // @[MODEL LAUNCH]: Update check for 1M access.
       if (model && isOpus1mUnavailable(model)) {
@@ -173,6 +219,10 @@ function SetModelAndClose({
         setModel(model);
         return;
       }
+      if (isProviderRouteSpec(model)) {
+        setModel(model);
+        return;
+      }
 
       // Validate and set custom model
       try {
@@ -185,7 +235,7 @@ function SetModelAndClose({
         if (valid) {
           setModel(model);
         } else {
-          onDone(error_0 || `Model '${model}' not found`, {
+          onDone(appendDirectSetHint(error_0 || `Model '${model}' not found`), {
             display: 'system'
           });
         }
@@ -224,7 +274,7 @@ function SetModelAndClose({
         // Fast mode was toggled off, show suffix after extra usage billing
         message += ` · Fast mode OFF`;
       }
-      onDone(message);
+      onDone(appendModelModeSummary(message, modelValue));
     }
     void handleModelChange();
   }, [model, onDone, setAppState]);
@@ -253,9 +303,9 @@ function ShowModelAndClose(t0) {
   const displayModel = renderModelLabel(mainLoopModel);
   const effortInfo = effortValue !== undefined ? ` (effort: ${effortValue})` : "";
   if (mainLoopModelForSession) {
-    onDone(`Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}`);
+    onDone(appendModelModeSummary(`Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}`, mainLoopModelForSession));
   } else {
-    onDone(`Current model: ${displayModel}${effortInfo}`);
+    onDone(appendModelModeSummary(`Current model: ${displayModel}${effortInfo}`, mainLoopModel));
   }
   return null;
 }
@@ -277,7 +327,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     return <ShowModelAndClose onDone={onDone} />;
   }
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Run /model to open the model selection menu, or /model [modelName] to set the model.', {
+    onDone(FREE_ONLY_MODEL_HELP_TEXT, {
       display: 'system'
     });
     return;

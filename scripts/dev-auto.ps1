@@ -1,6 +1,6 @@
 param(
-  [ValidateSet("auto", "anthropic-first", "openrouter-first", "ollama-first")]
-  [string]$Preset = "auto",
+  [ValidateSet("auto", "auto-openrouter", "auto-ollama")]
+  [string]$Preset = "auto-openrouter",
   [string]$AnthropicFastModel = "anthropic::haiku",
   [string]$AnthropicComplexModel = "anthropic::sonnet",
   [string]$AnthropicCodeModel = "anthropic::sonnet",
@@ -9,7 +9,7 @@ param(
   [string]$OpenRouterCodeModel = "openrouter::qwen/qwen3-coder:free",
   [string]$OllamaFastModel = "ollama::llama3.2:3b",
   [string]$OllamaComplexModel = "ollama::qwen2.5-coder:7b",
-  [string]$OllamaCodeModel = "ollama::qwen2.5-coder:7b",
+  [string]$OllamaCodeModel = "ollama::qwen3-coder",
   [string]$OllamaBaseUrl = "",
   [string]$OllamaApiKey = "",
   [int]$MaxOutputTokens = 384,
@@ -111,6 +111,51 @@ function Normalize-OpenRouterRoute {
   return "openrouter::$trimmed"
 }
 
+function Get-FirstSplitValue {
+  param([string]$Raw)
+
+  $values = @(Split-RouteValues -Raw $Raw)
+  if ($values.Count -gt 0) {
+    return $values[0]
+  }
+
+  return ""
+}
+
+function Get-RouteProvider {
+  param([string]$Route)
+
+  if ([string]::IsNullOrWhiteSpace($Route)) {
+    return ""
+  }
+  if ($Route.StartsWith("anthropic::")) {
+    return "anthropic"
+  }
+  if ($Route.StartsWith("openrouter::")) {
+    return "openrouter"
+  }
+  if ($Route.StartsWith("ollama::")) {
+    return "ollama"
+  }
+
+  return "unknown"
+}
+
+function Format-RouteChain {
+  param([string[]]$Routes)
+
+  $normalizedRoutes = @(
+    $Routes |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  if ($normalizedRoutes.Count -eq 0) {
+    return "(none)"
+  }
+
+  return ($normalizedRoutes -join " -> ")
+}
+
 function Get-OpenRouterTierRoutes {
   param(
     [ValidateSet("fast", "complex", "code")]
@@ -119,9 +164,7 @@ function Get-OpenRouterTierRoutes {
 
   $commonRoutes = @(Split-RouteValues -Raw $env:BOTVALIA_AUTO_OPENROUTER_COMMON_CHAIN)
   if ($commonRoutes.Count -eq 0) {
-    $commonRoutes = @(
-      "openrouter/free"
-    )
+    $commonRoutes = @()
   }
 
   $primaryRoute = switch ($Tier) {
@@ -141,28 +184,19 @@ function Get-OpenRouterTierRoutes {
     "fast" {
       @(
         "google/gemma-4-26b-a4b-it:free"
-        "meta-llama/llama-3.2-3b-instruct:free"
         "openai/gpt-oss-20b:free"
-        "meta-llama/llama-3.3-70b-instruct:free"
       )
     }
     "complex" {
       @(
         "openai/gpt-oss-120b:free"
-        "openai/gpt-oss-20b:free"
-        "qwen/qwen3.6-plus:free"
         "deepseek/deepseek-r1-0528:free"
-        "meta-llama/llama-3.3-70b-instruct:free"
-        "google/gemma-4-26b-a4b-it:free"
       )
     }
     default {
       @(
         "qwen/qwen3.6-plus:free"
         "openai/gpt-oss-120b:free"
-        "openai/gpt-oss-20b:free"
-        "meta-llama/llama-3.3-70b-instruct:free"
-        "google/gemma-4-26b-a4b-it:free"
       )
     }
   }
@@ -177,6 +211,53 @@ function Get-OpenRouterTierRoutes {
   }
 
   return @(Get-UniqueRoutes -Routes $routes)
+}
+
+function Get-OllamaTierRoutes {
+  param(
+    [ValidateSet("fast", "complex", "code")]
+    [string]$Tier
+  )
+
+  $primaryRoute = switch ($Tier) {
+    "fast" { $OllamaFastModel }
+    "complex" { $OllamaComplexModel }
+    default { $OllamaCodeModel }
+  }
+
+  $tierOverrideRaw = switch ($Tier) {
+    "fast" { $env:BOTVALIA_AUTO_OLLAMA_FAST_CHAIN }
+    "complex" { $env:BOTVALIA_AUTO_OLLAMA_COMPLEX_CHAIN }
+    default { $env:BOTVALIA_AUTO_OLLAMA_CODE_CHAIN }
+  }
+  $tierOverrideRoutes = @(Split-RouteValues -Raw $tierOverrideRaw)
+
+  $tierDefaults = switch ($Tier) {
+    "fast" {
+      @(
+        "ollama::qwen2.5:3b"
+        "ollama::qwen2.5-coder:7b"
+      )
+    }
+    "complex" {
+      @(
+        "ollama::qwen3-coder"
+        "ollama::llama3.1:8b"
+      )
+    }
+    default {
+      @(
+        "ollama::qwen2.5-coder:7b"
+        "ollama::deepseek-coder-v2:16b"
+      )
+    }
+  }
+
+  if ($tierOverrideRoutes.Count -eq 0) {
+    $tierOverrideRoutes = $tierDefaults
+  }
+
+  return @(Get-UniqueRoutes -Routes @($primaryRoute + $tierOverrideRoutes))
 }
 
 function Apply-BootstrapRoute {
@@ -199,12 +280,9 @@ function Apply-BootstrapRoute {
     $model = $Route.Substring("openrouter::".Length)
     $openRouterBaseUrl = First-NonEmpty @($env:BOTVALIA_OPENROUTER_BASE_URL, $env:OPENROUTER_BASE_URL, "https://openrouter.ai/api")
     $openRouterKeys = First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEYS, $env:OPENROUTER_API_KEYS)
-    $openRouterKey = ""
-    if (-not [string]::IsNullOrWhiteSpace($openRouterKeys)) {
-      $openRouterKey = ($openRouterKeys -split ",|;|`n|`r`n" | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
-    }
+    $openRouterKey = Get-FirstSplitValue -Raw $openRouterKeys
     if ([string]::IsNullOrWhiteSpace($openRouterKey)) {
-      $openRouterKey = First-NonEmpty @($env:OPENROUTER_API_KEY, $env:BOTVALIA_OPENROUTER_API_KEY, $env:ANTHROPIC_AUTH_TOKEN)
+      $openRouterKey = First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEY, $env:OPENROUTER_API_KEY)
     }
     $env:ANTHROPIC_BASE_URL = $openRouterBaseUrl
     $env:ANTHROPIC_API_KEY = ""
@@ -218,7 +296,7 @@ function Apply-BootstrapRoute {
   if (-not $model.StartsWith("ollama/")) {
     $model = "ollama/$model"
   }
-  $resolvedOllamaBaseUrl = First-NonEmpty @($OllamaBaseUrl, $env:BOTVALIA_OLLAMA_BASE_URL, $env:OLLAMA_BASE_URL, $env:BOTVALIA_LITELLM_BASE_URL, $env:LITELLM_BASE_URL, "http://localhost:4000")
+  $resolvedOllamaBaseUrl = First-NonEmpty @($OllamaBaseUrl, $env:BOTVALIA_OLLAMA_BASE_URL, $env:OLLAMA_BASE_URL, $env:BOTVALIA_LITELLM_BASE_URL, $env:LITELLM_BASE_URL, "http://localhost:11434")
   $resolvedOllamaApiKey = First-NonEmpty @($OllamaApiKey, $env:BOTVALIA_OLLAMA_API_KEY, $env:OLLAMA_API_KEY, $env:BOTVALIA_LITELLM_API_KEY, $env:LITELLM_API_KEY, "sk-local")
   $env:BOTVALIA_OLLAMA_BASE_URL = $resolvedOllamaBaseUrl
   $env:BOTVALIA_OLLAMA_API_KEY = $resolvedOllamaApiKey
@@ -249,7 +327,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:OPENROUTER_API_KEY) -and [string]::Is
   $env:BOTVALIA_OPENROUTER_API_KEY = $env:OPENROUTER_API_KEY
 }
 
-$resolvedOllamaBaseUrl = First-NonEmpty @($OllamaBaseUrl, $env:BOTVALIA_OLLAMA_BASE_URL, $env:OLLAMA_BASE_URL, $env:BOTVALIA_LITELLM_BASE_URL, $env:LITELLM_BASE_URL, "http://localhost:4000")
+$resolvedOllamaBaseUrl = First-NonEmpty @($OllamaBaseUrl, $env:BOTVALIA_OLLAMA_BASE_URL, $env:OLLAMA_BASE_URL, $env:BOTVALIA_LITELLM_BASE_URL, $env:LITELLM_BASE_URL, "http://localhost:11434")
 $resolvedOllamaApiKey = First-NonEmpty @($OllamaApiKey, $env:BOTVALIA_OLLAMA_API_KEY, $env:OLLAMA_API_KEY, $env:BOTVALIA_LITELLM_API_KEY, $env:LITELLM_API_KEY, "sk-local")
 $env:BOTVALIA_OLLAMA_BASE_URL = $resolvedOllamaBaseUrl
 $env:BOTVALIA_OLLAMA_API_KEY = $resolvedOllamaApiKey
@@ -261,77 +339,34 @@ $hasOllama = Test-TcpEndpoint -Url $resolvedOllamaBaseUrl
 $fastRoutes = @()
 $complexRoutes = @()
 $codeRoutes = @()
+$effectiveMode = if ($Preset -eq "auto") { "auto-openrouter" } else { $Preset }
+$modeLabel = $effectiveMode
+$costPolicy = "free-only"
+$routePolicy = ""
+$anthropicExcludedFromAuto = $hasAnthropic
 
-switch ($Preset) {
-  "anthropic-first" {
-    if ($hasAnthropic) {
-      $fastRoutes += $AnthropicFastModel
-      $complexRoutes += $AnthropicComplexModel
-      $codeRoutes += $AnthropicCodeModel
+switch ($effectiveMode) {
+  "auto-openrouter" {
+    $modeLabel = "Auto OpenRouter"
+    $routePolicy = "OpenRouter only: each tier uses one primary route plus two OpenRouter fallbacks"
+    if (-not $hasOpenRouter) {
+      Write-Error "Auto (OpenRouter) requiere OPENROUTER_API_KEY o BOTVALIA_OPENROUTER_API_KEY."
+      exit 1
     }
-    if ($hasOpenRouter) {
-      $fastRoutes += $OpenRouterFastModel
-      $complexRoutes += $OpenRouterComplexModel
-      $codeRoutes += $OpenRouterCodeModel
-    }
-    if ($hasOllama) {
-      $fastRoutes += $OllamaFastModel
-      $complexRoutes += $OllamaComplexModel
-      $codeRoutes += $OllamaCodeModel
-    }
+    $fastRoutes = @(Get-OpenRouterTierRoutes -Tier "fast")
+    $complexRoutes = @(Get-OpenRouterTierRoutes -Tier "complex")
+    $codeRoutes = @(Get-OpenRouterTierRoutes -Tier "code")
   }
-  "openrouter-first" {
-    if ($hasOpenRouter) {
-      $fastRoutes += $OpenRouterFastModel
-      $complexRoutes += $OpenRouterComplexModel
-      $codeRoutes += $OpenRouterCodeModel
+  "auto-ollama" {
+    $modeLabel = "Auto Ollama"
+    $routePolicy = "Ollama only: each tier uses one primary route plus two Ollama fallbacks"
+    if (-not $hasOllama) {
+      Write-Error "Auto (Ollama) requiere un endpoint Ollama activo en $resolvedOllamaBaseUrl."
+      exit 1
     }
-    if ($hasOllama) {
-      $fastRoutes += $OllamaFastModel
-      $complexRoutes += $OllamaComplexModel
-      $codeRoutes += $OllamaCodeModel
-    }
-    if ($hasAnthropic) {
-      $fastRoutes += $AnthropicFastModel
-      $complexRoutes += $AnthropicComplexModel
-      $codeRoutes += $AnthropicCodeModel
-    }
-  }
-  "ollama-first" {
-    if ($hasOllama) {
-      $fastRoutes += $OllamaFastModel
-      $complexRoutes += $OllamaComplexModel
-      $codeRoutes += $OllamaCodeModel
-    }
-    if ($hasOpenRouter) {
-      $fastRoutes += $OpenRouterFastModel
-      $complexRoutes += $OpenRouterComplexModel
-      $codeRoutes += $OpenRouterCodeModel
-    }
-    if ($hasAnthropic) {
-      $fastRoutes += $AnthropicFastModel
-      $complexRoutes += $AnthropicComplexModel
-      $codeRoutes += $AnthropicCodeModel
-    }
-  }
-  default {
-    if ($hasOpenRouter) {
-      $fastRoutes += $OpenRouterFastModel
-      $complexRoutes += $OpenRouterComplexModel
-      $codeRoutes += $OpenRouterCodeModel
-    }
-    if ($hasOllama) {
-      $fastRoutes += $OllamaFastModel
-      $complexRoutes += $OllamaComplexModel
-      $codeRoutes += $OllamaCodeModel
-    }
-    if ($hasAnthropic) {
-      $fastRoutes += $AnthropicFastModel
-      # Keep free OpenRouter as primary in auto mode, then use Claude as a
-      # higher-quality fallback behind it for harder tasks.
-      $complexRoutes += $AnthropicComplexModel
-      $codeRoutes += $AnthropicCodeModel
-    }
+    $fastRoutes = @(Get-OllamaTierRoutes -Tier "fast")
+    $complexRoutes = @(Get-OllamaTierRoutes -Tier "complex")
+    $codeRoutes = @(Get-OllamaTierRoutes -Tier "code")
   }
 }
 
@@ -339,19 +374,14 @@ $fastRoutes = @($fastRoutes)
 $complexRoutes = @($complexRoutes)
 $codeRoutes = @($codeRoutes)
 
-$isOpenRouterAutoPreset = $Preset -eq "auto" -and $hasOpenRouter
-if ($isOpenRouterAutoPreset) {
-  $fastRoutes += Get-OpenRouterTierRoutes -Tier "fast"
-  $complexRoutes += Get-OpenRouterTierRoutes -Tier "complex"
-  $codeRoutes += Get-OpenRouterTierRoutes -Tier "code"
-}
+$isOpenRouterAutoPreset = $effectiveMode -eq "auto-openrouter"
 
 $fastRoutes = @(Get-UniqueRoutes -Routes $fastRoutes)
 $complexRoutes = @(Get-UniqueRoutes -Routes $complexRoutes)
 $codeRoutes = @(Get-UniqueRoutes -Routes $codeRoutes)
 
 if ($fastRoutes.Count -eq 0 -and $complexRoutes.Count -eq 0 -and $codeRoutes.Count -eq 0) {
-  Write-Error "No providers available. Configure Anthropic/OpenRouter credentials or start an Ollama-compatible proxy on $resolvedOllamaBaseUrl."
+  Write-Error "No hay rutas disponibles para '$effectiveMode'. Configura OpenRouter o inicia Ollama en $resolvedOllamaBaseUrl."
   exit 1
 }
 
@@ -367,7 +397,16 @@ if ($codeRoutes.Count -eq 0) {
 
 $bootstrapRoute = [string]($fastRoutes | Select-Object -First 1)
 Apply-BootstrapRoute -Route $bootstrapRoute
+$bootstrapProvider = Get-RouteProvider -Route $bootstrapRoute
+$transportMode = if ($bootstrapProvider -eq "anthropic") { "anthropic-native" } else { "anthropic-compat-env" }
 
+$env:BOTVALIA_FREE_ONLY_MODE = "1"
+$env:BOTVALIA_MODEL_SELECTION = $effectiveMode
+$env:BOTVALIA_DEFAULT_MODEL_SELECTION = $effectiveMode
+$env:BOTVALIA_DEFAULT_FALLBACK_MODELS = "0"
+$env:BOTVALIA_FALLBACK_FOR_ALL_PRIMARY_MODELS = "1"
+$env:FALLBACK_FOR_ALL_PRIMARY_MODELS = "1"
+$env:BOTVALIA_FALLBACK_MODELS = ""
 $env:BOTVALIA_MODEL_ROUTER_ENABLED = "1"
 $env:BOTVALIA_MODEL_ROUTER_FAST_MODEL = $fastRoutes[0]
 $env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = (($fastRoutes | Select-Object -Skip 1) -join ",")
@@ -381,17 +420,27 @@ $env:CLAUDE_CODE_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
 
 Write-Host "[botvalia auto] PRESET=$Preset"
+Write-Host "[botvalia auto] MODE=$effectiveMode"
+Write-Host "[botvalia auto] MODE_LABEL=$modeLabel"
+Write-Host "[botvalia auto] COST_POLICY=$costPolicy"
+Write-Host "[botvalia auto] ROUTE_POLICY=$routePolicy"
 Write-Host "[botvalia auto] FAST=$($env:BOTVALIA_MODEL_ROUTER_FAST_MODEL)"
 Write-Host "[botvalia auto] FAST_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS)"
 Write-Host "[botvalia auto] COMPLEX=$($env:BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL)"
 Write-Host "[botvalia auto] COMPLEX_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS)"
 Write-Host "[botvalia auto] CODE=$($env:BOTVALIA_MODEL_ROUTER_CODE_MODEL)"
 Write-Host "[botvalia auto] CODE_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS)"
+Write-Host "[botvalia auto] FAST_CHAIN=$(Format-RouteChain -Routes $fastRoutes)"
+Write-Host "[botvalia auto] COMPLEX_CHAIN=$(Format-RouteChain -Routes $complexRoutes)"
+Write-Host "[botvalia auto] CODE_CHAIN=$(Format-RouteChain -Routes $codeRoutes)"
 Write-Host "[botvalia auto] BOOTSTRAP=$bootstrapRoute"
-Write-Host "[botvalia auto] ANTHROPIC_AVAILABLE=$hasAnthropic OPENROUTER_AVAILABLE=$hasOpenRouter OLLAMA_AVAILABLE=$hasOllama"
-Write-Host "[botvalia auto] OPENROUTER_AUTO_ENRICHED=$isOpenRouterAutoPreset"
-Write-Host "[botvalia auto] ANTHROPIC_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
-Write-Host "[botvalia auto] ANTHROPIC_MODEL=$($env:ANTHROPIC_MODEL)"
+Write-Host "[botvalia auto] BOOTSTRAP_PROVIDER=$bootstrapProvider"
+Write-Host "[botvalia auto] PROVIDERS_AVAILABLE=anthropic:$hasAnthropic openrouter:$hasOpenRouter ollama:$hasOllama"
+Write-Host "[botvalia auto] ANTHROPIC_EXCLUDED_FROM_AUTO=$anthropicExcludedFromAuto"
+Write-Host "[botvalia auto] AUTO_OPENROUTER_CHAIN_ENRICHED=$isOpenRouterAutoPreset"
+Write-Host "[botvalia auto] TRANSPORT=$transportMode"
+Write-Host "[botvalia auto] ACTIVE_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
+Write-Host "[botvalia auto] ACTIVE_MODEL=$($env:ANTHROPIC_MODEL)"
 Write-Host "[botvalia auto] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia auto] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 Write-Host "[botvalia auto] BARE_MODE=$BareMode"
