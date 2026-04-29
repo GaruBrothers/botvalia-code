@@ -6,7 +6,6 @@ import { getBridgeStatus } from '../../bridge/bridgeStatusUtil.js';
 import { useSetPromptOverlay } from '../../context/promptOverlayContext.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import type { IDESelection } from '../../hooks/useIdeSelection.js';
-import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { useSettings } from '../../hooks/useSettings.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { Box, Text } from '../../ink.js';
@@ -17,9 +16,17 @@ import type { Message } from '../../types/message.js';
 import type { PromptInputMode, VimMode } from '../../types/textInputTypes.js';
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+import { getLastAssistantMessage } from '../../utils/messages.js';
+import {
+  AUTO_OLLAMA_MODEL_ALIAS,
+  AUTO_OPENROUTER_MODEL_ALIAS,
+  getDefaultMainLoopModelSetting,
+  modelDisplayString,
+} from '../../utils/model/model.js';
+import { parseProviderRoute } from '../../utils/model/providerRouting.js';
 import { isUndercover } from '../../utils/undercover.js';
 import { CoordinatorTaskPanel, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
-import { getLastAssistantMessageId, StatusLine, statusLineShouldDisplay } from '../StatusLine.js';
+import { StatusLine, statusLineShouldDisplay } from '../StatusLine.js';
 import { Notifications } from './Notifications.js';
 import { PromptInputFooterLeftSide } from './PromptInputFooterLeftSide.js';
 import { PromptInputFooterSuggestions, type SuggestionItem } from './PromptInputFooterSuggestions.js';
@@ -61,6 +68,39 @@ type Props = {
   historyFailedMatch: boolean;
   onOpenTasksDialog?: (taskId?: string) => void;
 };
+function getFooterModeLabel(modelSetting: string | null | undefined): string {
+  if (modelSetting === AUTO_OPENROUTER_MODEL_ALIAS) {
+    return 'Auto (OpenRouter)';
+  }
+  if (modelSetting === AUTO_OLLAMA_MODEL_ALIAS) {
+    return 'Auto (Ollama)';
+  }
+  const providerRoute = parseProviderRoute(modelSetting ?? undefined);
+  if (providerRoute?.kind === 'openrouter') {
+    return 'Manual (OpenRouter)';
+  }
+  if (providerRoute?.kind === 'ollama') {
+    return 'Manual (Ollama)';
+  }
+  if (providerRoute?.kind === 'anthropic') {
+    return 'Manual (Anthropic)';
+  }
+  return modelDisplayString(modelSetting ?? null);
+}
+function getFooterRespondedModelLabel(model: string | undefined): string | undefined {
+  if (!model) {
+    return undefined;
+  }
+  return model.startsWith('ollama/') ? model.slice('ollama/'.length) : model;
+}
+function buildFooterModelLabel(modelSetting: string | null | undefined, respondedModel: string | undefined): string {
+  const modeLabel = getFooterModeLabel(modelSetting);
+  const respondedLabel = getFooterRespondedModelLabel(respondedModel);
+  if (!respondedLabel) {
+    return modeLabel;
+  }
+  return `${modeLabel} / ${respondedLabel}`;
+}
 function PromptInputFooter({
   apiKeyStatus,
   debug,
@@ -102,7 +142,8 @@ function PromptInputFooter({
   } = useTerminalSize();
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const lastAssistantMessageId = useMemo(() => getLastAssistantMessageId(messages), [messages]);
+  const lastAssistantMessage = useMemo(() => getLastAssistantMessage(messages), [messages]);
+  const lastAssistantMessageId = lastAssistantMessage?.uuid ?? null;
   const isNarrow = columns < 80;
   // In fullscreen the bottom slot is flexShrink:0, so every row here is a row
   // stolen from the ScrollBox. Drop the optional StatusLine first. Non-fullscreen
@@ -121,8 +162,9 @@ function PromptInputFooter({
 
   // Hide `? for shortcuts` if the user has a custom status line, or during ctrl-r
   const suppressHint = suppressHintFromProps || statusLineShouldDisplay(settings) || isSearching;
-  const mainLoopModel = useMainLoopModel();
+  const selectedModelSetting = useAppState(s => s.mainLoopModelForSession ?? s.mainLoopModel) ?? getDefaultMainLoopModelSetting();
   const showFooterModel = process.env.BOTVALIA_SHOW_FOOTER_MODEL !== '0';
+  const footerModelLabel = useMemo(() => buildFooterModelLabel(selectedModelSetting, lastAssistantMessage?.message.model), [lastAssistantMessage?.message.model, selectedModelSetting]);
   // Fullscreen: portal data to FullscreenLayout — see promptOverlayContext.tsx
   const overlayData = useMemo(() => isFullscreen && suggestions.length ? {
     suggestions,
@@ -145,10 +187,10 @@ function PromptInputFooter({
           <PromptInputFooterLeftSide exitMessage={exitMessage} vimMode={vimMode} mode={mode} toolPermissionContext={toolPermissionContext} suppressHint={suppressHint} isLoading={isLoading} tasksSelected={pillSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} isPasting={isPasting} isSearching={isSearching} historyQuery={historyQuery} setHistoryQuery={setHistoryQuery} historyFailedMatch={historyFailedMatch} onOpenTasksDialog={onOpenTasksDialog} />
         </Box>
         <Box flexShrink={1} gap={1}>
-          {showFooterModel && mode === 'prompt' && <Text dimColor wrap="truncate">model: {mainLoopModel}</Text>}
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
           {process.env.USER_TYPE === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
+          {showFooterModel && mode === 'prompt' && <Text dimColor wrap="truncate">model: {footerModelLabel}</Text>}
         </Box>
       </Box>
       {process.env.USER_TYPE === 'ant' && <CoordinatorTaskPanel />}
