@@ -166,7 +166,7 @@ function PromptInputFooter({
 
   // Hide `? for shortcuts` if the user has a custom status line, or during ctrl-r
   const suppressHint = suppressHintFromProps || statusLineShouldDisplay(settings) || isSearching;
-  const selectedModelSetting = useAppState(s => s.mainLoopModelForSession ?? s.mainLoopModel) ?? getDefaultMainLoopModelSetting();
+  const selectedModelSetting = useAppState(s => s.mainLoopModel) ?? getDefaultMainLoopModelSetting();
   const showFooterModel = process.env.BOTVALIA_SHOW_FOOTER_MODEL !== '0';
   const footerModelLabel = useMemo(() => buildFooterModelLabel(selectedModelSetting, lastAssistantMessage?.message.model), [lastAssistantMessage?.message.model, selectedModelSetting]);
   // Fullscreen: portal data to FullscreenLayout — see promptOverlayContext.tsx

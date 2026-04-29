@@ -1,6 +1,6 @@
 import capitalize from 'lodash-es/capitalize.js'
 import * as React from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -187,6 +187,7 @@ export function ModelPicker({
   const [pickerStage, setPickerStage] = useState<PickerStage>(
     freeOnlyModeEnabled && initialPickerStage === 'manual' ? 'manual' : 'mode',
   )
+  const [selectionArmed, setSelectionArmed] = useState(false)
   const [focusedValue, setFocusedValue] = useState<string>(() => {
     if (freeOnlyModeEnabled && initialPickerStage === 'manual') {
       return toSelectValue(
@@ -199,6 +200,16 @@ export function ModelPicker({
       ? getModeStageInitialValue(initial)
       : toSelectValue(initial)
   })
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSelectionArmed(true)
+    }, 0)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [pickerStage])
 
   const modelOptions = useMemo(() => {
     if (!freeOnlyModeEnabled) {
@@ -314,6 +325,7 @@ export function ModelPicker({
   const handleSelect = (value: string): void => {
     if (freeOnlyModeEnabled && pickerStage === 'mode') {
       if (value === MANUAL_MODEL_PICKER_VALUE) {
+        setSelectionArmed(false)
         setPickerStage('manual')
         setFocusedValue(
           toSelectValue(
@@ -367,6 +379,7 @@ export function ModelPicker({
 
   const handleCancel = (): void => {
     if (freeOnlyModeEnabled && pickerStage === 'manual') {
+      setSelectionArmed(false)
       setPickerStage('mode')
       setFocusedValue(MANUAL_MODEL_PICKER_VALUE)
       return
@@ -411,6 +424,7 @@ export function ModelPicker({
             defaultValue={resolvedDefaultValue}
             defaultFocusValue={resolvedFocusedValue}
             options={selectOptions}
+            disableSelection={!selectionArmed}
             onChange={handleSelect}
             onFocus={handleFocus}
             onCancel={handleCancel}
