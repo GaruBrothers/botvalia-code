@@ -4,9 +4,9 @@ param(
   [string]$AnthropicFastModel = "anthropic::haiku",
   [string]$AnthropicComplexModel = "anthropic::sonnet",
   [string]$AnthropicCodeModel = "anthropic::sonnet",
-  [string]$OpenRouterFastModel = "openrouter::google/gemma-3n-4b:free",
-  [string]$OpenRouterComplexModel = "openrouter::openai/gpt-oss-120b:free",
-  [string]$OpenRouterCodeModel = "openrouter::openai/gpt-oss-120b:free",
+  [string]$OpenRouterFastModel = "openrouter::openrouter/free",
+  [string]$OpenRouterComplexModel = "openrouter::qwen/qwen3.6-plus:free",
+  [string]$OpenRouterCodeModel = "openrouter::qwen/qwen3-coder:free",
   [string]$OllamaFastModel = "ollama::llama3.2:3b",
   [string]$OllamaComplexModel = "ollama::qwen2.5-coder:7b",
   [string]$OllamaCodeModel = "ollama::qwen2.5-coder:7b",
@@ -38,6 +38,20 @@ function First-NonEmpty {
     }
   }
   return ""
+}
+
+function Split-RouteValues {
+  param([string]$Raw)
+
+  if ([string]::IsNullOrWhiteSpace($Raw)) {
+    return @()
+  }
+
+  return @(
+    $Raw -split ",|;|`n|`r`n" |
+      ForEach-Object { $_.Trim() } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
 }
 
 function Test-TcpEndpoint {
@@ -80,6 +94,89 @@ function Get-UniqueRoutes {
     }
   }
   return @($list.ToArray())
+}
+
+function Normalize-OpenRouterRoute {
+  param([string]$Route)
+
+  if ([string]::IsNullOrWhiteSpace($Route)) {
+    return ""
+  }
+
+  $trimmed = $Route.Trim()
+  if ($trimmed.Contains("::")) {
+    return $trimmed
+  }
+
+  return "openrouter::$trimmed"
+}
+
+function Get-OpenRouterTierRoutes {
+  param(
+    [ValidateSet("fast", "complex", "code")]
+    [string]$Tier
+  )
+
+  $commonRoutes = @(Split-RouteValues -Raw $env:BOTVALIA_AUTO_OPENROUTER_COMMON_CHAIN)
+  if ($commonRoutes.Count -eq 0) {
+    $commonRoutes = @(
+      "openrouter/free"
+    )
+  }
+
+  $primaryRoute = switch ($Tier) {
+    "fast" { $OpenRouterFastModel }
+    "complex" { $OpenRouterComplexModel }
+    default { $OpenRouterCodeModel }
+  }
+
+  $tierOverrideRaw = switch ($Tier) {
+    "fast" { $env:BOTVALIA_AUTO_OPENROUTER_FAST_CHAIN }
+    "complex" { $env:BOTVALIA_AUTO_OPENROUTER_COMPLEX_CHAIN }
+    default { $env:BOTVALIA_AUTO_OPENROUTER_CODE_CHAIN }
+  }
+  $tierOverrideRoutes = @(Split-RouteValues -Raw $tierOverrideRaw)
+
+  $tierDefaults = switch ($Tier) {
+    "fast" {
+      @(
+        "google/gemma-4-26b-a4b-it:free"
+        "meta-llama/llama-3.2-3b-instruct:free"
+        "openai/gpt-oss-20b:free"
+        "meta-llama/llama-3.3-70b-instruct:free"
+      )
+    }
+    "complex" {
+      @(
+        "openai/gpt-oss-120b:free"
+        "openai/gpt-oss-20b:free"
+        "qwen/qwen3.6-plus:free"
+        "deepseek/deepseek-r1-0528:free"
+        "meta-llama/llama-3.3-70b-instruct:free"
+        "google/gemma-4-26b-a4b-it:free"
+      )
+    }
+    default {
+      @(
+        "qwen/qwen3.6-plus:free"
+        "openai/gpt-oss-120b:free"
+        "openai/gpt-oss-20b:free"
+        "meta-llama/llama-3.3-70b-instruct:free"
+        "google/gemma-4-26b-a4b-it:free"
+      )
+    }
+  }
+
+  if ($tierOverrideRoutes.Count -eq 0) {
+    $tierOverrideRoutes = $tierDefaults
+  }
+
+  $routes = @($primaryRoute)
+  foreach ($route in @($commonRoutes + $tierOverrideRoutes)) {
+    $routes += Normalize-OpenRouterRoute -Route $route
+  }
+
+  return @(Get-UniqueRoutes -Routes $routes)
 }
 
 function Apply-BootstrapRoute {
@@ -243,6 +340,17 @@ switch ($Preset) {
   }
 }
 
+$fastRoutes = @($fastRoutes)
+$complexRoutes = @($complexRoutes)
+$codeRoutes = @($codeRoutes)
+
+$isOpenRouterOnlyAutoPreset = $Preset -eq "auto" -and $hasOpenRouter -and -not $hasAnthropic -and -not $hasOllama
+if ($isOpenRouterOnlyAutoPreset) {
+  $fastRoutes += Get-OpenRouterTierRoutes -Tier "fast"
+  $complexRoutes += Get-OpenRouterTierRoutes -Tier "complex"
+  $codeRoutes += Get-OpenRouterTierRoutes -Tier "code"
+}
+
 $fastRoutes = @(Get-UniqueRoutes -Routes $fastRoutes)
 $complexRoutes = @(Get-UniqueRoutes -Routes $complexRoutes)
 $codeRoutes = @(Get-UniqueRoutes -Routes $codeRoutes)
@@ -286,6 +394,7 @@ Write-Host "[botvalia auto] CODE=$($env:BOTVALIA_MODEL_ROUTER_CODE_MODEL)"
 Write-Host "[botvalia auto] CODE_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS)"
 Write-Host "[botvalia auto] BOOTSTRAP=$bootstrapRoute"
 Write-Host "[botvalia auto] ANTHROPIC_AVAILABLE=$hasAnthropic OPENROUTER_AVAILABLE=$hasOpenRouter OLLAMA_AVAILABLE=$hasOllama"
+Write-Host "[botvalia auto] OPENROUTER_ONLY_AUTO_ENRICHED=$isOpenRouterOnlyAutoPreset"
 Write-Host "[botvalia auto] ANTHROPIC_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia auto] ANTHROPIC_MODEL=$($env:ANTHROPIC_MODEL)"
 Write-Host "[botvalia auto] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"

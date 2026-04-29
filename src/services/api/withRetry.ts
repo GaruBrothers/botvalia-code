@@ -495,6 +495,17 @@ export async function* withRetry<T>(
         }
 
         if (error instanceof APIError) {
+          // OpenRouter uses 402 for account/key credits as well as some
+          // provider-side "try a different route" cases (for example prompt
+          // token limits). In a multi-provider chain, fail over immediately.
+          if (isOpenRouterBaseUrl() && error.status === 402) {
+            throw new FallbackTriggeredError(
+              options.model,
+              options.fallbackModel!,
+              'unavailable',
+            )
+          }
+
           if (error.status === 429) {
             throw new FallbackTriggeredError(
               options.model,

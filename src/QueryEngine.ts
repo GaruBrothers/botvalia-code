@@ -1323,11 +1323,26 @@ export class QueryEngine {
       parsedFallbacks.length > 0
         ? parsedFallbacks.map(candidate => candidate.routeSpec)
         : undefined
+    const currentParsedFallbacks = (currentFallbackModels ?? [])
+      .map(candidate => this.safeNormalizeModelCandidate(candidate))
+      .filter(
+        (candidate): candidate is { model: string; routeSpec?: string } =>
+          Boolean(candidate),
+      )
+    const currentNormalizedFallbackModels = currentParsedFallbacks.map(
+      candidate => candidate.model,
+    )
+    const currentFallbackRouteSpecs = currentParsedFallbacks.map(
+      candidate => candidate.routeSpec,
+    )
 
     if (
       routedPrimary === currentModel &&
+      routeSpec === undefined &&
       JSON.stringify(fallbackModels ?? []) ===
-        JSON.stringify(currentFallbackModels ?? [])
+        JSON.stringify(currentNormalizedFallbackModels) &&
+      JSON.stringify(fallbackRouteSpecs ?? []) ===
+        JSON.stringify(currentFallbackRouteSpecs)
     ) {
       return undefined
     }
@@ -1382,23 +1397,32 @@ export class QueryEngine {
   private getFallbackCandidates(tier: 'code' | 'complex' | 'fast'): string[] {
     const envVar =
       tier === 'code'
-        ? process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN ||
-          process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
+        ? this.getFirstDefinedEnv(
+            'BOTVALIA_MODEL_ROUTER_CODE_CHAIN',
+            'BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS',
+          )
         : tier === 'complex'
-          ? process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_CHAIN ||
-            process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS ||
-            process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN ||
-            process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS
-          : process.env.BOTVALIA_MODEL_ROUTER_FAST_CHAIN ||
-            process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS
+          ? this.getFirstDefinedEnv(
+              'BOTVALIA_MODEL_ROUTER_COMPLEX_CHAIN',
+              'BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS',
+              'BOTVALIA_MODEL_ROUTER_CODE_CHAIN',
+              'BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS',
+            )
+          : this.getFirstDefinedEnv(
+              'BOTVALIA_MODEL_ROUTER_FAST_CHAIN',
+              'BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS',
+            )
     const defaults =
       tier === 'code'
         ? QueryEngine.defaultCodeFallbacks
         : tier === 'complex'
           ? QueryEngine.defaultComplexFallbacks
           : QueryEngine.defaultFastFallbacks
-    if (!envVar || !envVar.trim()) {
+    if (envVar === undefined) {
       return defaults
+    }
+    if (!envVar.trim()) {
+      return []
     }
     return envVar
       .split(',')
@@ -1416,6 +1440,16 @@ export class QueryEngine {
       logError(error)
       return undefined
     }
+  }
+
+  private getFirstDefinedEnv(...keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = process.env[key]
+      if (value !== undefined) {
+        return value
+      }
+    }
+    return undefined
   }
 
   private isModelRouterEnabled(): boolean {

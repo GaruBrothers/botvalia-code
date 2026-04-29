@@ -247,10 +247,15 @@ function buildFallbackQueue(
   const targets: FallbackTarget[] = []
 
   for (let index = 0; index < length; index++) {
-    const routeSpec = fallbackRouteSpecs?.[index]
+    const fallbackCandidate = fallbackModels?.[index]
+    const normalizedFallback =
+      fallbackCandidate !== undefined
+        ? normalizeModelCandidate(fallbackCandidate)
+        : undefined
+    const routeSpec = fallbackRouteSpecs?.[index] ?? normalizedFallback?.routeSpec
     const model =
-      fallbackModels?.[index] ??
-      (routeSpec ? normalizeModelCandidate(routeSpec).model : undefined)
+      (routeSpec ? normalizeModelCandidate(routeSpec).model : undefined) ??
+      normalizedFallback?.model
     if (!model) {
       continue
     }
