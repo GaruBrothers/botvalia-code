@@ -39,7 +39,7 @@ export function createWhatsNewFeed(releaseNotes: string[]): FeedConfig {
       text: note
     };
   });
-  const emptyMessage = process.env.USER_TYPE === 'ant' ? 'Unable to fetch latest claude-cli-internal commits' : 'Check the BotValia changelog for updates';
+  const emptyMessage = process.env.USER_TYPE === 'ant' ? 'Unable to fetch latest BotValia internal commits' : 'Check the BotValia changelog for updates';
   return {
     title: process.env.USER_TYPE === 'ant' ? "What's new [ANT-ONLY: Latest CC commits]" : "What's new",
     lines,

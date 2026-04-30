@@ -71,7 +71,8 @@ export function CondensedLogo() {
   }
   useEffect(t2, t3);
   const textWidth = Math.max(columns - 15, 20);
-  const truncatedVersion = truncate(version, Math.max(textWidth - 13, 6));
+  const versionPrefix = 'BotValia Code v'
+  const truncatedVersion = truncate(version, Math.max(textWidth - stringWidth(versionPrefix), 6));
   const effortSuffix = getEffortSuffix(model, effortValue);
   const {
     shouldSplit,
@@ -89,7 +90,7 @@ export function CondensedLogo() {
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true}>BotValia</Text>;
+    t5 = <Text bold={true}>BotValia Code</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
