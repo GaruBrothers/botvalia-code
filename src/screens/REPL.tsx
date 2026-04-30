@@ -168,6 +168,7 @@ import { resolveAgentTools } from '../tools/AgentTool/agentToolUtils.js';
 import { resumeAgentBackground } from '../tools/AgentTool/resumeAgent.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { getDefaultHaikuModel, getDefaultOpusModel, getDefaultSonnetModel, parseUserSpecifiedModel } from '../utils/model/model.js';
+import { getAutoRoutedSelection } from '../utils/model/autoRouting.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../state/AppState.js';
 import type { ContentBlockParam, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
@@ -2781,53 +2782,6 @@ export function REPL({
       setAbortController(null);
       return;
     }
-    const toolUseContext = getToolUseContext(messagesIncludingNewMessages, newMessages, abortController, mainLoopModelParam);
-    // getToolUseContext reads tools/mcpClients fresh from store.getState()
-    // (via computeTools/mergeClients). Use those rather than the closure-
-    // captured `tools`/`mcpClients` — useManageMCPConnections may have
-    // flushed new MCP state between the render that captured this closure
-    // and now. Turn 1 via processInitialMessage is the main beneficiary.
-    const {
-      tools: freshTools,
-      mcpClients: freshMcpClients
-    } = toolUseContext.options;
-
-    // Scope the skill's effort override to this turn's context only —
-    // wrapping getAppState keeps the override out of the global store so
-    // background agents and UI subscribers (Spinner, LogoV2) never see it.
-    if (effort !== undefined) {
-      const previousGetAppState = toolUseContext.getAppState;
-      toolUseContext.getAppState = () => ({
-        ...previousGetAppState(),
-        effortValue: effort
-      });
-    }
-    queryCheckpoint('query_context_loading_start');
-    const [,, defaultSystemPrompt, baseUserContext, systemContext] = await Promise.all([
-    // IMPORTANT: do this after setMessages() above, to avoid UI jank
-    checkAndDisableBypassPermissionsIfNeeded(toolPermissionContext, setAppState),
-    // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
-    feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
-    const userContext = {
-      ...baseUserContext,
-      ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
-      ...((feature('PROACTIVE') || feature('KAIROS')) && proactiveModule?.isProactiveActive() && !terminalFocusRef.current ? {
-        terminalFocus: 'The terminal is unfocused \u2014 the user is not actively watching.'
-      } : {})
-    };
-    queryCheckpoint('query_context_loading_end');
-    const systemPrompt = buildEffectiveSystemPrompt({
-      mainThreadAgentDefinition,
-      toolUseContext,
-      customSystemPrompt,
-      defaultSystemPrompt,
-      appendSystemPrompt
-    });
-    toolUseContext.renderedSystemPrompt = systemPrompt;
-    queryCheckpoint('query_query_start');
-    resetTurnHookDuration();
-    resetTurnToolDuration();
-    resetTurnClassifierDuration();
     const fallbackModels = (() => {
       if (cliFallbackModels && cliFallbackModels.length > 0) {
         return cliFallbackModels;
@@ -2859,6 +2813,58 @@ export function REPL({
       }
       return [getDefaultSonnetModel(), getDefaultHaikuModel()];
     })();
+    const routeDecision = getAutoRoutedSelection(messagesIncludingNewMessages, mainLoopModelParam, fallbackModels);
+    const effectiveMainLoopModel = routeDecision?.model ?? mainLoopModelParam;
+    const effectiveFallbackModels = routeDecision?.fallbackModels ?? fallbackModels;
+    const effectivePrimaryRouteSpec = routeDecision?.routeSpec;
+    const effectiveFallbackRouteSpecs = routeDecision?.fallbackRouteSpecs;
+    const toolUseContext = getToolUseContext(messagesIncludingNewMessages, newMessages, abortController, effectiveMainLoopModel);
+    // getToolUseContext reads tools/mcpClients fresh from store.getState()
+    // (via computeTools/mergeClients). Use those rather than the closure-
+    // captured `tools`/`mcpClients` — useManageMCPConnections may have
+    // flushed new MCP state between the render that captured this closure
+    // and now. Turn 1 via processInitialMessage is the main beneficiary.
+    const {
+      tools: freshTools,
+      mcpClients: freshMcpClients
+    } = toolUseContext.options;
+
+    // Scope the skill's effort override to this turn's context only —
+    // wrapping getAppState keeps the override out of the global store so
+    // background agents and UI subscribers (Spinner, LogoV2) never see it.
+    if (effort !== undefined) {
+      const previousGetAppState = toolUseContext.getAppState;
+      toolUseContext.getAppState = () => ({
+        ...previousGetAppState(),
+        effortValue: effort
+      });
+    }
+    queryCheckpoint('query_context_loading_start');
+    const [,, defaultSystemPrompt, baseUserContext, systemContext] = await Promise.all([
+    // IMPORTANT: do this after setMessages() above, to avoid UI jank
+    checkAndDisableBypassPermissionsIfNeeded(toolPermissionContext, setAppState),
+    // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
+    feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, effectiveMainLoopModel, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
+    const userContext = {
+      ...baseUserContext,
+      ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
+      ...((feature('PROACTIVE') || feature('KAIROS')) && proactiveModule?.isProactiveActive() && !terminalFocusRef.current ? {
+        terminalFocus: 'The terminal is unfocused \u2014 the user is not actively watching.'
+      } : {})
+    };
+    queryCheckpoint('query_context_loading_end');
+    const systemPrompt = buildEffectiveSystemPrompt({
+      mainThreadAgentDefinition,
+      toolUseContext,
+      customSystemPrompt,
+      defaultSystemPrompt,
+      appendSystemPrompt
+    });
+    toolUseContext.renderedSystemPrompt = systemPrompt;
+    queryCheckpoint('query_query_start');
+    resetTurnHookDuration();
+    resetTurnToolDuration();
+    resetTurnClassifierDuration();
     for await (const event of query({
       messages: messagesIncludingNewMessages,
       systemPrompt,
@@ -2867,7 +2873,9 @@ export function REPL({
       canUseTool,
       toolUseContext,
       querySource: getQuerySourceForREPL(),
-      fallbackModels
+      fallbackModels: effectiveFallbackModels,
+      primaryRouteSpec: effectivePrimaryRouteSpec,
+      fallbackRouteSpecs: effectiveFallbackRouteSpecs
     })) {
       onQueryEvent(event);
     }

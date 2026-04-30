@@ -42,6 +42,8 @@ La base ya existe, pero todavía no es un swarm verdaderamente conversacional.
   Ya puede persistir y leer mensajes con envelope estructurado sin romper a los consumidores legacy.
 - `src/hooks/useInboxPoller.ts`
   Ya formatea esos eventos para que el agente reciba contexto legible en vez de JSON crudo.
+- `src/utils/swarm/mailboxWakeup.ts`
+  Ya existe una primitiva de wakeup para mailbox, y el runner in-process ya puede despertarse por escritura local sin esperar siempre el sleep completo.
 
 ### Lo que todavía falta
 
@@ -159,7 +161,8 @@ Entregables:
 
 Estado:
 - parcialmente implementada
-- falta el despertar event-driven compartido entre `useInboxPoller`, `inProcessRunner` y `print.ts`
+- `inProcessRunner` ya usa wakeup local de mailbox
+- falta extender el mismo despertar compartido a `useInboxPoller` y `print.ts`
 
 ### Fase 2. Despertar compañeros por evento
 

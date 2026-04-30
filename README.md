@@ -66,6 +66,8 @@ Ese smoke no usa red. Valida tres cosas del fallback free:
 - deduplicación de la cadena de fallback
 - cambio real del provider/modelo activo con `applyProviderRoute()` en cada salto
 
+El REPL interactivo ahora usa la misma resolución rica de `routeSpec` y `fallbackRouteSpecs` que `QueryEngine`, en vez de quedarse sólo con `fallbackModels` planos.
+
 #### Auto (All)
 
 `Auto (All)` is a hybrid free router with three lanes:
@@ -160,6 +162,7 @@ Estado actual de Fase 1:
 - `SendMessage` ya puede emitir `team_event` con `kind`, `thread_id`, `reply_to`, `topic` y `priority`
 - el mailbox ya soporta envelope estructurado retrocompatible
 - los mensajes estructurados ya se formatean para que no entren como JSON crudo al contexto del agente
+- el runner in-process ya puede despertarse por escritura local al mailbox sin esperar siempre el sleep completo
 
 Implementation note:
 

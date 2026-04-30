@@ -81,8 +81,8 @@ import {
 import type { PermissionUpdate } from '../permissions/PermissionUpdateSchema.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { emitTaskTerminatedSdk } from '../sdkEventQueue.js'
-import { sleep } from '../sleep.js'
 import { jsonStringify } from '../slowOperations.js'
+import { waitForMailboxWakeup } from './mailboxWakeup.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { claimTask, listTasks, type Task, updateTask } from '../tasks.js'
 import type { TeammateContext } from '../teammateContext.js'
@@ -740,7 +740,18 @@ async function waitForNextPromptOrShutdown(
 
     // Wait before next poll (skip on first iteration to check immediately)
     if (pollCount > 0) {
-      await sleep(POLL_INTERVAL_MS)
+      const wakeReason = await waitForMailboxWakeup({
+        agentName: identity.agentName,
+        teamName: identity.teamName,
+        signal: abortController.signal,
+        timeoutMs: POLL_INTERVAL_MS,
+      })
+      if (wakeReason === 'aborted') {
+        logForDebugging(
+          `[inProcessRunner] ${identity.agentName} aborted while waiting for mailbox wakeup`,
+        )
+        return { type: 'aborted' }
+      }
     }
     pollCount++
 

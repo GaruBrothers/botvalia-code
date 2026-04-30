@@ -25,6 +25,7 @@ import { logError } from './log.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { BackendType } from './swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from './swarm/constants.js'
+import { notifyMailboxWakeup } from './swarm/mailboxWakeup.js'
 import {
   type ParsedTeamEvent,
   type TeamEvent,
@@ -314,6 +315,7 @@ export async function writeToMailbox(
     messages.push(normalizeMailboxMessage(storedMessage))
 
     await writeFile(inboxPath, serializeMailboxMessages(messages), 'utf-8')
+    notifyMailboxWakeup(recipientName, teamName)
     logForDebugging(
       `[TeammateMailbox] Wrote message to ${recipientName}'s inbox from ${storedMessage.from}`,
     )
