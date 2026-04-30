@@ -118,11 +118,11 @@ export function getMemoryScopeDisplay(
 ): string {
   switch (memory) {
     case 'user':
-      return `User (${join(getMemoryBaseDir(), 'agent-memory')}/)`
+      return 'User (home memory)'
     case 'project':
-      return 'Project (.claude/agent-memory/)'
+      return 'Project (shared repo memory)'
     case 'local':
-      return `Local (${getLocalAgentMemoryDir('...')})`
+      return 'Local (private project memory)'
     default:
       return 'None'
   }

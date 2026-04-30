@@ -2270,7 +2270,7 @@ async function* queryModel(
               yield createAssistantAPIErrorMessage({
                 content: `${API_ERROR_MESSAGE_PREFIX}: BotValia's response exceeded the ${
                   maxOutputTokens
-                } output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.`,
+                } output token maximum. To configure this behavior, set the BOTVALIA_MAX_OUTPUT_TOKENS environment variable.`,
                 apiError: 'max_output_tokens',
                 error: 'max_output_tokens',
               })
@@ -3404,14 +3404,17 @@ export function getMaxOutputTokensForModel(model: string): number {
   // Requests hitting the cap get one clean retry at 64k (query.ts
   // max_output_tokens_escalate). Math.min keeps models with lower native
   // defaults (e.g. claude-3-opus at 4k) at their native value. Applied
-  // before the env-var override so CLAUDE_CODE_MAX_OUTPUT_TOKENS still wins.
+  // before the env-var override so BOTVALIA_MAX_OUTPUT_TOKENS still wins.
   const defaultTokens = isMaxTokensCapEnabled()
     ? Math.min(maxOutputTokens.default, CAPPED_DEFAULT_MAX_TOKENS)
     : maxOutputTokens.default
 
+  const maxOutputTokensOverride =
+    process.env.BOTVALIA_MAX_OUTPUT_TOKENS ??
+    process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
   const result = validateBoundedIntEnvVar(
-    'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
-    process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
+    'BOTVALIA_MAX_OUTPUT_TOKENS',
+    maxOutputTokensOverride,
     defaultTokens,
     maxOutputTokens.upperLimit,
   )

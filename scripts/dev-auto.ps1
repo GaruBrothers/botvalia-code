@@ -1116,6 +1116,7 @@ $env:BOTVALIA_MODEL_ROUTER_CODE_MODEL = $codeRoutes[0]
 $env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = (($codeRoutes | Select-Object -Skip 1) -join ",")
 $env:BOTVALIA_SHOW_FOOTER_MODEL = "1"
 $env:FALLBACK_FOR_ALL_PRIMARY_MODELS = "1"
+$env:BOTVALIA_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:CLAUDE_CODE_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
 
@@ -1151,7 +1152,7 @@ Write-Host "[botvalia auto] AUTO_OPENROUTER_CHAIN_ENRICHED=$isOpenRouterAutoPres
 Write-Host "[botvalia auto] TRANSPORT=$transportMode"
 Write-Host "[botvalia auto] ACTIVE_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia auto] ACTIVE_MODEL=$($env:ANTHROPIC_MODEL)"
-Write-Host "[botvalia auto] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
+Write-Host "[botvalia auto] BOTVALIA_MAX_OUTPUT_TOKENS=$($env:BOTVALIA_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia auto] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 Write-Host "[botvalia auto] BARE_MODE=$BareMode"
 

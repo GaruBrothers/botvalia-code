@@ -219,6 +219,7 @@ $env:ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION = "Custom model over OpenRouter"
 $env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1"
 
 # Keep requests affordable on free/low-credit accounts.
+$env:BOTVALIA_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:CLAUDE_CODE_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
 
@@ -257,7 +258,7 @@ Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_FAST_MODEL=$($env:BOTVAL
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS)"
 Write-Host "[botvalia openrouter] BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS=$($env:BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS)"
 Write-Host "[botvalia openrouter] BOTVALIA_SHOW_FOOTER_MODEL=$($env:BOTVALIA_SHOW_FOOTER_MODEL)"
-Write-Host "[botvalia openrouter] CLAUDE_CODE_MAX_OUTPUT_TOKENS=$($env:CLAUDE_CODE_MAX_OUTPUT_TOKENS)"
+Write-Host "[botvalia openrouter] BOTVALIA_MAX_OUTPUT_TOKENS=$($env:BOTVALIA_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia openrouter] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
 
 # Build fallback model list - use fallbackCandidates excluding the resolved model
