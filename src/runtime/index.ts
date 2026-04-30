@@ -1,5 +1,7 @@
 export * from './events.js'
+export * from './protocol.js'
 export * from './queryEngineSession.js'
+export * from './runtimeBridge.js'
 export * from './runtimeRegistry.js'
 export * from './runtimeService.js'
 export * from './sessionRuntime.js'
