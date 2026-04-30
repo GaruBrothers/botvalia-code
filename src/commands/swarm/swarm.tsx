@@ -53,10 +53,11 @@ function buildTeammatePrompt(
     `Eres @${role} dentro del swarm ${teamName}.`,
     collaborationLine,
     roleMission,
-    'Empieza a trabajar de inmediato, pero no gastes un turno en saludar o confirmar disponibilidad.',
-    'Si todavia no tienes una tarea concreta, mantente atento al thread y espera instrucciones utiles.',
+    'Arranca en modo silencioso.',
+    'No uses SendMessage para saludar, confirmar disponibilidad, decir que estas listo o mandar acknowledged.',
+    'Si todavia no tienes una tarea concreta o una pregunta concreta, no respondas a este arranque y espera instrucciones utiles por thread o task list.',
     'Habla con los demás usando SendMessage cuando necesites coordinar, preguntar o responder.',
-    'Da avances parciales breves en vez de esperar hasta el final.',
+    'Solo manda avances parciales cuando tengan contenido concreto: una decision, un bloqueo, una pregunta o un resultado.',
   ].join(' ')
 }
 
@@ -70,7 +71,7 @@ async function openKickoffThread(
     from: TEAM_LEAD_NAME,
     to: first,
     kind: 'task',
-    body: `Coordínate con @${second}. Arranquen el swarm, compartan avances parciales y avisen bloqueos temprano.`,
+    body: `Coordínate con @${second}. Definan el primer paso real, repartan trabajo y respondan solo con una accion concreta o un bloqueo real. No manden mensajes de disponibilidad.`,
     topic,
     priority: 'high',
     requires_response: true,
@@ -83,7 +84,7 @@ async function openKickoffThread(
     from: TEAM_LEAD_NAME,
     to: second,
     kind: 'handoff',
-    body: `Coordínate con @${first}. Arranquen el swarm, compartan avances parciales y avisen bloqueos temprano.`,
+    body: `Coordínate con @${first}. Definan el primer paso real, repartan trabajo y respondan solo con una accion concreta o un bloqueo real. No manden mensajes de disponibilidad.`,
     topic,
     thread_id: firstEvent.thread_id,
     reply_to: firstEvent.event_id,
