@@ -317,6 +317,59 @@ function renderInspectorHtml(): string {
         flex-direction: column;
         gap: 10px;
       }
+      .chat-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .chat-message {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .chat-message.user {
+        background: rgba(55, 215, 255, 0.08);
+        border-color: rgba(55, 215, 255, 0.18);
+      }
+      .chat-message.assistant {
+        background: rgba(83, 168, 255, 0.08);
+        border-color: rgba(83, 168, 255, 0.18);
+      }
+      .chat-message.system,
+      .chat-message.progress,
+      .chat-message.attachment {
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .chat-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .chat-body {
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .chip {
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(83, 168, 255, 0.08);
+        color: var(--text);
+        padding: 8px 12px;
+        font-size: 12px;
+      }
       .summary-card {
         border: 1px solid var(--border);
         border-radius: 14px;
@@ -435,7 +488,7 @@ function renderInspectorHtml(): string {
 
               <div class="composer">
                 <div class="composer-head">Conversación reciente</div>
-                <div id="conversation" class="summary-list">
+                <div id="conversation" class="chat-feed">
                   <div class="muted">Sin mensajes recientes todavía.</div>
                 </div>
               </div>
@@ -444,6 +497,13 @@ function renderInspectorHtml(): string {
                 <div class="composer-head">Swarm y tasks</div>
                 <div id="taskSummary" class="summary-list">
                   <div class="muted">Sin datos de swarm o tasks todavía.</div>
+                </div>
+              </div>
+
+              <div class="composer">
+                <div class="composer-head">Acciones de swarm</div>
+                <div id="swarmControls" class="summary-list">
+                  <div class="muted">Selecciona una sesión para ver acciones del swarm.</div>
                 </div>
               </div>
             </div>
@@ -495,6 +555,7 @@ function renderInspectorHtml(): string {
         activityLog: document.getElementById('activityLog'),
         conversation: document.getElementById('conversation'),
         taskSummary: document.getElementById('taskSummary'),
+        swarmControls: document.getElementById('swarmControls'),
         events: document.getElementById('events'),
         eventCount: document.getElementById('eventCount'),
         reconnect: document.getElementById('reconnect'),
@@ -639,6 +700,7 @@ function renderInspectorHtml(): string {
         renderActionState()
         renderConversation()
         renderTaskSummary()
+        renderSwarmControls()
       }
 
       function renderActionState(message, tone = 'muted') {
@@ -702,14 +764,13 @@ function renderInspectorHtml(): string {
 
         els.conversation.innerHTML = detail.messages.slice().reverse().map(message => {
           const meta = [
-            message.label,
             message.timestamp,
             message.isMeta ? 'meta' : null,
           ].filter(Boolean).join(' · ')
 
-          return '<div class="summary-card">' +
-            '<div class="summary-title">' + escapeHtml(message.label) + '</div>' +
-            '<div class="summary-meta">' + escapeHtml(meta) + '\n\n' + escapeHtml(message.text || '[sin texto renderizable]') + '</div>' +
+          return '<div class="chat-message ' + escapeHtml(message.type) + '">' +
+            '<div class="chat-head"><span>' + escapeHtml(message.label) + '</span><span>' + escapeHtml(meta) + '</span></div>' +
+            '<div class="chat-body">' + escapeHtml(message.text || '[sin texto renderizable]') + '</div>' +
           '</div>'
         }).join('')
       }
@@ -759,6 +820,61 @@ function renderInspectorHtml(): string {
         els.taskSummary.innerHTML = blocks.length
           ? blocks.join('')
           : '<div class="muted">Sin datos de swarm o tasks todavía.</div>'
+      }
+
+      function renderSwarmControls() {
+        const snapshot = state.selectedDetail?.snapshot || state.selectedSnapshot
+        if (!snapshot) {
+          els.swarmControls.innerHTML = '<div class="muted">Selecciona una sesión para ver acciones del swarm.</div>'
+          return
+        }
+
+        const swarm = snapshot.swarm
+        if (!swarm || (!swarm.teamName && !(swarm.teammateNames && swarm.teammateNames.length))) {
+          els.swarmControls.innerHTML = [
+            '<div class="summary-card">',
+            '<div class="summary-title">Sin swarm activo</div>',
+            '<div class="summary-meta">Puedes crear uno desde aquí con un atajo listo.</div>',
+            '<div class="chip-row" style="margin-top:10px;">',
+            '<button class="chip" data-swarm-prompt="/swarm create demo-swarm planner coder qa">Crear demo-swarm</button>',
+            '</div>',
+            '</div>',
+          ].join('')
+        } else {
+          const teammateButtons = (swarm.teammateNames || []).map(name =>
+            '<button class="chip" data-swarm-prompt="Pregúntale a @' + escapeHtml(name) + ' cómo va, si está bloqueado y qué necesita del equipo.">Preguntar a @' + escapeHtml(name) + '</button>'
+          ).join('')
+
+          els.swarmControls.innerHTML = [
+            '<div class="summary-card">',
+            '<div class="summary-title">Swarm activo</div>',
+            '<div class="summary-meta">' + escapeHtml(
+              (swarm.teamName ? 'Team: ' + swarm.teamName + '\n' : '') +
+              'Teammates: ' + ((swarm.teammateNames && swarm.teammateNames.length)
+                ? swarm.teammateNames.join(', ')
+                : 'ninguno')
+            ) + '</div>',
+            '<div class="chip-row" style="margin-top:10px;">',
+            '<button class="chip" data-swarm-prompt="/swarm">Abrir /swarm</button>',
+            '<button class="chip" data-swarm-prompt="Dame un estado corto del swarm activo, quién está bloqueado y cuál es el siguiente paso.">Pedir estado</button>',
+            '<button class="chip" data-swarm-prompt="Haz que el swarm se coordine entre sí ahora mismo y dame avances parciales.">Forzar coordinación</button>',
+            teammateButtons,
+            '</div>',
+            '</div>',
+          ].join('')
+        }
+
+        for (const button of els.swarmControls.querySelectorAll('[data-swarm-prompt]')) {
+          button.addEventListener('click', () => {
+            const prompt = button.getAttribute('data-swarm-prompt')
+            if (prompt) {
+              sendRuntimePrompt(prompt, 'Enviando acción de swarm...', 'Acción de swarm enviada.').catch(error => {
+                renderActionState(error instanceof Error ? error.message : String(error), 'error')
+                addEvent('swarm_action_error', state.selectedSessionId || 'none', error instanceof Error ? error.message : String(error))
+              })
+            }
+          })
+        }
       }
 
       function renderEvents() {
@@ -896,19 +1012,18 @@ function renderInspectorHtml(): string {
         renderSessions()
       }
 
-      async function sendPromptToSession() {
+      async function sendRuntimePrompt(text, pendingMessage, successMessage) {
         if (!state.selectedSessionId) {
           renderActionState('No hay una sesión seleccionada para enviar el prompt.', 'error')
           return
         }
 
-        const text = els.promptInput.value.trim()
         if (!text) {
           renderActionState('Escribe un prompt antes de enviarlo.', 'error')
           return
         }
 
-        renderActionState('Enviando prompt al runtime...', 'muted')
+        renderActionState(pendingMessage, 'muted')
         const response = await sendRequest('send_message', {
           sessionId: state.selectedSessionId,
           input: { text },
@@ -920,9 +1035,14 @@ function renderInspectorHtml(): string {
 
         ensureSessionActivity(state.selectedSessionId).notes.push('Prompt enviado desde el inspector.')
         trimActivity(ensureSessionActivity(state.selectedSessionId))
-        els.promptInput.value = ''
-        renderActionState('Prompt enviado correctamente.', 'muted')
+        renderActionState(successMessage, 'muted')
         renderActivity()
+      }
+
+      async function sendPromptToSession() {
+        const text = els.promptInput.value.trim()
+        await sendRuntimePrompt(text, 'Enviando prompt al runtime...', 'Prompt enviado correctamente.')
+        els.promptInput.value = ''
       }
 
       async function interruptSelectedSession() {
