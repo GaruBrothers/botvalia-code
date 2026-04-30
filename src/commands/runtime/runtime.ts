@@ -75,7 +75,7 @@ function formatRuntimeStatus(): string {
   return lines.join('\n')
 }
 
-const call: LocalCommandCall = async args => {
+export const call: LocalCommandCall = async args => {
   try {
     const trimmedArgs = args.trim()
     const [subcommand = '', portArg] = trimmedArgs.split(/\s+/).filter(Boolean)
@@ -185,7 +185,3 @@ const call: LocalCommandCall = async args => {
     }
   }
 }
-
-export default {
-  call,
-} satisfies { call: LocalCommandCall }
