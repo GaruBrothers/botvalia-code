@@ -90,7 +90,7 @@ export function CondensedLogo() {
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true} color="professionalBlue">BOTVALIA CODE</Text>;
+    t5 = <Text bold={true} color="professionalBlue">BotValia Code</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
