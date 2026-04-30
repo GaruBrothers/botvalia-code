@@ -55,6 +55,10 @@ export class SessionRuntime {
     })
   }
 
+  getStatus(): RuntimeSessionStatus {
+    return this.status
+  }
+
   onEvent(listener: RuntimeEventListener): RuntimeEventUnsubscribe {
     return this.eventBus.subscribe(listener)
   }
@@ -65,6 +69,10 @@ export class SessionRuntime {
 
   setStatus(status: RuntimeSessionStatus): void {
     this.status = status
+    this.refreshSnapshot()
+  }
+
+  refreshSnapshot(): void {
     this.emit({
       type: 'session_updated',
       sessionId: this.sessionId,
@@ -146,7 +154,9 @@ export class SessionRuntime {
 
     try {
       await this.config.submitMessage(input)
-      this.setStatus('completed')
+      if (this.status === 'running') {
+        this.setStatus('completed')
+      }
     } catch (error) {
       this.emitError(error)
       throw error

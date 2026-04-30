@@ -8,6 +8,7 @@ export type RuntimeSessionId = string
 export type RuntimeSessionStatus =
   | 'idle'
   | 'running'
+  | 'requires_action'
   | 'completed'
   | 'interrupted'
   | 'errored'
