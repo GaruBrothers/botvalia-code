@@ -114,6 +114,7 @@ import {
   normalizeMessage,
 } from './utils/queryHelpers.js'
 import { createQueryEngineSessionRuntimeController } from './runtime/queryEngineSession.js'
+import { registerRuntime } from './runtime/runtimeRegistry.js'
 
 // Dead code elimination: conditional import for coordinator mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1390,6 +1391,7 @@ export async function* ask({
     cwd,
     getAppState,
   })
+  const unregisterRuntime = registerRuntime(runtimeController.runtime)
 
   try {
     yield* runtimeController.runPrompt({
@@ -1398,6 +1400,7 @@ export async function* ask({
       isMeta,
     })
   } finally {
+    unregisterRuntime()
     setReadFileCache(engine.getReadFileState())
   }
 }
