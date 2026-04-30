@@ -142,6 +142,7 @@ async function createSwarmRuntime(
     ).data.team_name
 
   const refreshedState = context.getAppState()
+  const leaderModelSetting = refreshedState.mainLoopModel ?? undefined
   const existingNames = new Set(
     Object.values(refreshedState.teamContext?.teammates || {}).map(teammate =>
       teammate.name.toLowerCase(),
@@ -162,6 +163,7 @@ async function createSwarmRuntime(
         prompt: buildTeammatePrompt(teamName, role, peers),
         team_name: teamName,
         use_splitpane: true,
+        model: leaderModelSetting,
       },
       context,
     )
@@ -203,7 +205,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   const normalizedArgs = trimmedArgs.toLowerCase()
 
   if (normalizedArgs === 'help' || normalizedArgs === '?') {
-    onDone(SWARM_HELP, { display: 'system' })
+    onDone(SWARM_HELP, { display: 'system', shouldQuery: false })
     return null
   }
 
@@ -225,6 +227,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
         `Swarm ${result.teamName} activo con ${result.activeRoles.map(role => `@${role}`).join(', ')}.${spawnedSuffix}${threadSuffix} Abre /swarm para dirigirlo.`,
         {
           display: 'system',
+          shouldQuery: false,
         },
       )
     } catch (error) {
@@ -234,6 +237,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
           : 'No pude crear el swarm por un error desconocido.'
       onDone(`No pude crear el swarm ${teamName}: ${message}`, {
         display: 'system',
+        shouldQuery: false,
       })
     }
     return null
