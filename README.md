@@ -213,6 +213,7 @@ Estado actual de Fase 1:
 
 - `SendMessage` ya puede emitir `team_event` con `kind`, `thread_id`, `reply_to`, `topic` y `priority`
 - el mailbox ya soporta envelope estructurado retrocompatible
+- `/swarm` ya abre una capa de control para ver agentes activos, threads, dependencias abiertas y mandar mensajes/thread kickoff sin salir del líder
 - los mensajes estructurados ya se formatean para que no entren como JSON crudo al contexto del agente
 - el runner in-process ya puede despertarse por escritura local al mailbox sin esperar siempre el sleep completo
 - `useInboxPoller` ya combina polling con wakeup local para reaccionar antes a mensajes del mailbox en el mismo proceso

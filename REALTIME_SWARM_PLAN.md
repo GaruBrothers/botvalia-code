@@ -36,10 +36,12 @@ La base ya existe, pero todavía no es un swarm verdaderamente conversacional.
   Ya existe un envelope `team_event` v1 con serialización y parsing retrocompatible.
 - `src/utils/swarm/teamConversationEvents.ts`
   Ya define un evento conversacional base con `kind`, `thread_id`, `reply_to`, `topic`, `priority` y `body`.
+- `src/utils/swarm/teamConversationLog.ts`
+  Ya persiste eventos conversacionales por team en `team-events.jsonl` para reconstruir threads y dependencias abiertas.
 - `src/tools/SendMessageTool/SendMessageTool.ts`
   Ya puede emitir `team_event` estructurado hacia otro teammate.
 - `src/utils/teammateMailbox.ts`
-  Ya puede persistir y leer mensajes con envelope estructurado sin romper a los consumidores legacy.
+  Ya puede persistir y leer mensajes con envelope estructurado sin romper a los consumidores legacy, y además registrar `team_event` en el log del swarm.
 - `src/hooks/useInboxPoller.ts`
   Ya formatea esos eventos para que el agente reciba contexto legible en vez de JSON crudo.
 - `src/utils/swarm/mailboxWakeup.ts`
@@ -50,6 +52,8 @@ La base ya existe, pero todavía no es un swarm verdaderamente conversacional.
   Ya combina polling con wakeup local para reaccionar antes a mensajes del mailbox en el mismo proceso.
 - `src/cli/print.ts`
   La ruta headless del líder ya combina lectura inmediata con wakeup local del mailbox para reducir latencia sin perder compatibilidad.
+- `src/components/swarm/SwarmDialog.tsx` y `src/commands/swarm/swarm.tsx`
+  Ya exponen una UI `/swarm` para ver agentes activos, abrir threads entre agentes, mandar mensajes directos y revisar quién espera a quién.
 
 ### Lo que todavía falta
 
@@ -258,3 +262,9 @@ Prueba manual mínima esperada:
 3. Verificar que el destinatario reciba texto formateado, no JSON crudo.
 4. Responder con `team_event` tipo `answer` reutilizando `thread_id`.
 5. Confirmar que el líder sigue viendo progreso por mailbox sin romper el flujo actual.
+6. Abrir `/swarm` y verificar:
+   - vista `agents` con teammates activos
+   - vista `threads` con conversaciones abiertas
+   - vista `waiting` con `from -> to`
+   - mensaje directo con `m`
+   - thread kickoff entre dos agentes con `t`

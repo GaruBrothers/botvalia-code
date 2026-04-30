@@ -26,6 +26,7 @@ import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { BackendType } from './swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from './swarm/constants.js'
 import { notifyMailboxWakeup } from './swarm/mailboxWakeup.js'
+import { appendTeamConversationEvent } from './swarm/teamConversationLog.js'
 import {
   type ParsedTeamEvent,
   type TeamEvent,
@@ -279,6 +280,7 @@ export async function writeToMailbox(
 ): Promise<void> {
   await ensureInboxDir(teamName)
 
+  const resolvedTeamName = teamName || getTeamName() || 'default'
   const inboxPath = getInboxPath(recipientName, teamName)
   const lockFilePath = `${inboxPath}.lock`
   const storedMessage = materializeMailboxMessage(message)
@@ -315,6 +317,16 @@ export async function writeToMailbox(
     messages.push(normalizeMailboxMessage(storedMessage))
 
     await writeFile(inboxPath, serializeMailboxMessages(messages), 'utf-8')
+    const teamConversationEvent =
+      ('event' in message && parseTeamConversationEvent(message.event)) ||
+      parseTeamConversationEventText(storedMessage.text)
+
+    if (teamConversationEvent) {
+      await appendTeamConversationEvent(
+        resolvedTeamName,
+        teamConversationEvent,
+      )
+    }
     notifyMailboxWakeup(recipientName, teamName)
     logForDebugging(
       `[TeammateMailbox] Wrote message to ${recipientName}'s inbox from ${storedMessage.from}`,

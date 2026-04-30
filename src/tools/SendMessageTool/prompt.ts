@@ -35,6 +35,18 @@ Send a message to another agent.
 
 Your plain text output is NOT visible to other agents — to communicate, you MUST call this tool. Messages from teammates are delivered automatically; you don't check an inbox. Refer to teammates by name, never by UUID. When relaying, don't quote the original — it's already rendered to the user.${udsSection}
 
+## Recommended threaded teamwork
+
+For real collaboration, prefer structured \`team_event\` messages instead of plain text when the conversation may continue:
+
+\`\`\`json
+{"to": "qa", "message": {"type": "team_event", "kind": "question", "topic": "login edge cases", "body": "Can you validate the password reset path before I merge?", "requires_response": true}}
+{"to": "frontend", "message": {"type": "team_event", "kind": "handoff", "thread_id": "reuse-the-same-thread-id", "body": "QA confirmed the bug. Please patch the error state.", "priority": "high"}}
+{"to": "qa", "message": {"type": "team_event", "kind": "answer", "thread_id": "reuse-the-same-thread-id", "reply_to": "event-id-here", "body": "Validated. The reset path still breaks on expired tokens."}}
+\`\`\`
+
+Do not wait until your entire task is done to contact a teammate. If you are blocked, need validation, or want a parallel check, send the message immediately and keep the shared \`thread_id\` alive.
+
 ## Protocol responses (legacy)
 
 If you receive a JSON message with \`type: "shutdown_request"\` or \`type: "plan_approval_request"\`, respond with the matching \`_response\` type — echo the \`request_id\`, set \`approve\` true/false:
