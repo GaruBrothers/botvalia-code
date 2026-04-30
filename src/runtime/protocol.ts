@@ -2,6 +2,7 @@ import type { RuntimeEvent } from './events.js'
 import type { RuntimeRegistryEvent } from './runtimeService.js'
 import type {
   RuntimeSendMessageInput,
+  RuntimeSessionDetail,
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './types.js'
@@ -14,6 +15,11 @@ export type RuntimeProtocolRequest =
   | {
       requestId: string
       method: 'get_session'
+      sessionId: RuntimeSessionId
+    }
+  | {
+      requestId: string
+      method: 'get_session_detail'
       sessionId: RuntimeSessionId
     }
   | {
@@ -54,6 +60,12 @@ export type RuntimeProtocolSuccessResponse =
       ok: true
       method: 'get_session'
       session: RuntimeSessionSnapshot | null
+    }
+  | {
+      requestId: string
+      ok: true
+      method: 'get_session_detail'
+      detail: RuntimeSessionDetail | null
     }
   | {
       requestId: string

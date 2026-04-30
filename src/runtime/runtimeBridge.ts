@@ -141,6 +141,15 @@ export class RuntimeBridge {
             session: this.runtimeService.getSession(request.sessionId) ?? null,
           }
 
+        case 'get_session_detail':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'get_session_detail',
+            detail:
+              this.runtimeService.getSessionDetail(request.sessionId) ?? null,
+          }
+
         case 'send_message':
           await this.runtimeService.sendMessage(request.sessionId, request.input)
           return {

@@ -312,6 +312,30 @@ function renderInspectorHtml(): string {
       .status-note.error {
         color: var(--red);
       }
+      .summary-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .summary-card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .summary-title {
+        font-size: 12px;
+        color: var(--text);
+        font-weight: 600;
+      }
+      .summary-meta {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       .events {
         display: flex;
         flex-direction: column;
@@ -408,6 +432,20 @@ function renderInspectorHtml(): string {
                 <div class="composer-head">Salida reciente</div>
                 <pre id="activityLog">Sin actividad reciente para la sesión seleccionada.</pre>
               </div>
+
+              <div class="composer">
+                <div class="composer-head">Conversación reciente</div>
+                <div id="conversation" class="summary-list">
+                  <div class="muted">Sin mensajes recientes todavía.</div>
+                </div>
+              </div>
+
+              <div class="composer">
+                <div class="composer-head">Swarm y tasks</div>
+                <div id="taskSummary" class="summary-list">
+                  <div class="muted">Sin datos de swarm o tasks todavía.</div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -435,6 +473,7 @@ function renderInspectorHtml(): string {
         sessions: [],
         selectedSessionId: null,
         selectedSnapshot: null,
+        selectedDetail: null,
         events: [],
         sessionActivity: new Map(),
       }
@@ -454,6 +493,8 @@ function renderInspectorHtml(): string {
         interruptSession: document.getElementById('interruptSession'),
         actionStatus: document.getElementById('actionStatus'),
         activityLog: document.getElementById('activityLog'),
+        conversation: document.getElementById('conversation'),
+        taskSummary: document.getElementById('taskSummary'),
         events: document.getElementById('events'),
         eventCount: document.getElementById('eventCount'),
         reconnect: document.getElementById('reconnect'),
@@ -596,6 +637,8 @@ function renderInspectorHtml(): string {
           : 'Ninguna sesión seleccionada'
         els.snapshot.textContent = JSON.stringify(state.selectedSnapshot ?? {}, null, 2)
         renderActionState()
+        renderConversation()
+        renderTaskSummary()
       }
 
       function renderActionState(message, tone = 'muted') {
@@ -648,6 +691,74 @@ function renderInspectorHtml(): string {
         els.activityLog.textContent = blocks.length
           ? blocks.join('\n\n====\n\n')
           : 'Aún no llegaron eventos útiles para esta sesión.'
+      }
+
+      function renderConversation() {
+        const detail = state.selectedDetail
+        if (!detail || !detail.messages.length) {
+          els.conversation.innerHTML = '<div class="muted">Sin mensajes recientes todavía.</div>'
+          return
+        }
+
+        els.conversation.innerHTML = detail.messages.slice().reverse().map(message => {
+          const meta = [
+            message.label,
+            message.timestamp,
+            message.isMeta ? 'meta' : null,
+          ].filter(Boolean).join(' · ')
+
+          return '<div class="summary-card">' +
+            '<div class="summary-title">' + escapeHtml(message.label) + '</div>' +
+            '<div class="summary-meta">' + escapeHtml(meta) + '\n\n' + escapeHtml(message.text || '[sin texto renderizable]') + '</div>' +
+          '</div>'
+        }).join('')
+      }
+
+      function renderTaskSummary() {
+        const detail = state.selectedDetail
+        const snapshot = detail?.snapshot || state.selectedSnapshot
+        const tasks = detail?.tasks || []
+        const swarm = snapshot?.swarm
+        const blocks = []
+
+        if (swarm) {
+          const swarmText = [
+            swarm.teamName ? 'Team: ' + swarm.teamName : 'Sin team activo',
+            'Líder: ' + (swarm.isLeader ? 'sí' : 'no'),
+            'Teammates: ' + ((swarm.teammateNames && swarm.teammateNames.length)
+              ? swarm.teammateNames.join(', ')
+              : 'ninguno'),
+          ].join('\n')
+
+          blocks.push(
+            '<div class="summary-card">' +
+              '<div class="summary-title">Swarm</div>' +
+              '<div class="summary-meta">' + escapeHtml(swarmText) + '</div>' +
+            '</div>'
+          )
+        }
+
+        if (tasks.length) {
+          blocks.push(
+            tasks.map(task => {
+              const lines = [
+                'Status: ' + task.status,
+                task.kind ? 'Tipo: ' + task.kind : null,
+                task.title ? 'Título: ' + task.title : null,
+                task.isBackgrounded === true ? 'Background: sí' : null,
+              ].filter(Boolean).join('\n')
+
+              return '<div class="summary-card">' +
+                '<div class="summary-title">' + escapeHtml(task.id) + '</div>' +
+                '<div class="summary-meta">' + escapeHtml(lines) + '</div>' +
+              '</div>'
+            }).join('')
+          )
+        }
+
+        els.taskSummary.innerHTML = blocks.length
+          ? blocks.join('')
+          : '<div class="muted">Sin datos de swarm o tasks todavía.</div>'
       }
 
       function renderEvents() {
@@ -736,17 +847,19 @@ function renderInspectorHtml(): string {
       async function refreshSelectedSession() {
         if (!state.selectedSessionId) {
           state.selectedSnapshot = null
+          state.selectedDetail = null
           renderSnapshot()
           return
         }
 
-        const response = await sendRequest('get_session', {
+        const response = await sendRequest('get_session_detail', {
           sessionId: state.selectedSessionId,
         })
         if (!response.ok) {
           throw new Error(response.error)
         }
-        state.selectedSnapshot = response.session
+        state.selectedDetail = response.detail
+        state.selectedSnapshot = response.detail?.snapshot ?? null
         renderSnapshot()
       }
 
@@ -762,6 +875,7 @@ function renderInspectorHtml(): string {
 
         if (!state.selectedSessionId) {
           state.selectedSnapshot = null
+          state.selectedDetail = null
           renderSnapshot()
           renderActivity()
           return

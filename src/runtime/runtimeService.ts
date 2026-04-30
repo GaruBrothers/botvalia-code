@@ -7,13 +7,18 @@ import {
 } from './runtimeRegistry.js'
 import type {
   RuntimeSendMessageInput,
+  RuntimeSessionDetail,
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './types.js'
+import { createRuntimeSessionDetail } from './types.js'
 
 export type RuntimeService = {
   listSessions: () => RuntimeSessionSnapshot[]
   getSession: (sessionId: RuntimeSessionId) => RuntimeSessionSnapshot | undefined
+  getSessionDetail: (
+    sessionId: RuntimeSessionId,
+  ) => RuntimeSessionDetail | undefined
   hasSession: (sessionId: RuntimeSessionId) => boolean
   sendMessage: (
     sessionId: RuntimeSessionId,
@@ -44,6 +49,18 @@ export function createRuntimeService(
   return {
     listSessions: () => registry.listSnapshots(),
     getSession: sessionId => registry.get(sessionId)?.getSnapshot(),
+    getSessionDetail: sessionId => {
+      const runtime = registry.get(sessionId)
+      if (!runtime) {
+        return undefined
+      }
+
+      return createRuntimeSessionDetail({
+        snapshot: runtime.getSnapshot(),
+        messages: runtime.getMessages(),
+        tasks: runtime.getTasks(),
+      })
+    },
     hasSession: sessionId => registry.has(sessionId),
     sendMessage: async (sessionId, input) => {
       const runtime = requireRuntime(registry, sessionId)

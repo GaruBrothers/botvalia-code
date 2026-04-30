@@ -9,6 +9,7 @@ import type {
 } from './protocol.js'
 import type {
   RuntimeSendMessageInput,
+  RuntimeSessionDetail,
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './types.js'
@@ -141,6 +142,21 @@ export class RuntimeWebSocketClient {
     }
 
     return response.session
+  }
+
+  async getSessionDetail(
+    sessionId: RuntimeSessionId,
+  ): Promise<RuntimeSessionDetail | null> {
+    const response = await this.sendRequest({
+      method: 'get_session_detail',
+      sessionId,
+    })
+
+    if (!response.ok) {
+      throw new Error(response.error)
+    }
+
+    return response.detail
   }
 
   async sendMessage(
