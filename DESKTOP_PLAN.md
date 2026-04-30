@@ -223,7 +223,9 @@ Estado actual del bridge:
 - [src/runtime/runtimeWsServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeWsServer.ts)
 - [src/runtime/runtimeWsClient.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeWsClient.ts)
 - [src/runtime/runtimeServerManager.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeServerManager.ts)
+- [src/runtime/runtimeInspectorServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeInspectorServer.ts)
 - comando `/runtime` para levantar, consultar y apagar el bridge local
+- `/runtime ui` y `/runtime open` para ver una UI mínima sobre sesiones y eventos
 
 ## Fase 3: desktop MVP
 

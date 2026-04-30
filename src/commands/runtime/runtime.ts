@@ -1,4 +1,10 @@
 import type { LocalCommandCall } from '../../types/command.js'
+import { openBrowser } from '../../utils/browser.js'
+import {
+  ensureRuntimeInspectorServer,
+  getRuntimeInspectorServerStatus,
+  stopRuntimeInspectorServer,
+} from '../../runtime/runtimeInspectorServer.js'
 import { getGlobalRuntimeService } from '../../runtime/runtimeService.js'
 import {
   ensureRuntimeServer,
@@ -10,6 +16,8 @@ const HELP_TEXT = [
   '/runtime inicia o muestra el bridge local para BotValia Desktop.',
   '/runtime start [puerto] inicia el server WebSocket local.',
   '/runtime status muestra el estado actual.',
+  '/runtime ui [puerto] inicia el inspector visual local.',
+  '/runtime open inicia el inspector visual local y lo abre en el navegador.',
   '/runtime stop apaga el server local.',
   '/runtime help muestra esta ayuda.',
 ].join('\n')
@@ -35,22 +43,36 @@ function getSessionCount(): number {
   return getGlobalRuntimeService().listSessions().length
 }
 
-function formatRunningMessage(
-  prefix: string,
-  status: ReturnType<typeof getRuntimeServerStatus>,
-): string {
-  if (status.status !== 'running') {
-    return prefix
+function formatRuntimeStatus(): string {
+  const runtimeStatus = getRuntimeServerStatus()
+  const inspectorStatus = getRuntimeInspectorServerStatus()
+  const lines: string[] = []
+
+  if (runtimeStatus.status === 'running') {
+    lines.push('Bridge runtime activo.')
+    lines.push(`URL runtime: ${runtimeStatus.server.url}`)
+    lines.push(`Host runtime: ${runtimeStatus.server.host}`)
+    lines.push(`Puerto runtime: ${runtimeStatus.server.port}`)
+    lines.push(`Sesiones activas: ${getSessionCount()}`)
+  } else if (runtimeStatus.status === 'starting') {
+    lines.push('Bridge runtime iniciando.')
+  } else if (runtimeStatus.status === 'failed') {
+    lines.push(`Bridge runtime con error: ${runtimeStatus.error.message}`)
+  } else {
+    lines.push('Bridge runtime apagado.')
   }
 
-  return [
-    prefix,
-    `URL: ${status.server.url}`,
-    `Host: ${status.server.host}`,
-    `Puerto: ${status.server.port}`,
-    `Sesiones activas: ${getSessionCount()}`,
-    'Usa /runtime stop para apagarlo.',
-  ].join('\n')
+  if (inspectorStatus.status === 'running') {
+    lines.push(`Inspector UI: ${inspectorStatus.server.url}`)
+  } else if (inspectorStatus.status === 'starting') {
+    lines.push('Inspector UI iniciando.')
+  } else if (inspectorStatus.status === 'failed') {
+    lines.push(`Inspector UI con error: ${inspectorStatus.error.message}`)
+  } else {
+    lines.push('Inspector UI apagado.')
+  }
+
+  return lines.join('\n')
 }
 
 const call: LocalCommandCall = async args => {
@@ -87,43 +109,58 @@ const call: LocalCommandCall = async args => {
     }
 
     if (normalizedSubcommand === 'status') {
-      const status = getRuntimeServerStatus()
-      if (status.status === 'running') {
-        return {
-          type: 'text',
-          value: formatRunningMessage('Bridge runtime activo.', status),
-        }
+      return {
+        type: 'text',
+        value: formatRuntimeStatus(),
       }
+    }
 
-      if (status.status === 'starting') {
-        return {
-          type: 'text',
-          value:
-            'El bridge runtime se está iniciando. Repite /runtime status en unos segundos.',
-        }
-      }
-
-      if (status.status === 'failed') {
-        return {
-          type: 'text',
-          value: `El bridge runtime falló al iniciar: ${status.error.message}`,
-        }
-      }
+    if (normalizedSubcommand === 'ui') {
+      const requestedPort = parsePort(portArg)
+      await ensureRuntimeServer()
+      const inspector = await ensureRuntimeInspectorServer({
+        port: requestedPort,
+      })
 
       return {
         type: 'text',
-        value:
-          'El bridge runtime no está activo. Usa /runtime o /runtime start para levantarlo.',
+        value: [
+          'Inspector visual activo.',
+          `URL inspector: ${inspector.url}`,
+          formatRuntimeStatus(),
+        ].join('\n'),
+      }
+    }
+
+    if (normalizedSubcommand === 'open') {
+      await ensureRuntimeServer()
+      const inspector = await ensureRuntimeInspectorServer()
+      const opened = await openBrowser(inspector.url)
+
+      return {
+        type: 'text',
+        value: opened
+          ? `Inspector visual abierto en ${inspector.url}`
+          : `Inspector visual listo en ${inspector.url}\nNo pude abrir el navegador automáticamente.`,
       }
     }
 
     if (normalizedSubcommand === 'stop') {
-      const stopped = await stopRuntimeServer()
+      const inspectorStopped = await stopRuntimeInspectorServer()
+      const runtimeStopped = await stopRuntimeServer()
       return {
         type: 'text',
-        value: stopped
-          ? 'Bridge runtime detenido.'
-          : 'El bridge runtime ya estaba apagado.',
+        value:
+          inspectorStopped || runtimeStopped
+            ? [
+                inspectorStopped
+                  ? 'Inspector UI detenido.'
+                  : 'Inspector UI ya estaba apagado.',
+                runtimeStopped
+                  ? 'Bridge runtime detenido.'
+                  : 'Bridge runtime ya estaba apagado.',
+              ].join('\n')
+            : 'El bridge runtime y el inspector ya estaban apagados.',
       }
     }
 
