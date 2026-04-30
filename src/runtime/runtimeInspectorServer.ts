@@ -181,6 +181,11 @@ function renderInspectorHtml(): string {
         overflow: auto;
         flex: 1;
       }
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
       .statusline {
         display: flex;
         gap: 10px;
@@ -244,6 +249,68 @@ function renderInspectorHtml(): string {
         overflow: auto;
         font-size: 12px;
         line-height: 1.5;
+      }
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--panel-2);
+        color: var(--text);
+        padding: 12px 14px;
+        font: inherit;
+      }
+      textarea:focus {
+        outline: none;
+        border-color: rgba(83, 168, 255, 0.45);
+        box-shadow: 0 0 0 1px rgba(83, 168, 255, 0.18);
+      }
+      .composer {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.02);
+        padding: 14px;
+      }
+      .composer-head {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .composer-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .button-primary {
+        background: linear-gradient(135deg, rgba(55, 215, 255, 0.22), rgba(83, 168, 255, 0.22));
+        border-color: rgba(83, 168, 255, 0.45);
+      }
+      .button-danger {
+        border-color: rgba(255, 122, 144, 0.28);
+        background: rgba(255, 122, 144, 0.08);
+      }
+      .button-danger:hover {
+        border-color: rgba(255, 122, 144, 0.45);
+        background: rgba(255, 122, 144, 0.12);
+      }
+      .status-note {
+        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .status-note.error {
+        color: var(--red);
       }
       .events {
         display: flex;
@@ -321,7 +388,27 @@ function renderInspectorHtml(): string {
             <span id="selectedSessionLabel" class="muted">Ninguna sesión seleccionada</span>
           </div>
           <div class="panel-body">
-            <pre id="snapshot">{}</pre>
+            <div class="stack">
+              <pre id="snapshot">{}</pre>
+
+              <div class="composer">
+                <div class="composer-head">Control de sesión</div>
+                <label class="field">
+                  <span>Prompt para la sesión seleccionada</span>
+                  <textarea id="promptInput" placeholder="Escribe aquí un prompt para enviarlo al motor en vivo."></textarea>
+                </label>
+                <div class="composer-actions">
+                  <button id="sendPrompt" class="button-primary">Enviar prompt</button>
+                  <button id="interruptSession" class="button-danger">Interrumpir sesión</button>
+                </div>
+                <div id="actionStatus" class="status-note muted">Selecciona una sesión activa para empezar a controlarla.</div>
+              </div>
+
+              <div class="composer">
+                <div class="composer-head">Salida reciente</div>
+                <pre id="activityLog">Sin actividad reciente para la sesión seleccionada.</pre>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -349,6 +436,7 @@ function renderInspectorHtml(): string {
         selectedSessionId: null,
         selectedSnapshot: null,
         events: [],
+        sessionActivity: new Map(),
       }
 
       const els = {
@@ -361,6 +449,11 @@ function renderInspectorHtml(): string {
         sessionCount: document.getElementById('sessionCount'),
         selectedSessionLabel: document.getElementById('selectedSessionLabel'),
         snapshot: document.getElementById('snapshot'),
+        promptInput: document.getElementById('promptInput'),
+        sendPrompt: document.getElementById('sendPrompt'),
+        interruptSession: document.getElementById('interruptSession'),
+        actionStatus: document.getElementById('actionStatus'),
+        activityLog: document.getElementById('activityLog'),
         events: document.getElementById('events'),
         eventCount: document.getElementById('eventCount'),
         reconnect: document.getElementById('reconnect'),
@@ -381,6 +474,98 @@ function renderInspectorHtml(): string {
         })
         state.events = state.events.slice(0, 30)
         renderEvents()
+      }
+
+      function summarizeContentBlock(block) {
+        if (typeof block === 'string') {
+          return block
+        }
+
+        if (!block || typeof block !== 'object') {
+          return ''
+        }
+
+        if (typeof block.text === 'string') {
+          return block.text
+        }
+
+        if (typeof block.type === 'string') {
+          if (block.type === 'thinking') {
+            return '[thinking]'
+          }
+
+          return '[' + block.type + ']'
+        }
+
+        return ''
+      }
+
+      function extractMessageText(message) {
+        if (!message || typeof message !== 'object') {
+          return ''
+        }
+
+        const content = message.message?.content ?? message.content
+        if (typeof content === 'string') {
+          return content
+        }
+
+        if (Array.isArray(content)) {
+          return content
+            .map(summarizeContentBlock)
+            .filter(Boolean)
+            .join('\n')
+            .trim()
+        }
+
+        return ''
+      }
+
+      function ensureSessionActivity(sessionId) {
+        if (!state.sessionActivity.has(sessionId)) {
+          state.sessionActivity.set(sessionId, {
+            delta: '',
+            completed: [],
+            notes: [],
+          })
+        }
+
+        return state.sessionActivity.get(sessionId)
+      }
+
+      function trimActivity(activity) {
+        activity.delta = activity.delta.slice(-4000)
+        activity.completed = activity.completed.slice(-4)
+        activity.notes = activity.notes.slice(-8)
+      }
+
+      function updateSessionActivity(sessionId, event) {
+        const activity = ensureSessionActivity(sessionId)
+
+        if (event.type === 'message_delta') {
+          activity.delta += event.delta
+        } else if (event.type === 'message_completed') {
+          const text = extractMessageText(event.message)
+          activity.completed.push(text || '[mensaje sin texto renderizable]')
+          activity.delta = ''
+        } else if (event.type === 'model_switched') {
+          activity.notes.push('Modelo activo: ' + event.model + (event.reason ? ' · ' + event.reason : ''))
+        } else if (event.type === 'interrupted') {
+          activity.notes.push('La sesión fue interrumpida.')
+        } else if (event.type === 'error') {
+          activity.notes.push('Error: ' + event.error)
+        } else if (event.type === 'task_updated') {
+          activity.notes.push('Task ' + event.task.id + ' → ' + event.task.status)
+        } else if (event.type === 'swarm_updated') {
+          const names = event.swarm?.teammateNames?.join(', ') || 'sin teammates'
+          activity.notes.push('Swarm: ' + names)
+        }
+
+        trimActivity(activity)
+
+        if (sessionId === state.selectedSessionId) {
+          renderActivity()
+        }
       }
 
       function renderSessions() {
@@ -410,6 +595,59 @@ function renderInspectorHtml(): string {
           ? state.selectedSessionId
           : 'Ninguna sesión seleccionada'
         els.snapshot.textContent = JSON.stringify(state.selectedSnapshot ?? {}, null, 2)
+        renderActionState()
+      }
+
+      function renderActionState(message, tone = 'muted') {
+        const hasSession = Boolean(state.selectedSessionId)
+        els.sendPrompt.disabled = !hasSession
+        els.interruptSession.disabled = !hasSession
+        els.promptInput.disabled = !hasSession
+
+        if (message) {
+          els.actionStatus.textContent = message
+          els.actionStatus.className = 'status-note ' + tone
+          return
+        }
+
+        if (!hasSession) {
+          els.actionStatus.textContent = 'Selecciona una sesión activa para empezar a controlarla.'
+          els.actionStatus.className = 'status-note muted'
+          return
+        }
+
+        const snapshot = state.selectedSnapshot
+        const status = snapshot?.status ?? 'desconocido'
+        els.actionStatus.textContent = 'Sesión seleccionada lista. Estado actual: ' + status + '.'
+        els.actionStatus.className = 'status-note muted'
+      }
+
+      function renderActivity() {
+        if (!state.selectedSessionId) {
+          els.activityLog.textContent = 'Sin actividad reciente para la sesión seleccionada.'
+          return
+        }
+
+        const activity = state.sessionActivity.get(state.selectedSessionId)
+        if (!activity) {
+          els.activityLog.textContent = 'Aún no llegaron eventos útiles para esta sesión.'
+          return
+        }
+
+        const blocks = []
+        if (activity.delta) {
+          blocks.push('Streaming actual:\n' + activity.delta)
+        }
+        if (activity.completed.length) {
+          blocks.push('Mensajes completados:\n' + activity.completed.join('\n\n---\n\n'))
+        }
+        if (activity.notes.length) {
+          blocks.push('Notas:\n- ' + activity.notes.join('\n- '))
+        }
+
+        els.activityLog.textContent = blocks.length
+          ? blocks.join('\n\n====\n\n')
+          : 'Aún no llegaron eventos útiles para esta sesión.'
       }
 
       function renderEvents() {
@@ -480,7 +718,19 @@ function renderInspectorHtml(): string {
           throw new Error(response.error)
         }
         state.sessions = response.sessions
+        const selectedExists = state.selectedSessionId
+          && state.sessions.some(session => session.sessionId === state.selectedSessionId)
+        if (!selectedExists) {
+          state.selectedSessionId = state.sessions[0]?.sessionId ?? null
+        }
         renderSessions()
+        if (state.selectedSessionId) {
+          await ensureSelectedSessionSubscription()
+        } else {
+          state.selectedSnapshot = null
+          renderSnapshot()
+          renderActivity()
+        }
       }
 
       async function refreshSelectedSession() {
@@ -500,10 +750,7 @@ function renderInspectorHtml(): string {
         renderSnapshot()
       }
 
-      async function selectSession(sessionId) {
-        state.selectedSessionId = sessionId
-        await refreshSelectedSession()
-
+      async function ensureSelectedSessionSubscription() {
         if (state.sessionSubscriptionId) {
           try {
             await sendRequest('unsubscribe', {
@@ -513,14 +760,76 @@ function renderInspectorHtml(): string {
           state.sessionSubscriptionId = null
         }
 
+        if (!state.selectedSessionId) {
+          state.selectedSnapshot = null
+          renderSnapshot()
+          renderActivity()
+          return
+        }
+
+        await refreshSelectedSession()
         const response = await sendRequest('subscribe_session', {
-          sessionId,
+          sessionId: state.selectedSessionId,
         })
         if (response.ok) {
           state.sessionSubscriptionId = response.subscriptionId
         }
+      }
 
+      async function selectSession(sessionId) {
+        state.selectedSessionId = sessionId
+        await ensureSelectedSessionSubscription()
         renderSessions()
+      }
+
+      async function sendPromptToSession() {
+        if (!state.selectedSessionId) {
+          renderActionState('No hay una sesión seleccionada para enviar el prompt.', 'error')
+          return
+        }
+
+        const text = els.promptInput.value.trim()
+        if (!text) {
+          renderActionState('Escribe un prompt antes de enviarlo.', 'error')
+          return
+        }
+
+        renderActionState('Enviando prompt al runtime...', 'muted')
+        const response = await sendRequest('send_message', {
+          sessionId: state.selectedSessionId,
+          input: { text },
+        })
+
+        if (!response.ok) {
+          throw new Error(response.error)
+        }
+
+        ensureSessionActivity(state.selectedSessionId).notes.push('Prompt enviado desde el inspector.')
+        trimActivity(ensureSessionActivity(state.selectedSessionId))
+        els.promptInput.value = ''
+        renderActionState('Prompt enviado correctamente.', 'muted')
+        renderActivity()
+      }
+
+      async function interruptSelectedSession() {
+        if (!state.selectedSessionId) {
+          renderActionState('No hay una sesión seleccionada para interrumpir.', 'error')
+          return
+        }
+
+        renderActionState('Interrumpiendo sesión...', 'muted')
+        const response = await sendRequest('interrupt', {
+          sessionId: state.selectedSessionId,
+        })
+
+        if (!response.ok) {
+          throw new Error(response.error)
+        }
+
+        ensureSessionActivity(state.selectedSessionId).notes.push('Interrupción enviada desde el inspector.')
+        trimActivity(ensureSessionActivity(state.selectedSessionId))
+        renderActionState('Interrupción enviada correctamente.', 'muted')
+        renderActivity()
       }
 
       function updateRuntimeStatus(config) {
@@ -601,14 +910,21 @@ function renderInspectorHtml(): string {
           if (message.type === 'runtime_bootstrap') {
             state.sessions = message.sessions
             renderSessions()
+            if (!state.selectedSessionId && state.sessions[0]?.sessionId) {
+              state.selectedSessionId = state.sessions[0].sessionId
+              await ensureSelectedSessionSubscription().catch(() => {})
+              renderSessions()
+            }
             addEvent(message.type, 'runtime', 'Recibido bootstrap con ' + message.sessions.length + ' sesiones.')
             return
           }
 
           if (message.type === 'session_bootstrap') {
+            ensureSessionActivity(message.session.sessionId)
             if (message.session.sessionId === state.selectedSessionId) {
               state.selectedSnapshot = message.session
               renderSnapshot()
+              renderActivity()
             }
             addEvent(message.type, message.session.sessionId, 'Snapshot inicial recibido para la sesión seleccionada.')
             return
@@ -624,6 +940,7 @@ function renderInspectorHtml(): string {
           }
 
           if (message.type === 'runtime_session_event') {
+            updateSessionActivity(message.sessionId, message.event)
             addEvent(message.event.type, message.sessionId, JSON.stringify(message.event, null, 2))
             if (message.sessionId === state.selectedSessionId) {
               await refreshSelectedSession().catch(() => {})
@@ -660,6 +977,27 @@ function renderInspectorHtml(): string {
       els.refreshSelected.addEventListener('click', () => {
         refreshSelectedSession().catch(error => {
           addEvent('refresh_session_error', state.selectedSessionId || 'none', error instanceof Error ? error.message : String(error))
+        })
+      })
+
+      els.sendPrompt.addEventListener('click', () => {
+        sendPromptToSession().catch(error => {
+          renderActionState(error instanceof Error ? error.message : String(error), 'error')
+          addEvent('send_prompt_error', state.selectedSessionId || 'none', error instanceof Error ? error.message : String(error))
+        })
+      })
+
+      els.promptInput.addEventListener('keydown', event => {
+        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+          event.preventDefault()
+          els.sendPrompt.click()
+        }
+      })
+
+      els.interruptSession.addEventListener('click', () => {
+        interruptSelectedSession().catch(error => {
+          renderActionState(error instanceof Error ? error.message : String(error), 'error')
+          addEvent('interrupt_error', state.selectedSessionId || 'none', error instanceof Error ? error.message : String(error))
         })
       })
 
