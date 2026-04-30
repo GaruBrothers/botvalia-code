@@ -53,7 +53,8 @@ function buildTeammatePrompt(
     `Eres @${role} dentro del swarm ${teamName}.`,
     collaborationLine,
     roleMission,
-    'Empieza a trabajar de inmediato.',
+    'Empieza a trabajar de inmediato, pero no gastes un turno en saludar o confirmar disponibilidad.',
+    'Si todavia no tienes una tarea concreta, mantente atento al thread y espera instrucciones utiles.',
     'Habla con los demás usando SendMessage cuando necesites coordinar, preguntar o responder.',
     'Da avances parciales breves en vez de esperar hasta el final.',
   ].join(' ')

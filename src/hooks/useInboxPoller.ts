@@ -51,6 +51,7 @@ import {
 import { isInProcessTeammate } from '../utils/teammateContext.js'
 import {
   formatTeammateMessageText,
+  isIdleNotification,
   isModeSetRequest,
   isPermissionRequest,
   isPermissionResponse,
@@ -222,6 +223,7 @@ export function useInboxPoller({
       const regularMessages: TeammateMessage[] = []
 
     for (const m of unread) {
+      const idleNotification = isIdleNotification(m.text)
       const permReq = isPermissionRequest(m.text)
       const permResp = isPermissionResponse(m.text)
       const sandboxReq = isSandboxPermissionRequest(m.text)
@@ -232,7 +234,11 @@ export function useInboxPoller({
       const modeSetReq = isModeSetRequest(m.text)
       const planApprovalReq = isPlanApprovalRequest(m.text)
 
-      if (permReq) {
+      if (idleNotification) {
+        // Idle notifications are coordination metadata. They update team
+        // status silently and should not trigger a leader LLM turn.
+        continue
+      } else if (permReq) {
         permissionRequests.push(m)
       } else if (permResp) {
         permissionResponses.push(m)
