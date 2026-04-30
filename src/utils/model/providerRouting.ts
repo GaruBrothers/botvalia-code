@@ -31,7 +31,7 @@ const OPENROUTER_AUTO_FAST_FALLBACKS = [
   'openrouter::meta-llama/llama-3.2-3b-instruct:free',
   'openrouter::google/gemma-3-4b-it:free',
 ]
-const OPENROUTER_AUTO_COMPLEX_MODEL = 'openrouter::qwen/qwen3.6-plus:free'
+const OPENROUTER_AUTO_COMPLEX_MODEL = 'openrouter::tencent/hy3-preview:free'
 const OPENROUTER_AUTO_COMPLEX_FALLBACKS = [
   'openrouter::tencent/hy3-preview:free',
   'openrouter::openai/gpt-oss-120b:free',

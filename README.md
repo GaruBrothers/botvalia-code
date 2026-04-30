@@ -86,15 +86,15 @@ BotValia now does two extra things to keep free routing alive longer:
 
 Current default primaries are:
 
-- Fast: `openrouter::google/gemma-4-26b-a4b-it:free`
+- Fast: `openrouter::openrouter/free`
 - General: `openrouter::tencent/hy3-preview:free`
-- Code: `openrouter::poolside/laguna-m.1:free`
+- Code: `openrouter::qwen/qwen3-coder:free`
 
 Notable OpenRouter free fallbacks now include:
 
 - Fast: `z-ai/glm-4.5-air:free`, `openai/gpt-oss-20b:free`, `nvidia/nemotron-nano-9b-v2:free`, `nvidia/nemotron-3-nano-30b-a3b:free`, `poolside/laguna-xs.2:free`, `google/gemma-3-12b-it:free`, `meta-llama/llama-3.2-3b-instruct:free`
 - General: `openai/gpt-oss-120b:free`, `minimax/minimax-m2.5:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `inclusionai/ling-2.6-1t:free`, `z-ai/glm-4.5-air:free`, `openrouter/free`
-- Code: `qwen/qwen3-coder:free`, `tencent/hy3-preview:free`, `openai/gpt-oss-120b:free`, `minimax/minimax-m2.5:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `openrouter/free`
+- Code: `poolside/laguna-m.1:free`, `tencent/hy3-preview:free`, `openai/gpt-oss-120b:free`, `minimax/minimax-m2.5:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `openrouter/free`
 
 Current Ollama-first primaries are:
 

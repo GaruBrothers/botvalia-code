@@ -5,7 +5,7 @@ param(
   [string]$AnthropicComplexModel = "anthropic::sonnet",
   [string]$AnthropicCodeModel = "anthropic::sonnet",
   [string]$OpenRouterFastModel = "openrouter::openrouter/free",
-  [string]$OpenRouterComplexModel = "openrouter::qwen/qwen3.6-plus:free",
+  [string]$OpenRouterComplexModel = "openrouter::tencent/hy3-preview:free",
   [string]$OpenRouterCodeModel = "openrouter::qwen/qwen3-coder:free",
   [string]$OllamaFastModel = "ollama::llama3.2:3b",
   [string]$OllamaComplexModel = "ollama::devstral",
