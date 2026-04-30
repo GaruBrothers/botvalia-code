@@ -43,6 +43,9 @@ bun run version
 - `Auto (Ollama)`: same-provider Ollama routing with multiple fallbacks per lane.
 - `Manual`: opens a second list with fixed models ordered by tier (`Pro`, `Medio`, `Fast`).
 - `openrouter/free`: OpenRouter router for free models, not a fixed manual model.
+- `BOTVALIA_OPENROUTER_API_KEYS`: comma-separated OpenRouter key pool for credential/credit failover.
+- `BOTVALIA_OLLAMA_ENDPOINTS`: semicolon/comma-separated endpoint pool using `baseUrl|apiKey`.
+- `BOTVALIA_OLLAMA_BASE_URLS` + `BOTVALIA_OLLAMA_API_KEYS`: alternate indexed pool format for Ollama/LiteLLM-compatible endpoints.
 
 ## Validation
 

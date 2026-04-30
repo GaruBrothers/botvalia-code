@@ -78,6 +78,10 @@ El REPL interactivo ahora usa la misma resolución rica de `routeSpec` y `fallba
 
 Each lane uses **1 primary model + multiple fallbacks**.
 
+For `Medio` and `Pro`, the chain now also ends with `openrouter::openrouter/free`
+as a last-resort free router in case specific free model slugs change or become
+temporarily unavailable.
+
 When both providers are available, default `Auto (All)` chains are:
 
 - Fast: `openrouter::openrouter/free` -> `openrouter::google/gemma-4-26b-a4b-it:free` -> `openrouter::openai/gpt-oss-20b:free` -> `openrouter::z-ai/glm-4.5-air:free` -> `openrouter::nvidia/nemotron-nano-9b-v2:free` -> `ollama::llama3.2:3b` -> `ollama::qwen2.5:3b`
@@ -114,6 +118,18 @@ bun run model:openrouter:set -- -Model "qwen/qwen3.6-plus:free"
 bun run model:openrouter:clear
 ```
 
+To rotate across multiple OpenRouter credentials, you can provide a pool:
+
+```powershell
+$env:BOTVALIA_OPENROUTER_API_KEYS = "sk-or-a...,sk-or-b...,sk-or-c..."
+```
+
+BotValia will automatically rotate that pool on credential/credit failures and
+keep the free route chain moving. Important note: OpenRouter documents that
+extra API keys/accounts do **not** increase their global rate limits, so the
+biggest win from this pool is resilience against `401`/`402` key state issues,
+not bypassing OpenRouter-wide free-tier throttling.
+
 #### Ollama Setup
 
 1. Start Ollama and pull the models you want, for example:
@@ -135,6 +151,22 @@ bun run dev:auto:ollama
 ```bash
 bun run dev:auto
 ```
+
+To use multiple Ollama or LiteLLM-compatible endpoints:
+
+```powershell
+$env:BOTVALIA_OLLAMA_ENDPOINTS = "http://localhost:11434|ollama;http://192.168.1.50:11434|ollama"
+```
+
+You can also use URL/key pools:
+
+```powershell
+$env:BOTVALIA_OLLAMA_BASE_URLS = "http://localhost:11434,http://192.168.1.50:11434"
+$env:BOTVALIA_OLLAMA_API_KEYS = "ollama,ollama"
+```
+
+BotValia will rotate those endpoints on connection and availability failures
+before giving up on the current Ollama route.
 
 `/model` now exposes exactly four top-level options:
 

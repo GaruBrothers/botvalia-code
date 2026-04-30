@@ -14,6 +14,11 @@ export type ProviderRoute = {
   model: string
 }
 
+export type ProviderEndpoint = {
+  baseUrl: string
+  apiKey: string
+}
+
 const ROUTE_SEPARATOR = '::'
 const OPENROUTER_AUTO_FAST_MODEL = 'openrouter::openrouter/free'
 const OPENROUTER_AUTO_FAST_FALLBACKS = [
@@ -28,6 +33,7 @@ const OPENROUTER_AUTO_COMPLEX_FALLBACKS = [
   'openrouter::deepseek/deepseek-r1-0528:free',
   'openrouter::minimax/minimax-m2.5:free',
   'openrouter::nvidia/nemotron-3-super-120b-a12b:free',
+  'openrouter::openrouter/free',
 ]
 const OPENROUTER_AUTO_CODE_MODEL = 'openrouter::qwen/qwen3-coder:free'
 const OPENROUTER_AUTO_CODE_FALLBACKS = [
@@ -35,6 +41,7 @@ const OPENROUTER_AUTO_CODE_FALLBACKS = [
   'openrouter::qwen/qwen3.6-plus:free',
   'openrouter::openai/gpt-oss-120b:free',
   'openrouter::google/gemma-4-31b-it:free',
+  'openrouter::openrouter/free',
 ]
 const OLLAMA_AUTO_FAST_MODEL = 'ollama::llama3.2:3b'
 const OLLAMA_AUTO_FAST_FALLBACKS = [
@@ -83,6 +90,21 @@ function firstNonEmpty(...values: Array<string | undefined>): string | undefined
     }
   }
   return undefined
+}
+
+function splitPoolValues(raw: string | undefined): string[] {
+  if (!raw || !raw.trim()) {
+    return []
+  }
+
+  return raw
+    .split(/,|\n|\r\n|;/)
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)))
 }
 
 function applyEnvValue(key: string, value: string | undefined): void {
@@ -189,25 +211,56 @@ function getOpenRouterBaseUrl(): string {
   )
 }
 
-function getOpenRouterAuthToken(): string | undefined {
-  const poolRaw = firstNonEmpty(
-    process.env.BOTVALIA_OPENROUTER_API_KEYS,
-    process.env.OPENROUTER_API_KEYS,
+export function getOpenRouterAuthTokenPool(): string[] {
+  const pooledTokens = dedupeStrings(
+    splitPoolValues(
+      firstNonEmpty(
+        process.env.BOTVALIA_OPENROUTER_API_KEYS,
+        process.env.OPENROUTER_API_KEYS,
+      ),
+    ),
   )
-  if (poolRaw) {
-    const firstToken = poolRaw
-      .split(/,|\n|\r\n|;/)
-      .map(item => item.trim())
-      .find(Boolean)
-    if (firstToken) {
-      return firstToken
-    }
-  }
-  return firstNonEmpty(
+
+  const singleToken = firstNonEmpty(
     process.env.OPENROUTER_API_KEY,
     process.env.BOTVALIA_OPENROUTER_API_KEY,
-    process.env.ANTHROPIC_AUTH_TOKEN,
   )
+
+  const activeOpenRouterToken =
+    process.env.BOTVALIA_ACTIVE_PROVIDER === 'openrouter'
+      ? firstNonEmpty(process.env.ANTHROPIC_AUTH_TOKEN)
+      : undefined
+
+  return dedupeStrings([
+    ...pooledTokens,
+    ...(singleToken ? [singleToken] : []),
+    ...(activeOpenRouterToken ? [activeOpenRouterToken] : []),
+  ])
+}
+
+export function rotateOpenRouterAuthToken(current: string | undefined): {
+  rotated: boolean
+  next?: string
+} {
+  const pool = getOpenRouterAuthTokenPool()
+  if (pool.length <= 1) {
+    return { rotated: false }
+  }
+
+  const normalizedCurrent = (current || '').trim()
+  const currentIdx = normalizedCurrent ? pool.indexOf(normalizedCurrent) : -1
+  const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % pool.length : 0
+  const next = pool[nextIdx]
+  if (!next || next === normalizedCurrent) {
+    return { rotated: false }
+  }
+
+  process.env.ANTHROPIC_AUTH_TOKEN = next
+  return { rotated: true, next }
+}
+
+function getOpenRouterAuthToken(): string | undefined {
+  return getOpenRouterAuthTokenPool()[0]
 }
 
 function getAnthropicBaseUrl(): string | undefined {
@@ -229,25 +282,146 @@ function getAnthropicAuthToken(): string | undefined {
 }
 
 function getOllamaBaseUrl(): string {
-  return (
-    firstNonEmpty(
-      process.env.BOTVALIA_OLLAMA_BASE_URL,
-      process.env.OLLAMA_BASE_URL,
-      process.env.BOTVALIA_LITELLM_BASE_URL,
-      process.env.LITELLM_BASE_URL,
-    ) || 'http://localhost:11434'
-  )
+  return getOllamaEndpointPool()[0]?.baseUrl ?? 'http://localhost:11434'
 }
 
 function getOllamaApiKey(): string {
-  return (
-    firstNonEmpty(
-      process.env.BOTVALIA_OLLAMA_API_KEY,
-      process.env.OLLAMA_API_KEY,
-      process.env.BOTVALIA_LITELLM_API_KEY,
-      process.env.LITELLM_API_KEY,
-      process.env.ANTHROPIC_API_KEY,
-    ) || 'sk-local'
+  return getOllamaEndpointPool()[0]?.apiKey ?? 'sk-local'
+}
+
+function normalizeEndpointBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim()
+  return trimmed.replace(/\/+$/, '')
+}
+
+function createEndpoint(baseUrl: string, apiKey: string | undefined): ProviderEndpoint {
+  return {
+    baseUrl: normalizeEndpointBaseUrl(baseUrl),
+    apiKey: apiKey?.trim() || 'sk-local',
+  }
+}
+
+function parseEndpointPool(raw: string | undefined): ProviderEndpoint[] {
+  return splitPoolValues(raw)
+    .map(item => {
+      const [baseUrlPart, apiKeyPart] = item.split('|')
+      if (!baseUrlPart?.trim()) {
+        return undefined
+      }
+      return createEndpoint(baseUrlPart, apiKeyPart)
+    })
+    .filter((endpoint): endpoint is ProviderEndpoint => Boolean(endpoint))
+}
+
+export function getOllamaEndpointPool(): ProviderEndpoint[] {
+  const explicitEndpoints = [
+    ...parseEndpointPool(process.env.BOTVALIA_OLLAMA_ENDPOINTS),
+    ...parseEndpointPool(process.env.OLLAMA_ENDPOINTS),
+    ...parseEndpointPool(process.env.BOTVALIA_LITELLM_ENDPOINTS),
+    ...parseEndpointPool(process.env.LITELLM_ENDPOINTS),
+  ]
+
+  const baseUrls = dedupeStrings([
+    ...splitPoolValues(process.env.BOTVALIA_OLLAMA_BASE_URLS),
+    ...splitPoolValues(process.env.OLLAMA_BASE_URLS),
+    ...splitPoolValues(process.env.BOTVALIA_LITELLM_BASE_URLS),
+    ...splitPoolValues(process.env.LITELLM_BASE_URLS),
+  ])
+  const apiKeys = [
+    ...splitPoolValues(process.env.BOTVALIA_OLLAMA_API_KEYS),
+    ...splitPoolValues(process.env.OLLAMA_API_KEYS),
+    ...splitPoolValues(process.env.BOTVALIA_LITELLM_API_KEYS),
+    ...splitPoolValues(process.env.LITELLM_API_KEYS),
+  ]
+
+  const indexedEndpoints = baseUrls.map((baseUrl, index) =>
+    createEndpoint(
+      baseUrl,
+      apiKeys[index] ||
+        firstNonEmpty(
+          process.env.BOTVALIA_OLLAMA_API_KEY,
+          process.env.OLLAMA_API_KEY,
+          process.env.BOTVALIA_LITELLM_API_KEY,
+          process.env.LITELLM_API_KEY,
+          process.env.ANTHROPIC_API_KEY,
+        ),
+    ),
+  )
+
+  const fallbackBaseUrl = firstNonEmpty(
+    process.env.BOTVALIA_OLLAMA_BASE_URL,
+    process.env.OLLAMA_BASE_URL,
+    process.env.BOTVALIA_LITELLM_BASE_URL,
+    process.env.LITELLM_BASE_URL,
+  )
+  const fallbackApiKey = firstNonEmpty(
+    process.env.BOTVALIA_OLLAMA_API_KEY,
+    process.env.OLLAMA_API_KEY,
+    process.env.BOTVALIA_LITELLM_API_KEY,
+    process.env.LITELLM_API_KEY,
+    process.env.ANTHROPIC_API_KEY,
+  )
+
+  const fallbackEndpoint = fallbackBaseUrl
+    ? [createEndpoint(fallbackBaseUrl, fallbackApiKey)]
+    : [createEndpoint('http://localhost:11434', fallbackApiKey)]
+
+  const deduped = new Map<string, ProviderEndpoint>()
+  for (const endpoint of [
+    ...explicitEndpoints,
+    ...indexedEndpoints,
+    ...fallbackEndpoint,
+  ]) {
+    deduped.set(`${endpoint.baseUrl}|${endpoint.apiKey}`, endpoint)
+  }
+
+  return Array.from(deduped.values())
+}
+
+export function rotateOllamaEndpoint(currentBaseUrl: string | undefined): {
+  rotated: boolean
+  next?: ProviderEndpoint
+} {
+  const pool = getOllamaEndpointPool()
+  if (pool.length <= 1) {
+    return { rotated: false }
+  }
+
+  const normalizedCurrent = currentBaseUrl
+    ? normalizeEndpointBaseUrl(currentBaseUrl)
+    : ''
+  const currentIdx = normalizedCurrent
+    ? pool.findIndex(endpoint => endpoint.baseUrl === normalizedCurrent)
+    : -1
+  const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % pool.length : 0
+  const next = pool[nextIdx]
+  if (!next || next.baseUrl === normalizedCurrent) {
+    return { rotated: false }
+  }
+
+  process.env.BOTVALIA_OLLAMA_BASE_URL = next.baseUrl
+  process.env.OLLAMA_BASE_URL = next.baseUrl
+  process.env.BOTVALIA_LITELLM_BASE_URL = next.baseUrl
+  process.env.LITELLM_BASE_URL = next.baseUrl
+  process.env.BOTVALIA_OLLAMA_API_KEY = next.apiKey
+  process.env.OLLAMA_API_KEY = next.apiKey
+  process.env.BOTVALIA_LITELLM_API_KEY = next.apiKey
+  process.env.LITELLM_API_KEY = next.apiKey
+  process.env.ANTHROPIC_BASE_URL = next.baseUrl
+  process.env.ANTHROPIC_API_KEY = next.apiKey
+  process.env.ANTHROPIC_AUTH_TOKEN = ''
+
+  return { rotated: true, next }
+}
+
+export function isOllamaBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) {
+    return false
+  }
+
+  const normalized = normalizeEndpointBaseUrl(baseUrl)
+  return getOllamaEndpointPool().some(
+    endpoint => endpoint.baseUrl === normalized,
   )
 }
 
@@ -256,7 +430,7 @@ function hasOpenRouterConfigured(): boolean {
     return isEnvTruthy(process.env.BOTVALIA_OPENROUTER_AVAILABLE)
   }
 
-  return Boolean(getOpenRouterAuthToken())
+  return getOpenRouterAuthTokenPool().length > 0
 }
 
 function hasOllamaConfigured(): boolean {
@@ -266,6 +440,14 @@ function hasOllamaConfigured(): boolean {
 
   return Boolean(
     firstNonEmpty(
+      process.env.BOTVALIA_OLLAMA_ENDPOINTS,
+      process.env.OLLAMA_ENDPOINTS,
+      process.env.BOTVALIA_LITELLM_ENDPOINTS,
+      process.env.LITELLM_ENDPOINTS,
+      process.env.BOTVALIA_OLLAMA_BASE_URLS,
+      process.env.OLLAMA_BASE_URLS,
+      process.env.BOTVALIA_LITELLM_BASE_URLS,
+      process.env.LITELLM_BASE_URLS,
       process.env.BOTVALIA_OLLAMA_BASE_URL,
       process.env.OLLAMA_BASE_URL,
       process.env.BOTVALIA_LITELLM_BASE_URL,

@@ -137,6 +137,80 @@ function Get-FirstSplitValue {
   return ""
 }
 
+function Get-OllamaEndpointSpecs {
+  $specs = New-Object System.Collections.Generic.List[object]
+
+  $rawEndpointPools = @(
+    $env:BOTVALIA_OLLAMA_ENDPOINTS,
+    $env:OLLAMA_ENDPOINTS,
+    $env:BOTVALIA_LITELLM_ENDPOINTS,
+    $env:LITELLM_ENDPOINTS
+  )
+
+  foreach ($rawPool in $rawEndpointPools) {
+    foreach ($entry in @(Split-RouteValues -Raw $rawPool)) {
+      $parts = $entry -split '\|', 2
+      $baseUrl = $parts[0].Trim()
+      if ([string]::IsNullOrWhiteSpace($baseUrl)) {
+        continue
+      }
+      $apiKey = if ($parts.Length -gt 1 -and -not [string]::IsNullOrWhiteSpace($parts[1])) {
+        $parts[1].Trim()
+      } else {
+        First-NonEmpty @($OllamaApiKey, $env:BOTVALIA_OLLAMA_API_KEY, $env:OLLAMA_API_KEY, $env:BOTVALIA_LITELLM_API_KEY, $env:LITELLM_API_KEY, "sk-local")
+      }
+      $specs.Add([pscustomobject]@{
+        BaseUrl = $baseUrl.TrimEnd('/')
+        ApiKey = $apiKey
+      })
+    }
+  }
+
+  $baseUrls = @(
+    @(Split-RouteValues -Raw $env:BOTVALIA_OLLAMA_BASE_URLS) +
+    @(Split-RouteValues -Raw $env:OLLAMA_BASE_URLS) +
+    @(Split-RouteValues -Raw $env:BOTVALIA_LITELLM_BASE_URLS) +
+    @(Split-RouteValues -Raw $env:LITELLM_BASE_URLS)
+  ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+  $apiKeys = @(
+    @(Split-RouteValues -Raw $env:BOTVALIA_OLLAMA_API_KEYS) +
+    @(Split-RouteValues -Raw $env:OLLAMA_API_KEYS) +
+    @(Split-RouteValues -Raw $env:BOTVALIA_LITELLM_API_KEYS) +
+    @(Split-RouteValues -Raw $env:LITELLM_API_KEYS)
+  )
+
+  for ($i = 0; $i -lt $baseUrls.Count; $i++) {
+    $specs.Add([pscustomobject]@{
+      BaseUrl = $baseUrls[$i].TrimEnd('/')
+      ApiKey = if ($i -lt $apiKeys.Count -and -not [string]::IsNullOrWhiteSpace($apiKeys[$i])) {
+        $apiKeys[$i].Trim()
+      } else {
+        First-NonEmpty @($OllamaApiKey, $env:BOTVALIA_OLLAMA_API_KEY, $env:OLLAMA_API_KEY, $env:BOTVALIA_LITELLM_API_KEY, $env:LITELLM_API_KEY, "sk-local")
+      }
+    })
+  }
+
+  $fallbackBaseUrl = First-NonEmpty @($OllamaBaseUrl, $env:BOTVALIA_OLLAMA_BASE_URL, $env:OLLAMA_BASE_URL, $env:BOTVALIA_LITELLM_BASE_URL, $env:LITELLM_BASE_URL, "http://localhost:11434")
+  $fallbackApiKey = First-NonEmpty @($OllamaApiKey, $env:BOTVALIA_OLLAMA_API_KEY, $env:OLLAMA_API_KEY, $env:BOTVALIA_LITELLM_API_KEY, $env:LITELLM_API_KEY, "sk-local")
+  $specs.Add([pscustomobject]@{
+    BaseUrl = $fallbackBaseUrl.TrimEnd('/')
+    ApiKey = $fallbackApiKey
+  })
+
+  $seen = @{}
+  $deduped = New-Object System.Collections.Generic.List[object]
+  foreach ($spec in $specs) {
+    $key = "$($spec.BaseUrl)|$($spec.ApiKey)"
+    if (-not $seen.ContainsKey($key)) {
+      $seen[$key] = $true
+      $deduped.Add($spec)
+    }
+  }
+
+  return @($deduped.ToArray())
+}
+
 function Get-RouteProvider {
   param([string]$Route)
 
@@ -210,6 +284,7 @@ function Get-OpenRouterTierRoutes {
         "deepseek/deepseek-r1-0528:free"
         "minimax/minimax-m2.5:free"
         "nvidia/nemotron-3-super-120b-a12b:free"
+        "openrouter/free"
       )
     }
     default {
@@ -218,6 +293,7 @@ function Get-OpenRouterTierRoutes {
         "qwen/qwen3.6-plus:free"
         "openai/gpt-oss-120b:free"
         "google/gemma-4-31b-it:free"
+        "openrouter/free"
       )
     }
   }
@@ -330,6 +406,7 @@ function Get-AllTierRoutes {
           "openrouter::deepseek/deepseek-r1-0528:free"
           "openrouter::minimax/minimax-m2.5:free"
           "openrouter::nvidia/nemotron-3-super-120b-a12b:free"
+          "openrouter::openrouter/free"
           $OllamaComplexModel
           "ollama::gpt-oss:20b"
         )
@@ -341,6 +418,7 @@ function Get-AllTierRoutes {
           "openrouter::qwen/qwen3.6-plus:free"
           "openrouter::openai/gpt-oss-120b:free"
           "openrouter::google/gemma-4-31b-it:free"
+          "openrouter::openrouter/free"
           $OllamaCodeModel
           "ollama::qwen2.5-coder:7b"
         )
@@ -433,15 +511,32 @@ if (-not [string]::IsNullOrWhiteSpace($env:OPENROUTER_API_KEYS) -and [string]::I
 if (-not [string]::IsNullOrWhiteSpace($env:OPENROUTER_API_KEY) -and [string]::IsNullOrWhiteSpace($env:BOTVALIA_OPENROUTER_API_KEY)) {
   $env:BOTVALIA_OPENROUTER_API_KEY = $env:OPENROUTER_API_KEY
 }
+$ollamaEndpointSpecs = @(Get-OllamaEndpointSpecs)
+$primaryOllamaEndpoint = if ($ollamaEndpointSpecs.Count -gt 0) { $ollamaEndpointSpecs[0] } else { $null }
 
-$resolvedOllamaBaseUrl = First-NonEmpty @($OllamaBaseUrl, $env:BOTVALIA_OLLAMA_BASE_URL, $env:OLLAMA_BASE_URL, $env:BOTVALIA_LITELLM_BASE_URL, $env:LITELLM_BASE_URL, "http://localhost:11434")
-$resolvedOllamaApiKey = First-NonEmpty @($OllamaApiKey, $env:BOTVALIA_OLLAMA_API_KEY, $env:OLLAMA_API_KEY, $env:BOTVALIA_LITELLM_API_KEY, $env:LITELLM_API_KEY, "sk-local")
+$resolvedOllamaBaseUrl = if ($primaryOllamaEndpoint) { $primaryOllamaEndpoint.BaseUrl } else { "http://localhost:11434" }
+$resolvedOllamaApiKey = if ($primaryOllamaEndpoint) { $primaryOllamaEndpoint.ApiKey } else { "sk-local" }
 $env:BOTVALIA_OLLAMA_BASE_URL = $resolvedOllamaBaseUrl
 $env:BOTVALIA_OLLAMA_API_KEY = $resolvedOllamaApiKey
 
 $hasAnthropic = -not [string]::IsNullOrWhiteSpace((First-NonEmpty @($env:BOTVALIA_ANTHROPIC_API_KEY, $env:BOTVALIA_ANTHROPIC_AUTH_TOKEN)))
 $hasOpenRouter = -not [string]::IsNullOrWhiteSpace((First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEYS, $env:BOTVALIA_OPENROUTER_API_KEY, $env:OPENROUTER_API_KEYS, $env:OPENROUTER_API_KEY)))
-$hasOllama = Test-TcpEndpoint -Url $resolvedOllamaBaseUrl
+$hasOllama = $false
+foreach ($endpointSpec in $ollamaEndpointSpecs) {
+  if (Test-TcpEndpoint -Url $endpointSpec.BaseUrl) {
+    $hasOllama = $true
+    $resolvedOllamaBaseUrl = $endpointSpec.BaseUrl
+    $resolvedOllamaApiKey = $endpointSpec.ApiKey
+    $env:BOTVALIA_OLLAMA_BASE_URL = $resolvedOllamaBaseUrl
+    $env:BOTVALIA_OLLAMA_API_KEY = $resolvedOllamaApiKey
+    break
+  }
+}
+$openRouterKeyPoolCount = @(
+  @(Split-RouteValues -Raw (First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEYS, $env:OPENROUTER_API_KEYS))) +
+  @((First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEY, $env:OPENROUTER_API_KEY)) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+) | Select-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count
+$ollamaEndpointCount = $ollamaEndpointSpecs.Count
 
 $fastRoutes = @()
 $complexRoutes = @()
@@ -563,6 +658,8 @@ Write-Host "[botvalia auto] CODE_CHAIN=$(Format-RouteChain -Routes $codeRoutes)"
 Write-Host "[botvalia auto] BOOTSTRAP=$bootstrapRoute"
 Write-Host "[botvalia auto] BOOTSTRAP_PROVIDER=$bootstrapProvider"
 Write-Host "[botvalia auto] PROVIDERS_AVAILABLE=anthropic:$hasAnthropic openrouter:$hasOpenRouter ollama:$hasOllama"
+Write-Host "[botvalia auto] OPENROUTER_KEY_POOL_COUNT=$openRouterKeyPoolCount"
+Write-Host "[botvalia auto] OLLAMA_ENDPOINT_COUNT=$ollamaEndpointCount"
 Write-Host "[botvalia auto] ANTHROPIC_EXCLUDED_FROM_AUTO=$anthropicExcludedFromAuto"
 Write-Host "[botvalia auto] AUTO_ALL_CHAIN_ENRICHED=$isAutoAllPreset"
 Write-Host "[botvalia auto] AUTO_OPENROUTER_CHAIN_ENRICHED=$isOpenRouterAutoPreset"

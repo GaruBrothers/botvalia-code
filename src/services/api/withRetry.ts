@@ -32,7 +32,13 @@ import {
   triggerFastModeCooldown,
 } from '../../utils/fastMode.js'
 import { isNonCustomOpusModel } from '../../utils/model/model.js'
-import { isProviderRouteSpec } from '../../utils/model/providerRouting.js'
+import {
+  getOpenRouterAuthTokenPool,
+  isOllamaBaseUrl,
+  isProviderRouteSpec,
+  rotateOllamaEndpoint,
+  rotateOpenRouterAuthToken,
+} from '../../utils/model/providerRouting.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
@@ -84,50 +90,6 @@ function isOpenRouterBaseUrl(): boolean {
 
 function hasMultiProviderFallback(fallbackModel: string | undefined): boolean {
   return Boolean(fallbackModel && isProviderRouteSpec(fallbackModel))
-}
-
-function getOpenRouterAuthTokenPool(): string[] {
-  const raw =
-    process.env.BOTVALIA_OPENROUTER_API_KEYS || process.env.OPENROUTER_API_KEYS
-  const candidates: string[] = []
-  if (raw && raw.trim()) {
-    candidates.push(
-      ...raw
-        .split(/,|\n|\r\n|;/)
-        .map(s => s.trim())
-        .filter(Boolean),
-    )
-  }
-  if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim()) {
-    candidates.push(process.env.OPENROUTER_API_KEY.trim())
-  }
-  if (
-    process.env.ANTHROPIC_AUTH_TOKEN &&
-    process.env.ANTHROPIC_AUTH_TOKEN.trim()
-  ) {
-    candidates.push(process.env.ANTHROPIC_AUTH_TOKEN.trim())
-  }
-  return Array.from(new Set(candidates))
-}
-
-function rotateOpenRouterAuthToken(current: string | undefined): {
-  rotated: boolean
-  next?: string
-} {
-  const pool = getOpenRouterAuthTokenPool()
-  if (pool.length <= 1) {
-    return { rotated: false }
-  }
-
-  const normalizedCurrent = (current || '').trim()
-  const currentIdx = normalizedCurrent ? pool.indexOf(normalizedCurrent) : -1
-  const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % pool.length : 0
-  const next = pool[nextIdx]
-  if (!next || next === normalizedCurrent) {
-    return { rotated: false }
-  }
-  process.env.ANTHROPIC_AUTH_TOKEN = next
-  return { rotated: true, next }
 }
 
 // Foreground query sources where the user IS blocking on the result — these
@@ -398,12 +360,15 @@ export async function* withRetry<T>(
         continue
       }
 
-      // OpenRouter BYOK fallback: if we have multiple tokens, rotate on 401/429
-      // and retry immediately with a fresh client.
+      // OpenRouter BYOK fallback: if we have multiple tokens, rotate on auth,
+      // credit, or rate-limit failures and retry immediately with a fresh
+      // client. Note: OpenRouter documents that extra keys/accounts do not
+      // raise global rate limits, so 429 rotation is best-effort only; 402/401
+      // are the high-value cases.
       if (
         isOpenRouterBaseUrl() &&
         error instanceof APIError &&
-        (error.status === 401 || error.status === 429) &&
+        (error.status === 401 || error.status === 402 || error.status === 429) &&
         openRouterTokenRotations < getOpenRouterAuthTokenPool().length - 1
       ) {
         const current = process.env.ANTHROPIC_AUTH_TOKEN
@@ -423,6 +388,34 @@ export async function* withRetry<T>(
           continue
         } else if (next) {
           // unreachable (rotate returns rotated when next is different), but keep for clarity
+        }
+      }
+
+      // Ollama/LiteLLM endpoint fallback: if we have a pool of compatible
+      // endpoints, rotate to the next one before switching models/providers.
+      const currentBaseUrl = process.env.ANTHROPIC_BASE_URL
+      if (
+        currentBaseUrl &&
+        isOllamaBaseUrl(currentBaseUrl) &&
+        ((error instanceof APIConnectionError) ||
+          (error instanceof APIError &&
+            [401, 404, 408, 429, 500, 502, 503].includes(error.status)))
+      ) {
+        const { rotated, next } = rotateOllamaEndpoint(currentBaseUrl)
+        if (rotated) {
+          client = null
+          logForDebugging(
+            `[OllamaPool] Rotated endpoint to ${next?.baseUrl ?? 'unknown'}`,
+            { level: 'warn' },
+          )
+          logEvent('tengu_ollama_endpoint_rotated', {
+            model: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            reason:
+              error instanceof APIError
+                ? (`http_${error.status}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
+                : ('connection_error' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS),
+          })
+          continue
         }
       }
 
