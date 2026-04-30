@@ -103,6 +103,7 @@ import {
   buildSystemInitMessage,
   sdkCompatToolName,
 } from './utils/messages/systemInit.js'
+import type { SessionRuntime } from './runtime/sessionRuntime.js'
 import {
   getScratchpadDir,
   isScratchpadEnabled,
@@ -1317,6 +1318,7 @@ export async function* ask({
   agents = [],
   setSDKStatus,
   orphanedPermission,
+  runtime,
 }: {
   commands: Command[]
   prompt: string | Array<ContentBlockParam>
@@ -1348,6 +1350,7 @@ export async function* ask({
   agents?: AgentDefinition[]
   setSDKStatus?: (status: SDKStatus) => void
   orphanedPermission?: OrphanedPermission
+  runtime?: SessionRuntime
 }): AsyncGenerator<SDKMessage, void, unknown> {
   const engine = new QueryEngine({
     cwd,
@@ -1390,8 +1393,11 @@ export async function* ask({
     engine,
     cwd,
     getAppState,
+    runtime,
   })
-  const unregisterRuntime = registerRuntime(runtimeController.runtime)
+  const unregisterRuntime = runtime
+    ? () => {}
+    : registerRuntime(runtimeController.runtime)
 
   try {
     yield* runtimeController.runPrompt({

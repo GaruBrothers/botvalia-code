@@ -12,6 +12,7 @@ type QueryEngineSessionRuntimeConfig = {
   engine: QueryEngine
   cwd: string
   getAppState: () => AppState
+  runtime?: SessionRuntime
 }
 
 export type QueryEngineSessionRuntimeController = {
@@ -173,6 +174,7 @@ export function createQueryEngineSessionRuntimeController({
   engine,
   cwd,
   getAppState,
+  runtime: providedRuntime,
 }: QueryEngineSessionRuntimeConfig): QueryEngineSessionRuntimeController {
   let runtime: SessionRuntime
 
@@ -205,15 +207,17 @@ export function createQueryEngineSessionRuntimeController({
     }
   }
 
-  runtime = new SessionRuntime({
-    sessionId: engine.getSessionId(),
-    cwd,
-    getAppState,
-    getMessages: () => engine.getMessages(),
-    submitMessage,
-    interrupt: () => engine.interrupt(),
-    initialStatus: 'idle',
-  })
+  runtime =
+    providedRuntime ??
+    new SessionRuntime({
+      sessionId: engine.getSessionId(),
+      cwd,
+      getAppState,
+      getMessages: () => engine.getMessages(),
+      submitMessage,
+      interrupt: () => engine.interrupt(),
+      initialStatus: 'idle',
+    })
 
   runtime.emitSwarmUpdated()
   runtime.refreshSnapshot()

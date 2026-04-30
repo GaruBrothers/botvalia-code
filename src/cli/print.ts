@@ -358,6 +358,8 @@ import { initializeGrowthBook } from '../services/analytics/growthbook.js'
 import { errorMessage, toError } from '../utils/errors.js'
 import { sleep } from '../utils/sleep.js'
 import { isExtractModeActive } from '../memdir/paths.js'
+import { SessionRuntime } from '../runtime/sessionRuntime.js'
+import { registerRuntime } from '../runtime/runtimeRegistry.js'
 
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1158,6 +1160,37 @@ function runHeadlessStreaming(
   // include Assistant, User, Attachment, and Progress messages.
   // TODO: Clean up this code to avoid passing around a mutable array.
   const mutableMessages: Message[] = initialMessages
+
+  const replSessionRuntime = new SessionRuntime({
+    sessionId: getSessionId(),
+    cwd: cwd(),
+    getAppState,
+    getMessages: () => mutableMessages,
+    submitMessage: async input => {
+      const promptUuid = input.uuid ?? randomUUID()
+      enqueue({
+        mode: 'prompt',
+        value: input.text,
+        uuid: promptUuid,
+        isMeta: input.isMeta,
+        priority: 'next',
+      })
+
+      while (running || hasCommandsInQueue()) {
+        await sleep(50)
+      }
+    },
+    interrupt: () => {
+      abortController?.abort('interrupt')
+    },
+    initialStatus: 'idle',
+  })
+  replSessionRuntime.emitSwarmUpdated()
+  replSessionRuntime.refreshSnapshot()
+  const unregisterReplSessionRuntime = registerRuntime(replSessionRuntime)
+  registerCleanup(async () => {
+    unregisterReplSessionRuntime()
+  })
 
   // Seed the readFileState cache from the transcript (content the model saw,
   // with message timestamps) so getChangedFiles can detect external edits.
@@ -2208,6 +2241,7 @@ function runHeadlessStreaming(
                 ),
               agents: currentAgents,
               orphanedPermission: cmd.orphanedPermission,
+              runtime: replSessionRuntime,
               setSDKStatus: status => {
                 output.enqueue({
                   type: 'system',
@@ -2467,6 +2501,7 @@ function runHeadlessStreaming(
       runPhase = 'finally_post_flush'
       if (!isShuttingDown()) {
         notifySessionStateChanged('idle')
+        replSessionRuntime.setStatus('idle')
         // Drain so the idle session_state_changed SDK event (plus any
         // terminal task_notification bookends emitted during bg-agent
         // teardown) reach the output stream before we block on the next
