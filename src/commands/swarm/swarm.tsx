@@ -1,27 +1,195 @@
 import React from 'react'
 import { SwarmDialog } from '../../components/swarm/SwarmDialog.js'
+import { spawnTeammate } from '../../tools/shared/spawnMultiAgent.js'
+import { TeamCreateTool } from '../../tools/TeamCreateTool/TeamCreateTool.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
+import { TEAM_LEAD_NAME } from '../../utils/swarm/constants.js'
+import {
+  createTeamConversationEvent,
+  getTeamConversationEventSummary,
+} from '../../utils/swarm/teamConversationEvents.js'
+import { writeToMailbox } from '../../utils/teammateMailbox.js'
 
-function buildSwarmCreatePrompt(teamName: string, roles: string[]): string {
-  const normalizedRoles = roles.length > 0 ? roles : ['planner', 'coder', 'qa']
-  const roleList = normalizedRoles.join(', ')
+function shortId(value: string): string {
+  return value.slice(0, 8)
+}
+
+function normalizeRoles(roles: string[]): string[] {
+  const requestedRoles = roles.length > 0 ? roles : ['planner', 'coder', 'qa']
+  const uniqueRoles = new Set<string>()
+
+  for (const role of requestedRoles) {
+    const trimmed = role.trim().toLowerCase()
+    if (!trimmed || trimmed === TEAM_LEAD_NAME.toLowerCase()) {
+      continue
+    }
+    uniqueRoles.add(trimmed)
+  }
+
+  const normalized = Array.from(uniqueRoles)
+  return normalized.length > 0 ? normalized : ['planner', 'coder', 'qa']
+}
+
+function buildTeammatePrompt(
+  teamName: string,
+  role: string,
+  peers: string[],
+): string {
+  const peerMentions = peers.map(peer => `@${peer}`).join(', ')
+  const collaborationLine = peers.length
+    ? `Tus peers directos son ${peerMentions}.`
+    : 'Trabaja coordinado con el team lead.'
+
+  const roleMission =
+    role === 'planner'
+      ? 'Tu foco es ordenar el trabajo, detectar bloqueos y pedir avances parciales.'
+      : role === 'coder'
+        ? 'Tu foco es la implementación técnica y desbloquear el trabajo práctico.'
+        : role === 'qa'
+          ? 'Tu foco es validar, buscar edge cases y confirmar calidad.'
+          : `Tu foco es cumplir el rol ${role} y colaborar activamente.`
 
   return [
-    `Crea un swarm llamado ${teamName} con ${normalizedRoles.length} teammates: ${roleList}.`,
-    'Usa el runtime real de team en esta sesión.',
-    'Empieza usando TeamCreate ahora; no investigues el codebase antes de crear el team.',
-    'Después lanza los teammates con el Agent tool usando team_name y name.',
-    'Si es posible, prioriza same-process o in-process para que los wakeups sean inmediatos.',
-    'Haz que se hablen entre sí mientras trabajan, no solo al final.',
-    'Abre al menos un thread compartido entre dos agentes apenas arranquen.',
-    'Dame una confirmación corta cuando el swarm ya esté activo y listo para abrir /swarm.',
+    `Eres @${role} dentro del swarm ${teamName}.`,
+    collaborationLine,
+    roleMission,
+    'Empieza a trabajar de inmediato.',
+    'Habla con los demás usando SendMessage cuando necesites coordinar, preguntar o responder.',
+    'Da avances parciales breves en vez de esperar hasta el final.',
   ].join(' ')
+}
+
+async function openKickoffThread(
+  teamName: string,
+  first: string,
+  second: string,
+): Promise<string> {
+  const topic = `Kickoff ${teamName}`
+  const firstEvent = createTeamConversationEvent({
+    from: TEAM_LEAD_NAME,
+    to: first,
+    kind: 'task',
+    body: `Coordínate con @${second}. Arranquen el swarm, compartan avances parciales y avisen bloqueos temprano.`,
+    topic,
+    priority: 'high',
+    requires_response: true,
+    metadata: {
+      initiated_via: 'swarm-command',
+    },
+  })
+
+  const secondEvent = createTeamConversationEvent({
+    from: TEAM_LEAD_NAME,
+    to: second,
+    kind: 'handoff',
+    body: `Coordínate con @${first}. Arranquen el swarm, compartan avances parciales y avisen bloqueos temprano.`,
+    topic,
+    thread_id: firstEvent.thread_id,
+    reply_to: firstEvent.event_id,
+    priority: 'high',
+    requires_response: true,
+    metadata: {
+      initiated_via: 'swarm-command',
+    },
+  })
+
+  for (const event of [firstEvent, secondEvent]) {
+    await writeToMailbox(
+      event.to,
+      {
+        from: event.from,
+        event,
+        summary: getTeamConversationEventSummary(event),
+        timestamp: new Date().toISOString(),
+      },
+      teamName,
+    )
+  }
+
+  return firstEvent.thread_id
+}
+
+async function createSwarmRuntime(
+  context: Parameters<LocalJSXCommandCall>[1],
+  requestedTeamName: string,
+  requestedRoles: string[],
+): Promise<{
+  teamName: string
+  activeRoles: string[]
+  spawnedRoles: string[]
+  threadId?: string
+}> {
+  const normalizedRoles = normalizeRoles(requestedRoles)
+  const currentTeamName = context.getAppState().teamContext?.teamName
+
+  if (currentTeamName && currentTeamName !== requestedTeamName) {
+    throw new Error(
+      `Ya hay un swarm activo (${currentTeamName}). Cierra ese team antes de crear ${requestedTeamName}.`,
+    )
+  }
+
+  const teamName =
+    currentTeamName ||
+    (
+      await TeamCreateTool.call(
+        {
+          team_name: requestedTeamName,
+          description: `Swarm ${normalizedRoles.join(', ') || 'general'}`,
+          agent_type: 'team-lead',
+        },
+        context,
+      )
+    ).data.team_name
+
+  const refreshedState = context.getAppState()
+  const existingNames = new Set(
+    Object.values(refreshedState.teamContext?.teammates || {}).map(teammate =>
+      teammate.name.toLowerCase(),
+    ),
+  )
+
+  const rolesToSpawn = normalizedRoles.filter(
+    role => !existingNames.has(role.toLowerCase()),
+  )
+
+  const spawnedRoles: string[] = []
+  for (const role of rolesToSpawn) {
+    const peers = normalizedRoles.filter(candidate => candidate !== role)
+    const result = await spawnTeammate(
+      {
+        name: role,
+        description: `${role} teammate`,
+        prompt: buildTeammatePrompt(teamName, role, peers),
+        team_name: teamName,
+        use_splitpane: true,
+      },
+      context,
+    )
+
+    spawnedRoles.push(result.data.name)
+  }
+
+  const activeRoles = normalizedRoles.filter(role =>
+    rolesToSpawn.includes(role) || existingNames.has(role.toLowerCase()),
+  )
+
+  let threadId: string | undefined
+  if (activeRoles.length >= 2) {
+    threadId = await openKickoffThread(teamName, activeRoles[0]!, activeRoles[1]!)
+  }
+
+  return {
+    teamName,
+    activeRoles,
+    spawnedRoles,
+    threadId,
+  }
 }
 
 const SWARM_HELP = [
   '/swarm abre la sala de control viva del swarm.',
-  '/swarm create [team-name] [roles...] dispara el prompt correcto para crear un swarm activo.',
-  'Antes de abrirlo, crea un team real en la sesión actual con un prompt natural.',
+  '/swarm create [team-name] [roles...] crea el team runtime y lanza los teammates directamente.',
+  'Puedes crear el swarm desde el propio comando o desde un prompt natural en la sesión actual.',
   'No uses /agents para levantar el swarm activo: /agents sirve para definir agentes, no para iniciar el team runtime.',
   'Ejemplo: crea un swarm llamado demo-swarm con planner, coder y qa; quiero que se coordinen entre ustedes y me den avances parciales.',
   'Vistas: agents, threads, waiting.',
@@ -43,13 +211,31 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     const parts = trimmedArgs.split(/\s+/).filter(Boolean)
     const teamName = parts[1] || 'demo-swarm'
     const roles = parts.slice(2)
-    const prompt = buildSwarmCreatePrompt(teamName, roles)
+    try {
+      const result = await createSwarmRuntime(_context, teamName, roles)
+      const threadSuffix = result.threadId
+        ? ` Thread inicial ${shortId(result.threadId)} abierto.`
+        : ''
+      const spawnedSuffix =
+        result.spawnedRoles.length > 0
+          ? ` Nuevos teammates: ${result.spawnedRoles.map(role => `@${role}`).join(', ')}.`
+          : ' Los teammates ya existían y el swarm quedó reutilizado.'
 
-    onDone(`Lanzando prompt para crear swarm ${teamName}.`, {
-      display: 'system',
-      nextInput: prompt,
-      submitNextInput: true,
-    })
+      onDone(
+        `Swarm ${result.teamName} activo con ${result.activeRoles.map(role => `@${role}`).join(', ')}.${spawnedSuffix}${threadSuffix} Abre /swarm para dirigirlo.`,
+        {
+          display: 'system',
+        },
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No pude crear el swarm por un error desconocido.'
+      onDone(`No pude crear el swarm ${teamName}: ${message}`, {
+        display: 'system',
+      })
+    }
     return null
   }
 
