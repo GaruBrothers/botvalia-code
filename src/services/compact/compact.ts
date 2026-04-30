@@ -348,7 +348,7 @@ export function buildPostCompactMessages(result: CompactionResult): Message[] {
  */
 export function annotateBoundaryWithPreservedSegment(
   boundary: SystemCompactBoundaryMessage,
-  anchorUuid: UUID,
+  anchorUuid: UUID | string,
   messagesToKeep: readonly Message[] | undefined,
 ): SystemCompactBoundaryMessage {
   const keep = messagesToKeep ?? []
@@ -1329,6 +1329,10 @@ async function streamCompactSummary({
 
       while (!next.done) {
         const event = next.value
+        if (!event) {
+          next = await streamIter.next()
+          continue
+        }
 
         if (
           !hasStartedStreaming &&

@@ -46,6 +46,7 @@ const NULL_RENDERING_TYPES = [
   'current_session_memory',
   'compaction_reminder',
   'date_change',
+  'bagel_console',
 ] as const satisfies readonly Attachment['type'][]
 
 export type NullRenderingAttachmentType = (typeof NULL_RENDERING_TYPES)[number]
@@ -65,6 +66,6 @@ export function isNullRenderingAttachment(
 ): boolean {
   return (
     msg.type === 'attachment' &&
-    NULL_RENDERING_ATTACHMENT_TYPES.has(msg.attachment.type)
+    NULL_RENDERING_ATTACHMENT_TYPES.has(msg.attachment.type as Attachment['type'])
   )
 }

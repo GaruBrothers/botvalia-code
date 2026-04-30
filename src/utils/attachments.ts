@@ -585,6 +585,12 @@ export type Attachment =
       type: 'auto_mode_exit'
     }
   | {
+      type: 'pen_mode_enter'
+    }
+  | {
+      type: 'pen_mode_exit'
+    }
+  | {
       type: 'critical_system_reminder'
       content: string
     }

@@ -28,7 +28,9 @@ import { getGlobalConfig } from '../utils/config.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
 import { applyGrouping } from '../utils/groupToolUses.js';
+import type { MessageWithoutProgress } from '../utils/groupToolUses.js';
 import { buildMessageLookups, createAssistantMessage, deriveUUID, getMessagesAfterCompactBoundary, getToolUseID, getToolUseIDs, hasUnresolvedHooksFromLookup, isNotEmptyMessage, normalizeMessages, reorderMessagesInUI, type StreamingThinking, type StreamingToolUse, shouldShowUserMessage } from '../utils/messages.js';
+import { memoWithComparator } from '../utils/reactMemo.js';
 import { plural } from '../utils/stringUtils.js';
 import { renderableSearchText } from '../utils/transcriptSearch.js';
 import { Divider } from './design-system/Divider.js';
@@ -90,25 +92,10 @@ import { VirtualMessageList } from './VirtualMessageList.js';
  * if the model forgets to call Brief, the user sees nothing for that turn.
  * That's on the model to get right; the filter does not second-guess it.
  */
-export function filterForBriefTool<T extends {
-  type: string;
-  subtype?: string;
-  isMeta?: boolean;
-  isApiErrorMessage?: boolean;
-  message?: {
-    content: Array<{
-      type: string;
-      name?: string;
-      tool_use_id?: string;
-    }>;
-  };
-  attachment?: {
-    type: string;
-    isMeta?: boolean;
-    origin?: unknown;
-    commandMode?: string;
-  };
-}>(messages: T[], briefToolNames: string[]): T[] {
+export function filterForBriefTool(
+  messages: MessageWithoutProgress[],
+  briefToolNames: string[],
+): MessageWithoutProgress[] {
   const nameSet = new Set(briefToolNames);
   // tool_use always precedes its tool_result in the array, so we can collect
   // IDs and match against them in a single pass.
@@ -120,8 +107,8 @@ export function filterForBriefTool<T extends {
     // hook timing) that defeats the point of brief mode. Still visible in
     // transcript mode (ctrl+o) which bypasses this filter.
     if (msg.type === 'system') return msg.subtype !== 'api_metrics';
-    const block = msg.message?.content[0];
     if (msg.type === 'assistant') {
+      const block = msg.message.content[0];
       // API error messages (auth failures, rate limits, etc.) must stay visible
       if (msg.isApiErrorMessage) return true;
       // Keep Brief tool_use blocks (renders with standard tool call chrome,
@@ -137,6 +124,7 @@ export function filterForBriefTool<T extends {
       return false;
     }
     if (msg.type === 'user') {
+      const block = msg.message.content[0];
       if (block?.type === 'tool_result') {
         return block.tool_use_id !== undefined && briefToolUseIDs.has(block.tool_use_id);
       }
@@ -166,16 +154,10 @@ export function filterForBriefTool<T extends {
  * Per-turn: only drops text in turns that actually called Brief. If the
  * model forgets, text still shows — otherwise the user would see nothing.
  */
-export function dropTextInBriefTurns<T extends {
-  type: string;
-  isMeta?: boolean;
-  message?: {
-    content: Array<{
-      type: string;
-      name?: string;
-    }>;
-  };
-}>(messages: T[], briefToolNames: string[]): T[] {
+export function dropTextInBriefTurns(
+  messages: MessageWithoutProgress[],
+  briefToolNames: string[],
+): MessageWithoutProgress[] {
   const nameSet = new Set(briefToolNames);
   // First pass: find which turns (bounded by non-meta user messages) contain
   // a Brief tool_use. Tag each assistant text block with its turn index.
@@ -184,16 +166,19 @@ export function dropTextInBriefTurns<T extends {
   let turn = 0;
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i]!;
-    const block = msg.message?.content[0];
-    if (msg.type === 'user' && block?.type !== 'tool_result' && !msg.isMeta) {
-      turn++;
-      continue;
-    }
     if (msg.type === 'assistant') {
+      const block = msg.message.content[0];
       if (block?.type === 'text') {
         textIndexToTurn[i] = turn;
       } else if (block?.type === 'tool_use' && block.name && nameSet.has(block.name)) {
         turnsWithBrief.add(turn);
+      }
+      continue;
+    }
+    if (msg.type === 'user') {
+      const block = msg.message.content[0];
+      if (block?.type !== 'tool_result' && !msg.isMeta) {
+        turn++;
       }
     }
   }
@@ -496,7 +481,7 @@ const MessagesImpl = ({
     const compactAwareMessages = verbose || isFullscreenEnvEnabled() ? normalizedMessages : getMessagesAfterCompactBoundary(normalizedMessages, {
       includeSnipped: true
     });
-    const messagesToShowNotTruncated = reorderMessagesInUI(compactAwareMessages.filter((msg_2): msg_2 is Exclude<NormalizedMessage, ProgressMessageType> => msg_2.type !== 'progress')
+    const messagesToShowNotTruncated: MessageWithoutProgress[] = reorderMessagesInUI(compactAwareMessages.filter((msg_2): msg_2 is Exclude<NormalizedMessage, ProgressMessageType> => msg_2.type !== 'progress')
     // CC-724: drop attachment messages that AttachmentMessage renders as
     // null (hook_success, hook_additional_context, hook_cancelled, etc.)
     // BEFORE counting/slicing so they don't inflate the "N messages"
@@ -511,8 +496,8 @@ const MessagesImpl = ({
     // SendUserFile delivers a file without replacement text, so dropping
     // assistant text for file-only turns would leave the user with no context.
     const dropTextToolNames = [BRIEF_TOOL_NAME].filter((n_0): n_0 is string => n_0 !== null);
-    const briefFiltered = briefToolNames.length > 0 && !isTranscriptMode ? isBriefOnly ? filterForBriefTool(messagesToShowNotTruncated, briefToolNames) : dropTextToolNames.length > 0 ? dropTextInBriefTurns(messagesToShowNotTruncated, dropTextToolNames) : messagesToShowNotTruncated : messagesToShowNotTruncated;
-    const messagesToShow = shouldTruncate ? briefFiltered.slice(-MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE) : briefFiltered;
+    const briefFiltered: MessageWithoutProgress[] = briefToolNames.length > 0 && !isTranscriptMode ? isBriefOnly ? filterForBriefTool(messagesToShowNotTruncated, briefToolNames) : dropTextToolNames.length > 0 ? dropTextInBriefTurns(messagesToShowNotTruncated, dropTextToolNames) : messagesToShowNotTruncated : messagesToShowNotTruncated;
+    const messagesToShow: MessageWithoutProgress[] = shouldTruncate ? briefFiltered.slice(-MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE) : briefFiltered;
     const hasTruncatedMessages = shouldTruncate && briefFiltered.length > MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE;
     const {
       messages: groupedMessages
@@ -738,7 +723,7 @@ function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
   }
   return true;
 }
-export const Messages = React.memo(MessagesImpl, (prev, next) => {
+export const Messages = memoWithComparator(MessagesImpl, (prev, next) => {
   const keys = Object.keys(prev) as (keyof typeof prev)[];
   for (const key of keys) {
     if (key === 'onOpenRateLimitOptions' || key === 'scrollRef' || key === 'trackStickyPrompt' || key === 'setCursor' || key === 'cursorNavRef' || key === 'jumpRef' || key === 'onSearchMatchesChange' || key === 'scanElement' || key === 'setPositions') continue;

@@ -61,17 +61,64 @@ function buildTeammatePrompt(
   ].join(' ')
 }
 
+function buildKickoffBody(role: string, peers: string[]): string {
+  const peerMentions = peers.map(peer => `@${peer}`)
+  const peerList =
+    peerMentions.length > 0 ? peerMentions.join(', ') : '@team-lead'
+
+  if (role === 'planner') {
+    return [
+      `Coordínate con ${peerList}.`,
+      'Define el primer paso real, reparte trabajo y abre las preguntas necesarias sin esperar al final.',
+      'Tu primera respuesta debe traer un plan breve o un bloqueo concreto, no disponibilidad.',
+      'Pídele a @coder un camino técnico inicial y a @qa los edge cases que más riesgo ve.',
+    ].join(' ')
+  }
+
+  if (role === 'coder') {
+    return [
+      `Coordínate con ${peerList}.`,
+      'Propón la ruta técnica inicial y qué tocarías primero.',
+      'Consulta a @planner si el orden del trabajo cambia y a @qa qué edge cases debes cubrir antes de editar.',
+      'Tu primera respuesta debe ser una acción concreta o una pregunta técnica real, no disponibilidad.',
+    ].join(' ')
+  }
+
+  if (role === 'qa') {
+    return [
+      `Coordínate con ${peerList}.`,
+      'Define los criterios de validación y los edge cases que no se pueden escapar.',
+      'Pregunta a @coder qué superficie tocará y confirma con @planner el orden de revisión.',
+      'Tu primera respuesta debe traer validaciones concretas o un riesgo real, no disponibilidad.',
+    ].join(' ')
+  }
+
+  return [
+    `Coordínate con ${peerList}.`,
+    'Define tu primer aporte concreto dentro del swarm y abre las preguntas que necesites de inmediato.',
+    'No respondas con disponibilidad: responde con acción, riesgo o bloqueo real.',
+  ].join(' ')
+}
+
 async function openKickoffThread(
   teamName: string,
-  first: string,
-  second: string,
+  roles: string[],
 ): Promise<string> {
+  const activeRoles = normalizeRoles(roles)
+  if (activeRoles.length === 0) {
+    throw new Error('No hay teammates activos para abrir el kickoff del swarm.')
+  }
+
   const topic = `Kickoff ${teamName}`
+  const firstRole = activeRoles[0]!
   const firstEvent = createTeamConversationEvent({
     from: TEAM_LEAD_NAME,
-    to: first,
+    to: firstRole,
     kind: 'task',
-    body: `Coordínate con @${second}. Definan el primer paso real, repartan trabajo y respondan solo con una accion concreta o un bloqueo real. No manden mensajes de disponibilidad.`,
+    body: buildKickoffBody(
+      firstRole,
+      activeRoles.filter(role => role !== firstRole),
+    ),
     topic,
     priority: 'high',
     requires_response: true,
@@ -80,22 +127,27 @@ async function openKickoffThread(
     },
   })
 
-  const secondEvent = createTeamConversationEvent({
-    from: TEAM_LEAD_NAME,
-    to: second,
-    kind: 'handoff',
-    body: `Coordínate con @${first}. Definan el primer paso real, repartan trabajo y respondan solo con una accion concreta o un bloqueo real. No manden mensajes de disponibilidad.`,
-    topic,
-    thread_id: firstEvent.thread_id,
-    reply_to: firstEvent.event_id,
-    priority: 'high',
-    requires_response: true,
-    metadata: {
-      initiated_via: 'swarm-command',
-    },
-  })
+  const followupEvents = activeRoles.slice(1).map(role =>
+    createTeamConversationEvent({
+      from: TEAM_LEAD_NAME,
+      to: role,
+      kind: role === 'qa' ? 'question' : 'handoff',
+      body: buildKickoffBody(
+        role,
+        activeRoles.filter(candidate => candidate !== role),
+      ),
+      topic,
+      thread_id: firstEvent.thread_id,
+      reply_to: firstEvent.event_id,
+      priority: 'high',
+      requires_response: true,
+      metadata: {
+        initiated_via: 'swarm-command',
+      },
+    }),
+  )
 
-  for (const event of [firstEvent, secondEvent]) {
+  for (const event of [firstEvent, ...followupEvents]) {
     await writeToMailbox(
       event.to,
       {
@@ -178,8 +230,8 @@ async function createSwarmRuntime(
   )
 
   let threadId: string | undefined
-  if (activeRoles.length >= 2) {
-    threadId = await openKickoffThread(teamName, activeRoles[0]!, activeRoles[1]!)
+  if (activeRoles.length >= 1) {
+    threadId = await openKickoffThread(teamName, activeRoles)
   }
 
   return {

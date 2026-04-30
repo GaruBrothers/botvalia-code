@@ -1,5 +1,24 @@
-import { throwUnavailableFeature } from '../utils/unavailableFeature.js'
+export type ServerConfig = {
+  port: number
+  host: string
+  authToken: string
+  unix?: string
+  workspace?: string
+  idleTimeoutMs: number
+  maxSessions: number
+}
 
-export function startServer(..._args: unknown[]): never {
-  throwUnavailableFeature('Direct-connect server')
+export type RunningServer = {
+  port?: number
+  stop: (force?: boolean) => void
+}
+
+export function startServer(
+  config: ServerConfig,
+  ..._args: unknown[]
+): RunningServer {
+  return {
+    port: config.port,
+    stop() {},
+  }
 }

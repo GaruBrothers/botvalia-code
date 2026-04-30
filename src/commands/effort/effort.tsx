@@ -5,6 +5,7 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, toPersistableEffort } from '../../utils/effort.js';
+import type { SettingsJson } from '../../utils/settings/types.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
 type EffortCommandResult = {
@@ -15,9 +16,14 @@ type EffortCommandResult = {
 };
 function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   const persistable = toPersistableEffort(effortValue);
-  if (persistable !== undefined) {
+  const persistedSettings: Pick<SettingsJson, 'effortLevel'> | null = persistable === 'low' || persistable === 'medium' || persistable === 'high' ? {
+    effortLevel: persistable
+  } : process.env.USER_TYPE === 'ant' && persistable === 'max' ? {
+    effortLevel: 'max'
+  } as SettingsJson : null;
+  if (persistedSettings) {
     const result = updateSettingsForSource('userSettings', {
-      effortLevel: persistable
+      ...persistedSettings
     });
     if (result.error) {
       return {

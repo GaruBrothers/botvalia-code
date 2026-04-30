@@ -1,17 +1,24 @@
 export type KeybindingContextName = string
 export type KeybindingAction = string
+
 export type ParsedKeystroke = {
-  key?: string
-  ctrl?: boolean
-  alt?: boolean
-  shift?: boolean
-  meta?: boolean
+  key: string
+  ctrl: boolean
+  alt: boolean
+  shift: boolean
+  meta: boolean
+  super: boolean
 }
+
+export type Chord = ParsedKeystroke[]
+
 export type ParsedBinding = {
-  action: string
-  keys: ParsedKeystroke[]
+  chord: Chord
+  action: KeybindingAction | null
+  context: KeybindingContextName
 }
+
 export type KeybindingBlock = {
-  context?: KeybindingContextName
-  bindings?: ParsedBinding[]
+  context: KeybindingContextName
+  bindings: Record<string, KeybindingAction | null>
 }

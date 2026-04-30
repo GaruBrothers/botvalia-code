@@ -129,7 +129,7 @@ function Web({
       name: 'uploading'
     });
     const result = await importGithubToken(token);
-    if (!result.ok) {
+    if (result.ok === false) {
       logEvent('tengu_remote_setup_result', {
         result: 'import_failed' as SafeString,
         error_kind: result.error.kind as SafeString
@@ -137,7 +137,6 @@ function Web({
       onDone(errorMessage(result.error, getCodeWebUrl()));
       return;
     }
-
     // Token import succeeded. Environment creation is best-effort — if it
     // fails, the web state machine routes to env-setup on landing, which is
     // one extra click but still better than the OAuth dance.
@@ -148,6 +147,7 @@ function Web({
       result: 'success' as SafeString
     });
     onDone(`Connected as ${result.result.github_username}. Opened ${url}`);
+    return;
   };
   if (step.name === 'checking') {
     return <LoadingState message="Checking login status…" />;

@@ -158,6 +158,17 @@ export class McpAuthError extends Error {
   }
 }
 
+type ScopedStdioMcpServerConfig = Extract<
+  ScopedMcpServerConfig,
+  { command: string }
+>
+
+function isScopedStdioMcpServerConfig(
+  config: ScopedMcpServerConfig,
+): config is ScopedStdioMcpServerConfig {
+  return config.type === 'stdio' || !config.type
+}
+
 /**
  * Thrown when an MCP session has expired and the connection cache has been cleared.
  * The caller should get a fresh client via ensureConnectedClient and retry.
@@ -903,7 +914,7 @@ export const connectToServer = memoize(
         )
         logMCPDebug(name, `claude.ai proxy transport created successfully`)
       } else if (
-        (serverRef.type === 'stdio' || !serverRef.type) &&
+        isScopedStdioMcpServerConfig(serverRef) &&
         isClaudeInChromeMCPServer(name)
       ) {
         // Run the Chrome MCP server in-process to avoid spawning a ~325 MB subprocess
@@ -924,7 +935,7 @@ export const connectToServer = memoize(
         logMCPDebug(name, `In-process Chrome MCP server started`)
       } else if (
         feature('CHICAGO_MCP') &&
-        (serverRef.type === 'stdio' || !serverRef.type) &&
+        isScopedStdioMcpServerConfig(serverRef) &&
         isComputerUseMCPServer!(name)
       ) {
         // Run the Computer Use MCP server in-process — same rationale as
@@ -941,7 +952,7 @@ export const connectToServer = memoize(
         await inProcessServer.connect(serverTransport)
         transport = clientTransport
         logMCPDebug(name, `In-process Computer Use MCP server started`)
-      } else if (serverRef.type === 'stdio' || !serverRef.type) {
+      } else if (isScopedStdioMcpServerConfig(serverRef)) {
         const finalCommand =
           process.env.CLAUDE_CODE_SHELL_PREFIX || serverRef.command
         const finalArgs = process.env.CLAUDE_CODE_SHELL_PREFIX
@@ -957,7 +968,7 @@ export const connectToServer = memoize(
           stderr: 'pipe', // prevents error output from the MCP server from printing to the UI
         })
       } else {
-        throw new Error(`Unsupported server type: ${serverRef.type}`)
+        throw new Error('Unsupported server type')
       }
 
       // Set up stderr logging for stdio transport before connecting in case there are any stderr
@@ -965,7 +976,7 @@ export const connectToServer = memoize(
       // Store handler reference for cleanup to prevent memory leaks
       let stderrHandler: ((data: Buffer) => void) | undefined
       let stderrOutput = ''
-      if (serverRef.type === 'stdio' || !serverRef.type) {
+      if (isScopedStdioMcpServerConfig(serverRef)) {
         const stdioTransport = transport as StdioClientTransport
         if (stdioTransport.stderr) {
           stderrHandler = (data: Buffer) => {

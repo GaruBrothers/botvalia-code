@@ -17,3 +17,7 @@ export function SnapshotUpdateDialog({
 
   return null
 }
+
+export function buildMergePrompt(agentType: string, scope: string): string {
+  return `Merge the pending ${agentType} memory snapshot for scope "${scope}" into the current session context before continuing.`
+}

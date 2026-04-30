@@ -23,10 +23,10 @@ export const TestingPermissionTool: Tool<InputSchema, string> = buildTool({
   },
   userFacingName() {
     return 'TestingPermission';
-  },
-  isEnabled() {
-    return "production" === 'test';
-  },
+    },
+    isEnabled() {
+      return String(process.env.NODE_ENV ?? 'production') === 'test';
+    },
   isConcurrencySafe() {
     return true;
   },

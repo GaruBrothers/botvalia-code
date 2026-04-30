@@ -153,16 +153,18 @@ function ResumeCommand({
         return;
       }
 
-      // Different project - show command instead of resuming
-      const raw = await setClipboard(crossProjectCheck.command);
-      if (raw) process.stdout.write(raw);
+      if ('command' in crossProjectCheck) {
+        // Different project - show command instead of resuming
+        const raw = await setClipboard(crossProjectCheck.command);
+        if (raw) process.stdout.write(raw);
 
-      // Format the output message
-      const message = ['', 'This conversation is from a different directory.', '', 'To resume, run:', `  ${crossProjectCheck.command}`, '', '(Command copied to clipboard)', ''].join('\n');
-      onDone(message, {
-        display: 'user'
-      });
-      return;
+        // Format the output message
+        const message = ['', 'This conversation is from a different directory.', '', 'To resume, run:', `  ${crossProjectCheck.command}`, '', '(Command copied to clipboard)', ''].join('\n');
+        onDone(message, {
+          display: 'user'
+        });
+        return;
+      }
     }
 
     // Same directory - proceed with resume
@@ -246,7 +248,7 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
     });
     if (titleMatches.length === 1) {
       const log = titleMatches[0]!;
-      const sessionId = getSessionIdFromLog(log);
+      const sessionId = validateUuid(getSessionIdFromLog(log));
       if (sessionId) {
         const fullLog = isLiteLog(log) ? await loadFullLog(log) : log;
         void onResume(sessionId, fullLog, 'slash_command_title');

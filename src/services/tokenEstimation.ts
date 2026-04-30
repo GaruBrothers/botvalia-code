@@ -327,8 +327,8 @@ export async function countTokensViaHaikuFallback(
 export function roughTokenCountEstimationForMessages(
   messages: readonly {
     type: string
-    message?: { content?: unknown }
-    attachment?: Attachment
+    message?: { content?: unknown } | string
+    attachment?: Attachment | { type: string; [key: string]: unknown }
   }[],
 ): number {
   let totalTokens = 0
@@ -340,8 +340,8 @@ export function roughTokenCountEstimationForMessages(
 
 export function roughTokenCountEstimationForMessage(message: {
   type: string
-  message?: { content?: unknown }
-  attachment?: Attachment
+  message?: { content?: unknown } | string
+  attachment?: Attachment | { type: string; [key: string]: unknown }
 }): number {
   if (
     (message.type === 'assistant' || message.type === 'user') &&
@@ -357,7 +357,9 @@ export function roughTokenCountEstimationForMessage(message: {
   }
 
   if (message.type === 'attachment' && message.attachment) {
-    const userMessages = normalizeAttachmentForAPI(message.attachment)
+    const userMessages = normalizeAttachmentForAPI(
+      message.attachment as Attachment,
+    )
     let total = 0
     for (const userMsg of userMessages) {
       total += roughTokenCountEstimationForContent(userMsg.message.content)

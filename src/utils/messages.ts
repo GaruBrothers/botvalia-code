@@ -104,6 +104,7 @@ import type {
   HookEvent,
   SDKAssistantMessageError,
 } from 'src/entrypoints/agentSdkTypes.js'
+import { isHookEvent } from 'src/types/hooks.js'
 import { EXPLORE_AGENT } from 'src/tools/AgentTool/built-in/exploreAgent.js'
 import { PLAN_AGENT } from 'src/tools/AgentTool/built-in/planAgent.js'
 import { areExplorePlanAgentsEnabled } from 'src/tools/AgentTool/builtInAgents.js'
@@ -475,10 +476,10 @@ export function createUserMessage({
   origin,
 }: {
   content: string | ContentBlockParam[]
-  isMeta?: true
-  isVisibleInTranscriptOnly?: true
-  isVirtual?: true
-  isCompactSummary?: true
+  isMeta?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isVirtual?: boolean
+  isCompactSummary?: boolean
   toolUseResult?: unknown // Matches tool's `Output` type
   /** MCP protocol metadata to pass through to SDK consumers (never sent to model) */
   mcpMeta?: {
@@ -489,7 +490,7 @@ export function createUserMessage({
   timestamp?: string
   imagePasteIds?: number[]
   // For tool_result messages: the UUID of the assistant message containing the matching tool_use
-  sourceToolAssistantUUID?: UUID
+  sourceToolAssistantUUID?: UUID | string
   // Permission mode when message was sent (for rewind restoration)
   permissionMode?: PermissionMode
   summarizeMetadata?: {
@@ -723,7 +724,7 @@ export function isNotEmptyMessage(message: Message): boolean {
 // Deterministic UUID derivation. Produces a stable UUID-shaped string from a
 // parent UUID + content block index so that the same input always produces the
 // same key across calls. Used by normalizeMessages and synthetic message creation.
-export function deriveUUID(parentUUID: UUID, index: number): UUID {
+export function deriveUUID(parentUUID: string, index: number): UUID {
   const hex = index.toString(16).padStart(12, '0')
   return `${parentUUID.slice(0, 24)}${hex}` as UUID
 }
@@ -1226,12 +1227,14 @@ export function buildMessageLookups(
       // Count in-progress hooks
       if (msg.data.type === 'hook_progress') {
         const hookEvent = msg.data.hookEvent
-        let byHookEvent = inProgressHookCounts.get(toolUseID)
-        if (!byHookEvent) {
-          byHookEvent = new Map()
-          inProgressHookCounts.set(toolUseID, byHookEvent)
+        if (typeof hookEvent === 'string' && isHookEvent(hookEvent)) {
+          let byHookEvent = inProgressHookCounts.get(toolUseID)
+          if (!byHookEvent) {
+            byHookEvent = new Map()
+            inProgressHookCounts.set(toolUseID, byHookEvent)
+          }
+          byHookEvent.set(hookEvent, (byHookEvent.get(hookEvent) ?? 0) + 1)
         }
-        byHookEvent.set(hookEvent, (byHookEvent.get(hookEvent) ?? 0) + 1)
       }
     }
 
@@ -2269,7 +2272,7 @@ export function normalizeMessagesForAPI(
         }
         case 'attachment': {
           const rawAttachmentMessage = normalizeAttachmentForAPI(
-            message.attachment,
+            message.attachment as Attachment,
           )
           const attachmentMessage = checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
             'tengu_chair_sermon',
@@ -2554,13 +2557,14 @@ function smooshIntoToolResult(
   }
 
   const allText = blocks.every(b => b.type === 'text')
+  const existingText = typeof existing === 'string' ? existing : ''
 
   // Preserve string shape when existing was string/undefined and all incoming
   // blocks are text — this is the common case (hook reminders into Bash/Read
   // results) and matches the legacy smoosh output shape.
   if (allText && (existing === undefined || typeof existing === 'string')) {
     const joined = [
-      (existing ?? '').trim(),
+      existingText.trim(),
       ...blocks.map(b => (b as TextBlockParam).text.trim()),
     ]
       .filter(Boolean)
@@ -2573,8 +2577,8 @@ function smooshIntoToolResult(
     existing === undefined
       ? []
       : typeof existing === 'string'
-        ? existing.trim()
-          ? [{ type: 'text', text: existing.trim() }]
+        ? existingText.trim()
+          ? [{ type: 'text', text: existingText.trim() }]
           : []
         : [...existing]
 
@@ -4531,7 +4535,7 @@ export function createCommandInputMessage(
 export function createCompactBoundaryMessage(
   trigger: 'manual' | 'auto',
   preTokens: number,
-  lastPreCompactMessageUuid?: UUID,
+  lastPreCompactMessageUuid?: UUID | string,
   userContext?: string,
   messagesSummarized?: number,
 ): SystemCompactBoundaryMessage {
@@ -4770,7 +4774,7 @@ type ThinkingBlockType =
   | BetaRedactedThinkingBlock
 
 function isThinkingBlock(
-  block: ContentBlockParam | ContentBlock | BetaContentBlock,
+  block: MessageContentBlock,
 ): block is ThinkingBlockType {
   return block.type === 'thinking' || block.type === 'redacted_thinking'
 }

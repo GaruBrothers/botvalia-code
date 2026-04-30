@@ -195,7 +195,7 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
  */
 export function localCommandOutputToSDKAssistantMessage(
   rawContent: string,
-  uuid: UUID,
+  uuid: UUID | string,
 ): SDKAssistantMessage {
   const cleanContent = stripAnsi(rawContent)
     .replace(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/, '$1')

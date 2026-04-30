@@ -1,12 +1,12 @@
 import { c as _c } from "react/compiler-runtime";
 import type { ContentBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
-import { randomUUID, type UUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import figures from 'figures';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { useAppState } from 'src/state/AppState.js';
-import { type DiffStats, fileHistoryCanRestore, fileHistoryEnabled, fileHistoryGetDiffStats } from 'src/utils/fileHistory.js';
+import { type DiffStats, type FileHistoryMessageId, fileHistoryCanRestore, fileHistoryEnabled, fileHistoryGetDiffStats } from 'src/utils/fileHistory.js';
 import { logError } from 'src/utils/log.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text } from '../ink.js';
@@ -719,7 +719,7 @@ function UserMessageOption(t0) {
 /**
  * Computes the diff stats for all the file edits in-between two messages.
  */
-function computeDiffStatsBetweenMessages(messages: Message[], fromMessageId: UUID, toMessageId: UUID | undefined): DiffStats | undefined {
+function computeDiffStatsBetweenMessages(messages: Message[], fromMessageId: FileHistoryMessageId, toMessageId: FileHistoryMessageId | undefined): DiffStats | undefined {
   const startIndex = messages.findIndex(msg => msg.uuid === fromMessageId);
   if (startIndex === -1) {
     return undefined;

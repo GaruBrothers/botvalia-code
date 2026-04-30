@@ -166,7 +166,10 @@ import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from 'src/utils/claudeInChrome/prompt
 import { getMaxThinkingTokensForModel } from 'src/utils/context.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { logForDiagnosticsNoPII } from 'src/utils/diagLogs.js'
-import { type EffortValue, modelSupportsEffort } from 'src/utils/effort.js'
+import {
+  type EffortValue,
+  modelSupportsEffort,
+} from 'src/utils/effort.js'
 import {
   isFastModeAvailable,
   isFastModeCooldown,
@@ -450,7 +453,12 @@ function configureEffortParams(
 
   if (effortValue === undefined) {
     betas.push(EFFORT_BETA_HEADER)
-  } else if (typeof effortValue === 'string') {
+  } else if (
+    effortValue === 'low' ||
+    effortValue === 'medium' ||
+    effortValue === 'high' ||
+    effortValue === 'max'
+  ) {
     // Send string effort level as is
     outputConfig.effort = effortValue
     betas.push(EFFORT_BETA_HEADER)
@@ -938,15 +946,26 @@ function getPreviousRequestIdFromMessages(
 }
 
 function isMedia(
-  block: BetaContentBlockParam,
+  block: unknown,
 ): block is BetaImageBlockParam | BetaRequestDocumentBlock {
-  return block.type === 'image' || block.type === 'document'
+  return (
+    block !== null &&
+    typeof block === 'object' &&
+    'type' in block &&
+    ((block as { type?: string }).type === 'image' ||
+      (block as { type?: string }).type === 'document')
+  )
 }
 
 function isToolResult(
-  block: BetaContentBlockParam,
+  block: unknown,
 ): block is BetaToolResultBlockParam {
-  return block.type === 'tool_result'
+  return (
+    block !== null &&
+    typeof block === 'object' &&
+    'type' in block &&
+    (block as { type?: string }).type === 'tool_result'
+  )
 }
 
 /**
@@ -1193,8 +1212,10 @@ async function* queryModel(
       isModelSupportedForCacheEditing,
       getCachedMCConfig,
     } = await import('../compact/cachedMicrocompact.js')
-    const betas = await import('src/constants/betas.js')
-    cacheEditingBetaHeader = betas.CACHE_EDITING_BETA_HEADER
+    const betas = (await import('src/constants/betas.js')) as typeof import('src/constants/betas.js') & {
+      CACHE_EDITING_BETA_HEADER?: string
+    }
+    cacheEditingBetaHeader = betas.CACHE_EDITING_BETA_HEADER ?? ''
     const featureEnabled = isCachedMicrocompactEnabled()
     const modelSupported = isModelSupportedForCacheEditing(options.model)
     cachedMCEnabled = featureEnabled && modelSupported
@@ -2921,9 +2942,38 @@ export function cleanupStream(
  * explicit 0 values for these fields, which should not overwrite the values from message_start.
  * We only update these fields if they have a non-null, non-zero value.
  */
+type UsageUpdate = Partial<
+  Pick<
+    BetaUsage,
+    | 'cache_creation'
+    | 'cache_creation_input_tokens'
+    | 'cache_read_input_tokens'
+    | 'inference_geo'
+    | 'input_tokens'
+    | 'iterations'
+    | 'output_tokens'
+    | 'server_tool_use'
+    | 'service_tier'
+    | 'speed'
+  >
+> &
+  Partial<
+    Pick<
+      BetaMessageDeltaUsage,
+      | 'cache_creation_input_tokens'
+      | 'cache_read_input_tokens'
+      | 'input_tokens'
+      | 'iterations'
+      | 'output_tokens'
+      | 'server_tool_use'
+    >
+  > & {
+  cache_deleted_input_tokens?: number | null
+}
+
 export function updateUsage(
   usage: Readonly<NonNullableUsage>,
-  partUsage: BetaMessageDeltaUsage | undefined,
+  partUsage: UsageUpdate | null | undefined,
 ): NonNullableUsage {
   if (!partUsage) {
     return { ...usage }
@@ -2952,14 +3002,13 @@ export function updateUsage(
         partUsage.server_tool_use?.web_fetch_requests ??
         usage.server_tool_use.web_fetch_requests,
     },
-    service_tier: usage.service_tier,
+    service_tier: partUsage.service_tier ?? usage.service_tier,
     cache_creation: {
-      // SDK type BetaMessageDeltaUsage is missing cache_creation, but it's real!
       ephemeral_1h_input_tokens:
-        (partUsage as BetaUsage).cache_creation?.ephemeral_1h_input_tokens ??
+        partUsage.cache_creation?.ephemeral_1h_input_tokens ??
         usage.cache_creation.ephemeral_1h_input_tokens,
       ephemeral_5m_input_tokens:
-        (partUsage as BetaUsage).cache_creation?.ephemeral_5m_input_tokens ??
+        partUsage.cache_creation?.ephemeral_5m_input_tokens ??
         usage.cache_creation.ephemeral_5m_input_tokens,
     },
     // cache_deleted_input_tokens: returned by the API when cache editing
@@ -2970,19 +3019,15 @@ export function updateUsage(
     ...(feature('CACHED_MICROCOMPACT')
       ? {
           cache_deleted_input_tokens:
-            (partUsage as unknown as { cache_deleted_input_tokens?: number })
-              .cache_deleted_input_tokens != null &&
-            (partUsage as unknown as { cache_deleted_input_tokens: number })
-              .cache_deleted_input_tokens > 0
-              ? (partUsage as unknown as { cache_deleted_input_tokens: number })
-                  .cache_deleted_input_tokens
-              : ((usage as unknown as { cache_deleted_input_tokens?: number })
-                  .cache_deleted_input_tokens ?? 0),
+            partUsage.cache_deleted_input_tokens != null &&
+            partUsage.cache_deleted_input_tokens > 0
+              ? partUsage.cache_deleted_input_tokens
+              : (usage.cache_deleted_input_tokens ?? 0),
         }
       : {}),
-    inference_geo: usage.inference_geo,
+    inference_geo: partUsage.inference_geo ?? usage.inference_geo,
     iterations: partUsage.iterations ?? usage.iterations,
-    speed: (partUsage as BetaUsage).speed ?? usage.speed,
+    speed: partUsage.speed ?? usage.speed,
   }
 }
 
@@ -3024,11 +3069,8 @@ export function accumulateUsage(
     ...(feature('CACHED_MICROCOMPACT')
       ? {
           cache_deleted_input_tokens:
-            ((totalUsage as unknown as { cache_deleted_input_tokens?: number })
-              .cache_deleted_input_tokens ?? 0) +
-            ((
-              messageUsage as unknown as { cache_deleted_input_tokens?: number }
-            ).cache_deleted_input_tokens ?? 0),
+            (totalUsage.cache_deleted_input_tokens ?? 0) +
+            (messageUsage.cache_deleted_input_tokens ?? 0),
         }
       : {}),
     inference_geo: messageUsage.inference_geo, // Use the most recent

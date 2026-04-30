@@ -11,6 +11,7 @@ import type { ToolPermissionContext, Tool as ToolType, ToolUseContext } from '..
 import { consumeSpeculativeClassifierCheck, peekSpeculativeClassifierCheck } from '../tools/BashTool/bashPermissions.js';
 import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js';
 import type { AssistantMessage } from '../types/message.js';
+import type { ClassifierResult } from '../utils/permissions/bashClassifier.js';
 import { recordAutoModeDenial } from '../utils/autoModeDenials.js';
 import { clearClassifierChecking, setClassifierApproval, setYoloClassifierApproval } from '../utils/classifierApprovals.js';
 import { logForDebugging } from '../utils/debug.js';
@@ -25,6 +26,12 @@ import { handleSwarmWorkerPermission } from './toolPermission/handlers/swarmWork
 import { createPermissionContext, createPermissionQueueOps } from './toolPermission/PermissionContext.js';
 import { logPermissionDecision } from './toolPermission/permissionLogging.js';
 export type CanUseToolFn<Input extends Record<string, unknown> = Record<string, unknown>> = (tool: ToolType, input: Input, toolUseContext: ToolUseContext, assistantMessage: AssistantMessage, toolUseID: string, forceDecision?: PermissionDecision<Input>) => Promise<PermissionDecision<Input>>;
+type SpeculativeClassifierRaceResult = {
+  type: "result";
+  result: ClassifierResult;
+} | {
+  type: "timeout";
+};
 function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
   const $ = _c(3);
   let t0;
@@ -189,12 +196,12 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
   }
   return t0;
 }
-function _temp2(res) {
+function _temp2(res: (value: SpeculativeClassifierRaceResult) => void) {
   return setTimeout(res, 2000, {
     type: "timeout" as const
   });
 }
-function _temp(r) {
+function _temp(r: ClassifierResult): SpeculativeClassifierRaceResult {
   return {
     type: "result" as const,
     result: r

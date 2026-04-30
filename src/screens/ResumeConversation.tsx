@@ -44,7 +44,7 @@ function parsePrIdentifier(value: string): number | null {
   }
   return null;
 }
-type Props = {
+export type Props = {
   commands: Command[];
   worktreePaths: string[];
   initialTools: Tool[];
@@ -179,13 +179,11 @@ export function ResumeConversation({
     setResuming(true);
     const resumeStart = performance.now();
     const crossProjectCheck = checkCrossProjectResume(log_0, showAllProjects, worktreePaths);
-    if (crossProjectCheck.isCrossProject) {
-      if (!crossProjectCheck.isSameRepoWorktree) {
-        const raw = await setClipboard(crossProjectCheck.command);
-        if (raw) process.stdout.write(raw);
-        setCrossProjectCommand(crossProjectCheck.command);
-        return;
-      }
+    if (crossProjectCheck.isCrossProject && !crossProjectCheck.isSameRepoWorktree) {
+      const raw = await setClipboard(crossProjectCheck.command);
+      if (raw) process.stdout.write(raw);
+      setCrossProjectCommand(crossProjectCheck.command);
+      return;
     }
     try {
       const result_3 = await loadConversationForResume(log_0, undefined);

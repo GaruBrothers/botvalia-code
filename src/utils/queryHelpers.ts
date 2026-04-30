@@ -4,7 +4,10 @@ import {
   getSessionId,
   isSessionPersistenceDisabled,
 } from 'src/bootstrap/state.js'
-import type { SDKMessage } from 'src/entrypoints/agentSdkTypes.js'
+import type {
+  SDKAssistantMessageError,
+  SDKMessage,
+} from 'src/entrypoints/agentSdkTypes.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import { runTools } from '../services/tools/toolOrchestration.js'
 import { findToolByName, type Tool, type Tools } from '../Tool.js'
@@ -16,7 +19,11 @@ import {
   FILE_UNCHANGED_STUB,
 } from '../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../tools/FileWriteTool/prompt.js'
-import type { Message } from '../types/message.js'
+import type {
+  AssistantMessage,
+  Message,
+  NormalizedUserMessage,
+} from '../types/message.js'
 import type { OrphanedPermission } from '../types/textInputTypes.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -99,6 +106,69 @@ const MAX_TOOL_PROGRESS_TRACKING_ENTRIES = 100
 const TOOL_PROGRESS_THROTTLE_MS = 30000
 const toolProgressLastSentTime = new Map<string, number>()
 
+type ProgressTranscriptMessage = AssistantMessage | NormalizedUserMessage
+
+function isSDKAssistantMessageError(
+  value: unknown,
+): value is SDKAssistantMessageError {
+  return (
+    value === 'authentication_failed' ||
+    value === 'billing_error' ||
+    value === 'rate_limit' ||
+    value === 'invalid_request' ||
+    value === 'server_error' ||
+    value === 'unknown' ||
+    value === 'max_output_tokens'
+  )
+}
+
+function isProgressTranscriptMessage(
+  value: unknown,
+): value is ProgressTranscriptMessage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'type' in value &&
+    (value.type === 'assistant' || value.type === 'user') &&
+    'message' in value
+  )
+}
+
+function isAgentOrSkillProgressData(
+  data: unknown,
+): data is {
+  type: 'agent_progress' | 'skill_progress'
+  message: ProgressTranscriptMessage
+} {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    (data.type === 'agent_progress' || data.type === 'skill_progress') &&
+    'message' in data &&
+    isProgressTranscriptMessage(data.message)
+  )
+}
+
+function isShellProgressData(
+  data: unknown,
+): data is {
+  type: 'bash_progress' | 'powershell_progress'
+  elapsedTimeSeconds: number
+  taskId: string
+} {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    (data.type === 'bash_progress' || data.type === 'powershell_progress') &&
+    'elapsedTimeSeconds' in data &&
+    typeof data.elapsedTimeSeconds === 'number' &&
+    'taskId' in data &&
+    typeof data.taskId === 'string'
+  )
+}
+
 export function* normalizeMessage(message: Message): Generator<SDKMessage> {
   switch (message.type) {
     case 'assistant':
@@ -113,15 +183,12 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
           parent_tool_use_id: null,
           session_id: getSessionId(),
           uuid: _.uuid,
-          error: _.error,
+          error: isSDKAssistantMessageError(_.error) ? _.error : undefined,
         }
       }
       return
     case 'progress':
-      if (
-        message.data.type === 'agent_progress' ||
-        message.data.type === 'skill_progress'
-      ) {
+      if (isAgentOrSkillProgressData(message.data)) {
         for (const _ of normalizeMessages([message.data.message])) {
           switch (_.type) {
             case 'assistant':
@@ -135,7 +202,9 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
                 parent_tool_use_id: message.parentToolUseID,
                 session_id: getSessionId(),
                 uuid: _.uuid,
-                error: _.error,
+                error: isSDKAssistantMessageError(_.error)
+                  ? _.error
+                  : undefined,
               }
               break
             case 'user':
@@ -154,10 +223,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
               break
           }
         }
-      } else if (
-        message.data.type === 'bash_progress' ||
-        message.data.type === 'powershell_progress'
-      ) {
+      } else if (isShellProgressData(message.data)) {
         // Filter bash progress to send only one per minute
         // Only emit for BotValia Code Remote for now
         if (
@@ -189,8 +255,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
           yield {
             type: 'tool_progress',
             tool_use_id: message.toolUseID,
-            tool_name:
-              message.data.type === 'bash_progress' ? 'Bash' : 'PowerShell',
+            tool_name: message.data.type === 'bash_progress' ? 'Bash' : 'PowerShell',
             parent_tool_use_id: message.parentToolUseID,
             elapsed_time_seconds: message.data.elapsedTimeSeconds,
             task_id: message.data.taskId,
@@ -228,12 +293,7 @@ export async function* handleOrphanedPermission(
   processUserInputContext: ProcessUserInputContext,
 ): AsyncGenerator<SDKMessage, void, unknown> {
   const persistSession = !isSessionPersistenceDisabled()
-  const { permissionResult, assistantMessage } = orphanedPermission
-  const { toolUseID } = permissionResult
-
-  if (!toolUseID) {
-    return
-  }
+  const { toolUseID, permissionResult, assistantMessage } = orphanedPermission
 
   const content = assistantMessage.message.content
   let toolUseBlock: ToolUseBlock | undefined

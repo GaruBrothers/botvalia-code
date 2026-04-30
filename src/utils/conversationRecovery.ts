@@ -11,6 +11,7 @@ import type {
   LogOption,
   PersistedWorktreeSession,
   SerializedMessage,
+  TranscriptMessage,
 } from '../types/logs.js'
 import type {
   Message,
@@ -93,7 +94,7 @@ function migrateLegacyAttachmentTypes(message: Message): Message {
         type: 'file',
         displayPath: relative(getCwd(), attachment.filename as string),
       },
-    } as SerializedMessage // Cast entire message since we know the structure is correct
+    } as unknown as SerializedMessage // Cast entire message since we know the structure is correct
   }
 
   if (attachment.type === 'new_directory') {
@@ -104,7 +105,7 @@ function migrateLegacyAttachmentTypes(message: Message): Message {
         type: 'directory',
         displayPath: relative(getCwd(), attachment.path as string),
       },
-    } as SerializedMessage // Cast entire message since we know the structure is correct
+    } as unknown as SerializedMessage // Cast entire message since we know the structure is correct
   }
 
   // Backfill displayPath for attachments from old sessions
@@ -177,7 +178,8 @@ export function deserializeMessagesWithInterruptDetection(
       if (
         msg.type === 'user' &&
         msg.permissionMode !== undefined &&
-        !validModes.has(msg.permissionMode)
+        (typeof msg.permissionMode !== 'string' ||
+          !validModes.has(msg.permissionMode))
       ) {
         msg.permissionMode = undefined
       }
@@ -385,7 +387,10 @@ export function restoreSkillStateFromMessages(messages: Message[]): void {
       continue
     }
     if (message.attachment.type === 'invoked_skills') {
-      for (const skill of message.attachment.skills) {
+      const skills = Array.isArray(message.attachment.skills)
+        ? message.attachment.skills
+        : []
+      for (const skill of skills) {
         if (skill.name && skill.path && skill.content) {
           // Resume only happens for the main session, so agentId is null
           addInvokedSkill(skill.name, skill.path, skill.content, null)
@@ -418,7 +423,7 @@ export async function loadMessagesFromJsonlPath(path: string): Promise<{
   sessionId: UUID | undefined
 }> {
   const { messages: byUuid, leafUuids } = await loadTranscriptFile(path)
-  let tip: (typeof byUuid extends Map<UUID, infer T> ? T : never) | null = null
+  let tip: TranscriptMessage | null = null
   let tipTs = 0
   for (const m of byUuid.values()) {
     if (m.isSidechain || !leafUuids.has(m.uuid)) continue

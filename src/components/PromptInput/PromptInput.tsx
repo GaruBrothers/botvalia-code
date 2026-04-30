@@ -46,7 +46,7 @@ import type { ToolPermissionContext } from '../../Tool.js';
 import { getRunningTeammatesSorted } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
 import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTask/types.js';
 import { isPanelAgentTask, type LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
-import { isBackgroundTask } from '../../tasks/types.js';
+import { isBackgroundTask, type TaskState } from '../../tasks/types.js';
 import { AGENT_COLOR_TO_THEME_COLOR, AGENT_COLORS, type AgentColorName } from '../../tools/AgentTool/agentColorManager.js';
 import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js';
 import type { Message } from '../../types/message.js';
@@ -286,6 +286,7 @@ function PromptInput({
   const store = useAppStateStore();
   const setAppState = useSetAppState();
   const tasks = useAppState(s => s.tasks);
+  const taskValues = useMemo(() => Object.values(tasks) as TaskState[], [tasks]);
   const replBridgeConnected = useAppState(s => s.replBridgeConnected);
   const replBridgeExplicit = useAppState(s => s.replBridgeExplicit);
   const replBridgeReconnecting = useAppState(s => s.replBridgeReconnecting);
@@ -391,7 +392,7 @@ function PromptInput({
   // exist. When only local_agent tasks are running (coordinator/fork mode), the
   // pill is absent, so the -1 sentinel would leave nothing visually selected.
   // In that case, skip -1 and treat 0 as the minimum selectable index.
-  const hasBgTaskPill = useMemo(() => Object.values(tasks).some(t => isBackgroundTask(t) && !(process.env.USER_TYPE === 'ant' && isPanelAgentTask(t))), [tasks]);
+  const hasBgTaskPill = useMemo(() => taskValues.some(t => isBackgroundTask(t) && !(process.env.USER_TYPE === 'ant' && isPanelAgentTask(t))), [taskValues]);
   const minCoordinatorIndex = hasBgTaskPill ? -1 : 0;
   // Clamp index when tasks complete and the list shrinks beneath the cursor
   useEffect(() => {
@@ -438,7 +439,10 @@ function PromptInput({
     if (!teamContext) {
       return [];
     }
-    const teammateCount = count(Object.values(teamContext.teammates), t => t.name !== 'team-lead');
+    const teammates = Object.values(teamContext.teammates) as Array<{
+      name: string;
+    }>;
+    const teammateCount = count(teammates, t => t.name !== 'team-lead');
     return [{
       name: teamContext.teamName,
       memberCount: teammateCount,
@@ -451,7 +455,7 @@ function PromptInput({
   // Which pills render below the input box. Order here IS the nav order
   // (down/right = forward, up/left = back). Selection lives in AppState so
   // pills rendered outside PromptInput (CompanionSprite) can read focus.
-  const runningTaskCount = useMemo(() => count(Object.values(tasks), t => t.status === 'running'), [tasks]);
+  const runningTaskCount = useMemo(() => count(taskValues, t => t.status === 'running'), [taskValues]);
   // Panel shows retained-completed agents too (getVisibleAgentTasks), so the
   // pill must stay navigable whenever the panel has rows — not just when
   // something is running.
@@ -555,7 +559,10 @@ function PromptInput({
 
     // Find all @name patterns in the input
     const regex = /(^|\s)@([\w-]+)/g;
-    const memberValues = Object.values(members);
+    const memberValues = Object.values(members) as Array<{
+      name: string;
+      color?: string;
+    }>;
     let match;
     while ((match = regex.exec(displayedValue)) !== null) {
       const leadingSpace = match[1] ?? '';
@@ -1054,7 +1061,7 @@ function PromptInput({
           clearBuffer();
           resetHistory();
           return;
-        } else if (result.error === 'no_team_context') {
+        } else if ('error' in result && result.error === 'no_team_context') {
           // No team context - fall through to normal prompt submission
         } else {
           // Unknown recipient - fall through to normal prompt submission

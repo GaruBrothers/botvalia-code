@@ -104,6 +104,7 @@ import type {
   ElicitationResultHookInput,
   PermissionUpdate,
   ExitReason,
+  SDKAssistantMessageError,
   SyncHookJSONOutput,
   AsyncHookJSONOutput,
 } from 'src/entrypoints/agentSdkTypes.js'
@@ -173,6 +174,25 @@ const TOOL_HOOK_EXECUTION_TIMEOUT_MS = 10 * 60 * 1000
  * teardown scripts need more time.
  */
 const SESSION_END_HOOK_TIMEOUT_MS_DEFAULT = 1500
+const SDK_ASSISTANT_MESSAGE_ERRORS = new Set<SDKAssistantMessageError>([
+  'authentication_failed',
+  'billing_error',
+  'rate_limit',
+  'invalid_request',
+  'server_error',
+  'unknown',
+  'max_output_tokens',
+])
+
+function normalizeAssistantMessageError(
+  value: unknown,
+): SDKAssistantMessageError {
+  return typeof value === 'string' &&
+    SDK_ASSISTANT_MESSAGE_ERRORS.has(value as SDKAssistantMessageError)
+    ? (value as SDKAssistantMessageError)
+    : 'unknown'
+}
+
 export function getSessionEndHookTimeoutMs(): number {
   const raw = process.env.CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS
   const parsed = raw ? parseInt(raw, 10) : NaN
@@ -386,7 +406,7 @@ function validateHookJson(
   const validation = hookJSONOutputSchema().safeParse(parsed)
   if (validation.success) {
     logForDebugging('Successfully parsed and validated hook JSON output')
-    return { json: validation.data }
+    return { json: validation.data as HookJSONOutput }
   }
   const errors = validation.error.issues
     .map(err => `  - ${err.path.join('.')}: ${err.message}`)
@@ -462,7 +482,7 @@ function parseHttpHookOutput(body: string): {
       logForDebugging(
         'HTTP hook returned empty body, treating as empty JSON object',
       )
-      return { json: validation.data }
+      return { json: validation.data as HookJSONOutput }
     }
   }
 
@@ -2202,7 +2222,7 @@ async function* executeHooks({
 
     try {
       const jsonInputRes = getJsonInput()
-      if (!jsonInputRes.ok) {
+      if (jsonInputRes.ok === false) {
         yield {
           message: createAttachmentMessage({
             type: 'hook_error_during_execution',
@@ -2219,6 +2239,7 @@ async function* executeHooks({
         cleanup()
         return
       }
+
       const jsonInput = jsonInputRes.value
 
       if (hook.type === 'prompt') {
@@ -2411,6 +2432,9 @@ async function* executeHooks({
         }
 
         if (httpJson) {
+          if (!isSyncHookJSONOutput(httpJson)) {
+            return
+          }
           const processed = processHookJSONOutput({
             json: httpJson,
             command: hook.url,
@@ -3609,7 +3633,9 @@ export async function executeStopFailureHooks(
   // Some createAssistantAPIErrorMessage call sites omit `error` (e.g.
   // image-size at errors.ts:431). Default to 'unknown' so matcher filtering
   // at getMatchingHooks:1525 always applies.
-  const error = lastMessage.error ?? 'unknown'
+  const error = normalizeAssistantMessageError(lastMessage.error)
+  const matchQuery =
+    typeof lastMessage.error === 'string' ? lastMessage.error : error
   const hookInput: StopFailureHookInput = {
     ...createBaseHookInput(undefined, undefined, toolUseContext),
     hook_event_name: 'StopFailure',
@@ -3622,7 +3648,7 @@ export async function executeStopFailureHooks(
     getAppState: toolUseContext?.getAppState,
     hookInput,
     timeoutMs,
-    matchQuery: error,
+    matchQuery,
   })
 }
 
@@ -4413,7 +4439,9 @@ function parseElicitationHookOutput(
   }
 
   try {
-    const parsed = hookJSONOutputSchema().parse(JSON.parse(trimmed))
+    const parsed = hookJSONOutputSchema().parse(
+      JSON.parse(trimmed),
+    ) as HookJSONOutput
     if (isAsyncHookJSONOutput(parsed)) {
       return {}
     }

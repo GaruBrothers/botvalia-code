@@ -19,6 +19,13 @@ type Props = {
   context: LocalJSXCommandContext;
   defaultTab: 'Status' | 'Config' | 'Usage' | 'Gates';
 };
+type GatesProps = {
+  onOwnsEscChange: (ownsEsc: boolean) => void;
+  contentHeight: number;
+};
+function Gates(_: GatesProps): null {
+  return null;
+}
 export function Settings(t0) {
   const $ = _c(25);
   const {

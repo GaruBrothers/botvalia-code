@@ -280,13 +280,24 @@ export function parsePluginId(
  * handle analytics/error-catching around this.
  */
 export type InstallCoreResult =
-  | { ok: true; closure: string[]; depNote: string }
+  | InstallCoreSuccessResult
+  | InstallCoreFailureResult
+
+type FailedResolutionResult = Extract<ResolutionResult, { ok: false }>
+
+export type InstallCoreSuccessResult = {
+  ok: true
+  closure: string[]
+  depNote: string
+}
+
+export type InstallCoreFailureResult =
   | { ok: false; reason: 'local-source-no-location'; pluginName: string }
   | { ok: false; reason: 'settings-write-failed'; message: string }
   | {
       ok: false
       reason: 'resolution-failed'
-      resolution: ResolutionResult & { ok: false }
+      resolution: FailedResolutionResult
     }
   | { ok: false; reason: 'blocked-by-policy'; pluginName: string }
   | {
@@ -296,13 +307,19 @@ export type InstallCoreResult =
       blockedDependency: string
     }
 
+export function isInstallCoreFailure(
+  result: InstallCoreResult,
+): result is InstallCoreFailureResult {
+  return result.ok === false
+}
+
 /**
  * Format a failed ResolutionResult into a user-facing message. Unified on
  * the richer CLI messages (the "Is the X marketplace added?" hint is useful
  * for UI users too).
  */
 export function formatResolutionError(
-  r: ResolutionResult & { ok: false },
+  r: FailedResolutionResult,
 ): string {
   switch (r.reason) {
     case 'cycle':
@@ -408,7 +425,11 @@ export async function installResolvedPlugin({
     allowedCrossMarketplaces,
   )
   if (!resolution.ok) {
-    return { ok: false, reason: 'resolution-failed', resolution }
+    return {
+      ok: false,
+      reason: 'resolution-failed',
+      resolution: resolution as FailedResolutionResult,
+    }
   }
 
   // ── Policy guard for transitive dependencies ──
@@ -524,7 +545,7 @@ export async function installPluginFromMarketplace({
       marketplaceInstallLocation,
     })
 
-    if (!result.ok) {
+    if (isInstallCoreFailure(result)) {
       switch (result.reason) {
         case 'local-source-no-location':
           return {

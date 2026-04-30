@@ -29,6 +29,7 @@ import { logError } from './log.js'
 import { recordFileHistorySnapshot } from './sessionStorage.js'
 
 type BackupFileName = string | null // The null value means the file does not exist in this version
+export type FileHistoryMessageId = UUID | string
 
 export type FileHistoryBackup = {
   backupFileName: BackupFileName
@@ -37,7 +38,7 @@ export type FileHistoryBackup = {
 }
 
 export type FileHistorySnapshot = {
-  messageId: UUID // The associated message ID for this snapshot
+  messageId: FileHistoryMessageId // The associated message ID for this snapshot
   trackedFileBackups: Record<string, FileHistoryBackup> // Map of file paths to backup versions
   timestamp: Date
 }
@@ -88,7 +89,7 @@ export async function fileHistoryTrackEdit(
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
   filePath: string,
-  messageId: UUID,
+  messageId: FileHistoryMessageId,
 ): Promise<void> {
   if (!fileHistoryEnabled()) {
     return
@@ -199,7 +200,7 @@ export async function fileHistoryMakeSnapshot(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
-  messageId: UUID,
+  messageId: UUID | string,
 ): Promise<void> {
   if (!fileHistoryEnabled()) {
     return undefined
@@ -348,7 +349,7 @@ export async function fileHistoryRewind(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
-  messageId: UUID,
+  messageId: FileHistoryMessageId,
 ): Promise<void> {
   if (!fileHistoryEnabled()) {
     return
@@ -398,7 +399,7 @@ export async function fileHistoryRewind(
 
 export function fileHistoryCanRestore(
   state: FileHistoryState,
-  messageId: UUID,
+  messageId: FileHistoryMessageId,
 ): boolean {
   if (!fileHistoryEnabled()) {
     return false
@@ -413,7 +414,7 @@ export function fileHistoryCanRestore(
  */
 export async function fileHistoryGetDiffStats(
   state: FileHistoryState,
-  messageId: UUID,
+  messageId: FileHistoryMessageId,
 ): Promise<DiffStats> {
   if (!fileHistoryEnabled()) {
     return undefined
@@ -493,7 +494,7 @@ export async function fileHistoryGetDiffStats(
  */
 export async function fileHistoryHasAnyChanges(
   state: FileHistoryState,
-  messageId: UUID,
+  messageId: FileHistoryMessageId,
 ): Promise<boolean> {
   if (!fileHistoryEnabled()) {
     return false

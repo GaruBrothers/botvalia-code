@@ -1,3 +1,8 @@
+import type { Message } from '../../types/message.js'
+import type { AssistantMessage } from '../../types/message.js'
+import type { ToolUseContext } from '../../Tool.js'
+import type { QuerySource } from '../../constants/querySource.js'
+
 type Stats = {
   collapsedSpans: number
   collapsedMessages: number
@@ -43,17 +48,31 @@ export function initContextCollapse(): void {}
 
 export function resetContextCollapse(): void {}
 
-export async function applyCollapsesIfNeeded<T>(messages: T): Promise<{
-  messages: T
+export async function applyCollapsesIfNeeded(
+  messages: Message[],
+  _toolUseContext: ToolUseContext,
+  _querySource?: QuerySource,
+): Promise<{
+  messages: Message[]
   changed: boolean
 }> {
   return { messages, changed: false }
 }
 
-export function isWithheldPromptTooLong(): boolean {
+export function isWithheldPromptTooLong(
+  _message: unknown,
+  _isPromptTooLongMessage: (message: AssistantMessage) => boolean,
+  _querySource?: QuerySource,
+): boolean {
   return false
 }
 
-export function recoverFromOverflow<T>(messages: T): T {
-  return messages
+export function recoverFromOverflow(
+  messages: Message[],
+  _querySource?: QuerySource,
+): {
+  messages: Message[]
+  committed: number
+} {
+  return { messages, committed: 0 }
 }

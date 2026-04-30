@@ -11,6 +11,7 @@ export type CrossProjectResumeResult =
   | {
       isCrossProject: true
       isSameRepoWorktree: true
+      command?: undefined
       projectPath: string
     }
   | {

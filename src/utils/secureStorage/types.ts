@@ -1,3 +1,5 @@
+import type { OAuthTokens } from '../../services/oauth/types.js'
+
 export type SecureStorageMcpOAuthEntry = {
   accessToken?: string
   refreshToken?: string
@@ -14,6 +16,7 @@ export type SecureStoragePluginSecret = Record<string, unknown>
 
 export type SecureStorageData = {
   trustedDeviceToken?: string
+  claudeAiOauth?: OAuthTokens
   mcpOAuth?: Record<string, SecureStorageMcpOAuthEntry>
   mcpOAuthClientConfig?: Record<string, { clientSecret?: string }>
   pluginSecrets?: Record<string, SecureStoragePluginSecret>

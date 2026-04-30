@@ -74,7 +74,8 @@ export function NativeAutoUpdater({
     if (isUpdatingRef.current) {
       return;
     }
-    if ("production" === 'test' || "production" === 'development') {
+    const nodeEnv = String(process.env.NODE_ENV ?? 'production');
+    if (nodeEnv === 'test' || nodeEnv === 'development') {
       logForDebugging('NativeAutoUpdater: Skipping update check in test/dev environment');
       return;
     }
@@ -186,7 +187,7 @@ export function NativeAutoUpdater({
         </Text>}
       {maxVersionIssue && process.env.USER_TYPE === 'ant' && <Text color="warning">
           ⚠ Known issue: {maxVersionIssue} &middot; Run{' '}
-          <Text bold>claude rollback --safe</Text> to downgrade
+          <Text bold>botvalia rollback --safe</Text> to downgrade
         </Text>}
     </Box>;
 }

@@ -378,10 +378,16 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
   const finalAssistantMessage = createAssistantMessage({
     content: completionMessage,
     usage: {
-      ...usage,
+      input_tokens: usage.input_tokens,
+      output_tokens: usage.output_tokens,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens ?? null,
+      cache_read_input_tokens: usage.cache_read_input_tokens ?? null,
+      server_tool_use: usage.server_tool_use ?? null,
+      service_tier: usage.service_tier ?? null,
+      cache_creation: usage.cache_creation ?? null,
       inference_geo: null,
       iterations: null,
-      speed: null
+      speed: null,
     }
   });
   return <Box flexDirection="column">

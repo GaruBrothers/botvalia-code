@@ -435,7 +435,7 @@ export const AgentTool = buildTool({
     if (process.env.USER_TYPE === 'ant' && effectiveIsolation === 'remote') {
       const eligibility = await checkRemoteAgentEligibility();
       if (!eligibility.eligible) {
-        const reasons = eligibility.errors.map(formatPreconditionError).join('\n');
+        const reasons = ('errors' in eligibility ? eligibility.errors : []).map(formatPreconditionError).join('\n');
         throw new Error(`Cannot launch remote agent:\n${reasons}`);
       }
       let bundleFailHint: string | undefined;
@@ -1062,6 +1062,9 @@ export const AgentTool = buildTool({
             } = raceResult;
             if (result.done) break;
             const message = result.value;
+            if (!message) {
+              continue;
+            }
             agentMessages.push(message);
 
             // Emit task_progress for the VS Code subagent panel
@@ -1084,7 +1087,7 @@ export const AgentTool = buildTool({
             if (message.type === 'progress' && (message.data.type === 'bash_progress' || message.data.type === 'powershell_progress') && onProgress) {
               onProgress({
                 toolUseID: message.toolUseID,
-                data: message.data
+                data: message.data as Progress
               });
             }
             if (message.type !== 'assistant' && message.type !== 'user') {

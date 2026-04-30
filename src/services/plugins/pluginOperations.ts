@@ -44,6 +44,7 @@ import {
 } from '../../utils/plugins/pluginIdentifier.js'
 import {
   formatResolutionError,
+  isInstallCoreFailure,
   installResolvedPlugin,
 } from '../../utils/plugins/pluginInstallationHelpers.js'
 import {
@@ -378,7 +379,7 @@ export async function installPluginOp(
     marketplaceInstallLocation,
   })
 
-  if (!result.ok) {
+  if (isInstallCoreFailure(result)) {
     switch (result.reason) {
       case 'local-source-no-location':
         return {

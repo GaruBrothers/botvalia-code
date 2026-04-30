@@ -13,32 +13,49 @@ function assertNonEmptyId(id: string, kind: 'task' | 'worker'): void {
 }
 
 function validateInput(input: PlannerInput): void {
-  const taskIds = new Set<string>()
+  // Validate tasks
+  const taskIds = new Set<string>();
   for (const task of input.tasks) {
-    assertNonEmptyId(task.id, 'task')
+    assertNonEmptyId(task.id, 'task');
     if (taskIds.has(task.id)) {
-      throw new Error(`Duplicate task id: ${task.id}`)
+      throw new Error(`Duplicate task id: ${task.id}`);
     }
-    taskIds.add(task.id)
+    taskIds.add(task.id);
     if (task.effortDays <= 0) {
-      throw new Error(`Task ${task.id} must have positive effortDays`)
+      throw new Error(`Task ${task.id} must have positive effortDays`);
     }
   }
 
-  const workerIds = new Set<string>()
-  for (const worker of input.workers) {
-    assertNonEmptyId(worker.id, 'worker')
-    if (workerIds.has(worker.id)) {
-      throw new Error(`Duplicate worker id: ${worker.id}`)
+  // Validate dependencies reference existing tasks
+  for (const task of input.tasks) {
+    for (const depId of task.dependsOn) {
+      if (!taskIds.has(depId)) {
+        throw new Error(`Task ${task.id} depends on missing task ${depId}`);
+      }
     }
-    workerIds.add(worker.id)
+  }
+
+  // Validate workers
+  const workerIds = new Set<string>();
+  for (const worker of input.workers) {
+    assertNonEmptyId(worker.id, 'worker');
+    if (workerIds.has(worker.id)) {
+      throw new Error(`Duplicate worker id: ${worker.id}`);
+    }
+    workerIds.add(worker.id);
     if (worker.capacityPerDay <= 0) {
-      throw new Error(`Worker ${worker.id} must have positive capacityPerDay`)
+      throw new Error(`Worker ${worker.id} must have positive capacityPerDay`);
     }
   }
 }
 
 function topologicalSort(tasks: Task[]): string[] {
+  // Perform Kahn's algorithm with cycle detection
+  // Perform Kahn's algorithm with cycle detection
+  // Kahn's algorithm with validation for missing dependencies and cycle detection
+  // Perform Kahn's algorithm with cycle detection
+  // Perform Kahn's algorithm with cycle detection
+
   const indegree = new Map<string, number>()
   const dependents = new Map<string, string[]>()
 
@@ -78,6 +95,9 @@ function topologicalSort(tasks: Task[]): string[] {
     }
   }
 
+  if (order.length !== tasks.length) {
+    throw new Error('Dependency cycle detected');
+  }
   return order
 }
 
@@ -86,6 +106,12 @@ function computeTaskDuration(task: Task, worker: Worker): number {
 }
 
 function computeCriticalPathDays(tasks: PlannedTask[]): number {
+  // Critical path is the longest time from start to finish across dependent tasks.
+  // For simplicity in this challenge, we define it as the total duration of the plan,
+  // which equals the maximum end day among all planned tasks.
+  if (tasks.length === 0) return 0;
+  return tasks.reduce((max, t) => Math.max(max, t.endDay), 0);
+
   return tasks.reduce((maxValue, task) => maxValue + task.calendarDays, 0)
 }
 
@@ -136,7 +162,8 @@ export function buildExecutionPlan(input: PlannerInput): ExecutionPlan {
       }),
     )
 
-    const selectedWorker = eligibleWorkers[0]!
+    // Deterministic selection: sort by worker id alphabetically
+const selectedWorker = eligibleWorkers.slice().sort((a, b) => a.id.localeCompare(b.id))[0]!
     const workerReadyDay = workerAvailability.get(selectedWorker.id) ?? 0
     const startDay = Math.max(dependencyReadyDay, workerReadyDay)
     const calendarDays = computeTaskDuration(task, selectedWorker)

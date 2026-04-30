@@ -1,0 +1,4 @@
+ID;Tarea;Fase;Duración;Inicio;Fin;Responsable;Prioridad;Estado;% Avance
+001;Definición del proyecto;Inicio;5 días;01/06/2026;05/06/2026;Juan Pérez (PM);Alta;Completado;100%
+002;Análisis de requisitos;Inicio;7 días;08/06/2026;12/06/2026;María López (Analista);Alta;Completado;100%
+003;Diseño de arquitectura;Planificación;5 días;13/06/2026;17/06/2026;Carlos Ruiz (Lead Arquitecto);Alta;En progreso;60%

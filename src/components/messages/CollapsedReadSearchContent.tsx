@@ -211,7 +211,13 @@ export function CollapsedReadSearchContent({
           pattern?: string;
           file_path?: string;
         };
-        incomingHint = input.file_path ?? (input.pattern ? `"${input.pattern}"` : undefined) ?? input.command ?? latest.toolName;
+        const toolName =
+          typeof latest.toolName === 'string' ? latest.toolName : undefined;
+        incomingHint =
+          input.file_path ??
+          (input.pattern ? `"${input.pattern}"` : undefined) ??
+          input.command ??
+          toolName;
       }
     }
   }
@@ -280,9 +286,18 @@ export function CollapsedReadSearchContent({
       if (data?.type !== 'bash_progress' && data?.type !== 'powershell_progress') {
         continue;
       }
-      if (elapsed === undefined || data.elapsedTimeSeconds > elapsed) {
-        elapsed = data.elapsedTimeSeconds;
-        lines = data.totalLines;
+      const elapsedTimeSeconds =
+        typeof data.elapsedTimeSeconds === 'number'
+          ? data.elapsedTimeSeconds
+          : undefined;
+      const totalLines =
+        typeof data.totalLines === 'number' ? data.totalLines : 0;
+      if (
+        elapsedTimeSeconds !== undefined &&
+        (elapsed === undefined || elapsedTimeSeconds > elapsed)
+      ) {
+        elapsed = elapsedTimeSeconds;
+        lines = totalLines;
       }
     }
     if (elapsed !== undefined && elapsed >= 2) {
