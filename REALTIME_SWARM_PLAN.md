@@ -43,7 +43,13 @@ La base ya existe, pero todavía no es un swarm verdaderamente conversacional.
 - `src/hooks/useInboxPoller.ts`
   Ya formatea esos eventos para que el agente reciba contexto legible en vez de JSON crudo.
 - `src/utils/swarm/mailboxWakeup.ts`
-  Ya existe una primitiva de wakeup para mailbox, y el runner in-process ya puede despertarse por escritura local sin esperar siempre el sleep completo.
+  Ya existe una primitiva de wakeup para mailbox.
+- `src/utils/swarm/inProcessRunner.ts`
+  Ya puede despertarse por escritura local al mailbox sin esperar siempre el sleep completo.
+- `src/hooks/useInboxPoller.ts`
+  Ya combina polling con wakeup local para reaccionar antes a mensajes del mailbox en el mismo proceso.
+- `src/cli/print.ts`
+  La ruta headless del líder ya combina lectura inmediata con wakeup local del mailbox para reducir latencia sin perder compatibilidad.
 
 ### Lo que todavía falta
 
@@ -161,8 +167,8 @@ Entregables:
 
 Estado:
 - parcialmente implementada
-- `inProcessRunner` ya usa wakeup local de mailbox
-- falta extender el mismo despertar compartido a `useInboxPoller` y `print.ts`
+- `inProcessRunner`, `useInboxPoller` y `print.ts` ya usan wakeup local de mailbox para same-process
+- falta un bus/wakeup compartido cross-process para tmux/panes y otros backends externos al proceso actual
 
 ### Fase 2. Despertar compañeros por evento
 

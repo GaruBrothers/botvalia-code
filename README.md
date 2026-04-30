@@ -163,6 +163,8 @@ Estado actual de Fase 1:
 - el mailbox ya soporta envelope estructurado retrocompatible
 - los mensajes estructurados ya se formatean para que no entren como JSON crudo al contexto del agente
 - el runner in-process ya puede despertarse por escritura local al mailbox sin esperar siempre el sleep completo
+- `useInboxPoller` ya combina polling con wakeup local para reaccionar antes a mensajes del mailbox en el mismo proceso
+- la ruta headless de `print.ts` ya usa wakeup local del mailbox sin empeorar el caso donde ya había mensajes pendientes
 
 Implementation note:
 

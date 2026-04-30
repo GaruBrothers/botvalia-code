@@ -347,6 +347,7 @@ import {
   markMessagesAsRead,
   isShutdownApproved,
 } from '../utils/teammateMailbox.js'
+import { waitForMailboxWakeup } from '../utils/swarm/mailboxWakeup.js'
 import { removeTeammateFromTeamFile } from '../utils/swarm/teamHelpers.js'
 import { unassignTeammateTasks } from '../utils/tasks.js'
 import { getRunningTasks } from '../utils/task/framework.js'
@@ -2533,10 +2534,29 @@ function runHeadlessStreaming(
             break
           }
 
-          const unread = await readUnreadMessages(
+          let unread = await readUnreadMessages(
             agentName,
             refreshedState.teamContext?.teamName,
           )
+
+          if (unread.length === 0) {
+            const wakeReason = await waitForMailboxWakeup({
+              agentName,
+              teamName: refreshedState.teamContext?.teamName,
+              timeoutMs: POLL_INTERVAL_MS,
+            })
+
+            if (wakeReason === 'message') {
+              logForDebugging(
+                '[print.ts] Mailbox wakeup received for team-lead',
+              )
+            }
+
+            unread = await readUnreadMessages(
+              agentName,
+              refreshedState.teamContext?.teamName,
+            )
+          }
 
           if (unread.length > 0) {
             logForDebugging(

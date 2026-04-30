@@ -35,6 +35,7 @@ import {
 import type { PaneBackendType } from '../utils/swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from '../utils/swarm/constants.js'
 import { getLeaderToolUseConfirmQueue } from '../utils/swarm/leaderPermissionBridge.js'
+import { waitForMailboxWakeup } from '../utils/swarm/mailboxWakeup.js'
 import { sendPermissionResponseViaMailbox } from '../utils/swarm/permissionSync.js'
 import {
   removeTeammateFromTeamFile,
@@ -106,6 +107,7 @@ function getAgentNameToPoll(appState: AppState): string | undefined {
 }
 
 const INBOX_POLL_INTERVAL_MS = 1000
+const INBOX_WAKE_TIMEOUT_MS = 30000
 
 type Props = {
   enabled: boolean
@@ -136,83 +138,88 @@ export function useInboxPoller({
   const setAppState = useSetAppState()
   const inboxMessageCount = useAppState(s => s.inbox.messages.length)
   const terminal = useTerminalNotification()
+  const pollInFlightRef = useRef(false)
 
   const poll = useCallback(async () => {
     if (!enabled) return
+    if (pollInFlightRef.current) return
 
-    // Use ref to avoid dependency on appState object (prevents infinite loop)
-    const currentAppState = store.getState()
-    const agentName = getAgentNameToPoll(currentAppState)
-    if (!agentName) return
+    pollInFlightRef.current = true
 
-    const unread = await readUnreadMessages(
-      agentName,
-      currentAppState.teamContext?.teamName,
-    )
+    try {
+      // Use ref to avoid dependency on appState object (prevents infinite loop)
+      const currentAppState = store.getState()
+      const agentName = getAgentNameToPoll(currentAppState)
+      if (!agentName) return
 
-    if (unread.length === 0) return
+      const unread = await readUnreadMessages(
+        agentName,
+        currentAppState.teamContext?.teamName,
+      )
 
-    logForDebugging(`[InboxPoller] Found ${unread.length} unread message(s)`)
+      if (unread.length === 0) return
 
-    // Check for plan approval responses and transition out of plan mode if approved
-    // Security: Only accept approval responses from the team lead
-    if (isTeammate() && isPlanModeRequired()) {
-      for (const msg of unread) {
-        const approvalResponse = isPlanApprovalResponse(msg.text)
-        // Verify the message is from the team lead to prevent teammates from forging approvals
-        if (approvalResponse && msg.from === 'team-lead') {
-          logForDebugging(
-            `[InboxPoller] Received plan approval response from team-lead: approved=${approvalResponse.approved}`,
-          )
-          if (approvalResponse.approved) {
-            // Use leader's permission mode if provided, otherwise default
-            const targetMode = approvalResponse.permissionMode ?? 'default'
+      logForDebugging(`[InboxPoller] Found ${unread.length} unread message(s)`)
 
-            // Transition out of plan mode
-            setAppState(prev => ({
-              ...prev,
-              toolPermissionContext: applyPermissionUpdate(
-                prev.toolPermissionContext,
-                {
-                  type: 'setMode',
-                  mode: toExternalPermissionMode(targetMode),
-                  destination: 'session',
-                },
-              ),
-            }))
+      // Check for plan approval responses and transition out of plan mode if approved
+      // Security: Only accept approval responses from the team lead
+      if (isTeammate() && isPlanModeRequired()) {
+        for (const msg of unread) {
+          const approvalResponse = isPlanApprovalResponse(msg.text)
+          // Verify the message is from the team lead to prevent teammates from forging approvals
+          if (approvalResponse && msg.from === 'team-lead') {
             logForDebugging(
-              `[InboxPoller] Plan approved by team lead, exited plan mode to ${targetMode}`,
+              `[InboxPoller] Received plan approval response from team-lead: approved=${approvalResponse.approved}`,
             )
-          } else {
+            if (approvalResponse.approved) {
+              // Use leader's permission mode if provided, otherwise default
+              const targetMode = approvalResponse.permissionMode ?? 'default'
+
+              // Transition out of plan mode
+              setAppState(prev => ({
+                ...prev,
+                toolPermissionContext: applyPermissionUpdate(
+                  prev.toolPermissionContext,
+                  {
+                    type: 'setMode',
+                    mode: toExternalPermissionMode(targetMode),
+                    destination: 'session',
+                  },
+                ),
+              }))
+              logForDebugging(
+                `[InboxPoller] Plan approved by team lead, exited plan mode to ${targetMode}`,
+              )
+            } else {
+              logForDebugging(
+                `[InboxPoller] Plan rejected by team lead: ${approvalResponse.feedback || 'No feedback provided'}`,
+              )
+            }
+          } else if (approvalResponse) {
             logForDebugging(
-              `[InboxPoller] Plan rejected by team lead: ${approvalResponse.feedback || 'No feedback provided'}`,
+              `[InboxPoller] Ignoring plan approval response from non-team-lead: ${msg.from}`,
             )
           }
-        } else if (approvalResponse) {
-          logForDebugging(
-            `[InboxPoller] Ignoring plan approval response from non-team-lead: ${msg.from}`,
-          )
         }
       }
-    }
 
-    // Helper to mark messages as read in the inbox file.
-    // Called after messages are successfully delivered or reliably queued.
-    const markRead = () => {
-      void markMessagesAsRead(agentName, currentAppState.teamContext?.teamName)
-    }
+      // Helper to mark messages as read in the inbox file.
+      // Called after messages are successfully delivered or reliably queued.
+      const markRead = () => {
+        void markMessagesAsRead(agentName, currentAppState.teamContext?.teamName)
+      }
 
-    // Separate permission messages from regular teammate messages
-    const permissionRequests: TeammateMessage[] = []
-    const permissionResponses: TeammateMessage[] = []
-    const sandboxPermissionRequests: TeammateMessage[] = []
-    const sandboxPermissionResponses: TeammateMessage[] = []
-    const shutdownRequests: TeammateMessage[] = []
-    const shutdownApprovals: TeammateMessage[] = []
-    const teamPermissionUpdates: TeammateMessage[] = []
-    const modeSetRequests: TeammateMessage[] = []
-    const planApprovalRequests: TeammateMessage[] = []
-    const regularMessages: TeammateMessage[] = []
+      // Separate permission messages from regular teammate messages
+      const permissionRequests: TeammateMessage[] = []
+      const permissionResponses: TeammateMessage[] = []
+      const sandboxPermissionRequests: TeammateMessage[] = []
+      const sandboxPermissionResponses: TeammateMessage[] = []
+      const shutdownRequests: TeammateMessage[] = []
+      const shutdownApprovals: TeammateMessage[] = []
+      const teamPermissionUpdates: TeammateMessage[] = []
+      const modeSetRequests: TeammateMessage[] = []
+      const planApprovalRequests: TeammateMessage[] = []
+      const regularMessages: TeammateMessage[] = []
 
     for (const m of unread) {
       const permReq = isPermissionRequest(m.text)
@@ -862,7 +869,10 @@ export function useInboxPoller({
     // or reliably queued in AppState. This prevents permanent message loss
     // when the session is busy — if we crash before this point, the messages
     // will be re-read on the next poll cycle instead of being silently dropped.
-    markRead()
+      markRead()
+    } finally {
+      pollInFlightRef.current = false
+    }
   }, [
     enabled,
     isLoading,
@@ -953,6 +963,38 @@ export function useInboxPoller({
   // Poll if running as a teammate or as a team lead
   const shouldPoll = enabled && !!getAgentNameToPoll(store.getState())
   useInterval(() => void poll(), shouldPoll ? INBOX_POLL_INTERVAL_MS : null)
+
+  useEffect(() => {
+    if (!enabled) return
+    if (!getAgentNameToPoll(store.getState())) return
+
+    const abortController = new AbortController()
+
+    void (async () => {
+      while (!abortController.signal.aborted) {
+        const currentAppState = store.getState()
+        const agentName = getAgentNameToPoll(currentAppState)
+        if (!agentName) {
+          return
+        }
+
+        const wakeReason = await waitForMailboxWakeup({
+          agentName,
+          teamName: currentAppState.teamContext?.teamName,
+          timeoutMs: INBOX_WAKE_TIMEOUT_MS,
+          signal: abortController.signal,
+        })
+
+        if (wakeReason === 'message') {
+          void poll()
+        }
+      }
+    })()
+
+    return () => {
+      abortController.abort()
+    }
+  }, [enabled, poll, store])
 
   // Initial poll on mount (only once)
   const hasDoneInitialPollRef = useRef(false)
