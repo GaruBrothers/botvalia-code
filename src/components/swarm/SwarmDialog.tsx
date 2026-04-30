@@ -479,8 +479,14 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
         <Box flexDirection="column" gap={1}>
           <Text>No hay un swarm activo en esta sesión.</Text>
           <Text dimColor>
-            Pídele a BotValia que cree un team o un swarm, y luego vuelve a abrir
-            /swarm.
+            Primero pídele a BotValia que cree un team real en esta misma sesión.
+          </Text>
+          <Text dimColor>
+            Ejemplo: crea un swarm llamado demo-swarm con planner, coder y qa;
+            haz que se coordinen entre sí y me den avances parciales.
+          </Text>
+          <Text dimColor>
+            Cuando veas que el team quedó creado, vuelve a abrir /swarm.
           </Text>
         </Box>
       )

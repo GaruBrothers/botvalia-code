@@ -39,7 +39,7 @@ const IDLE: Frame = {
 }
 
 const FRAME_MS = 70
-const MARK_HEIGHT = 3
+const MARK_HEIGHT = 6
 
 const incrementFrame = (i: number) => i + 1
 

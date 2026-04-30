@@ -70,7 +70,7 @@ export function CondensedLogo() {
     t3 = $[6];
   }
   useEffect(t2, t3);
-  const textWidth = Math.max(columns - 15, 20);
+  const textWidth = Math.max(columns - 19, 20);
   const versionPrefix = 'BotValia Code v'
   const truncatedVersion = truncate(version, Math.max(textWidth - stringWidth(versionPrefix), 6));
   const effortSuffix = getEffortSuffix(model, effortValue);
@@ -90,14 +90,14 @@ export function CondensedLogo() {
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true}>BotValia Code</Text>;
+    t5 = <Text bold={true} color="professionalBlue">BOTVALIA CODE</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
   }
   let t6;
   if ($[9] !== truncatedVersion) {
-    t6 = <Text>{t5}{" "}<Text dimColor={true}>v{truncatedVersion}</Text></Text>;
+    t6 = <Box flexDirection="column">{t5}<Text color="cyan">v{truncatedVersion}</Text></Box>;
     $[9] = truncatedVersion;
     $[10] = t6;
   } else {
@@ -142,7 +142,7 @@ export function CondensedLogo() {
   }
   let t12;
   if ($[23] !== t10 || $[24] !== t11 || $[25] !== t6 || $[26] !== t7 || $[27] !== t9) {
-    t12 = <OffscreenFreeze><Box flexDirection="row" gap={2} alignItems="center">{t4}<Box flexDirection="column">{t6}{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
+    t12 = <OffscreenFreeze><Box flexDirection="row" gap={3} alignItems="center">{t4}<Box flexDirection="column">{t6}{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
     $[23] = t10;
     $[24] = t11;
     $[25] = t6;

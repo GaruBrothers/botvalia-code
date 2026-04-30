@@ -7,33 +7,128 @@ export type ClawdPose =
   | 'look-left'
   | 'look-right'
 
-type PoseFrame = {
-  top: string
-  middle: string
-  bottom: string
+type Segment = {
+  text: string
+  color?: string
 }
 
+type PoseFrame = readonly (readonly Segment[])[]
+
 const POSES: Record<ClawdPose, PoseFrame> = {
-  default: {
-    top: '╭◢█◣╮',
-    middle: '│▤◈▤│',
-    bottom: '╰◥█◤╯',
-  },
-  'look-left': {
-    top: '╭◢█◣╮',
-    middle: '│◈▤▤│',
-    bottom: '╰◥█◤╯',
-  },
-  'look-right': {
-    top: '╭◢█◣╮',
-    middle: '│▤▤◈│',
-    bottom: '╰◥█◤╯',
-  },
-  'arms-up': {
-    top: '┌◢█◣┐',
-    middle: '│▥◆▥│',
-    bottom: '╰◥█◤╯',
-  },
+  default: [
+    [{ text: '    ' }, { text: '◢█◣', color: 'blue' }],
+    [
+      { text: '  ' },
+      { text: '◢██', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '██◣', color: 'blue' },
+    ],
+    [
+      { text: '◢███', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '◇', color: 'yellow' },
+      { text: '◆', color: 'cyan' },
+      { text: '███◣', color: 'blue' },
+    ],
+    [
+      { text: '◥███', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '◇', color: 'yellow' },
+      { text: '◆', color: 'cyan' },
+      { text: '███◤', color: 'blue' },
+    ],
+    [
+      { text: '  ' },
+      { text: '◥██', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '██◤', color: 'blue' },
+    ],
+    [{ text: '    ' }, { text: '◥█◤', color: 'blue' }],
+  ],
+  'look-left': [
+    [{ text: '    ' }, { text: '◢█◣', color: 'blue' }],
+    [
+      { text: '  ' },
+      { text: '◢██', color: 'blue' },
+      { text: '◇', color: 'yellow' },
+      { text: '██◣', color: 'blue' },
+    ],
+    [
+      { text: '◢███', color: 'blue' },
+      { text: '◇', color: 'yellow' },
+      { text: '◆◆', color: 'cyan' },
+      { text: '███◣', color: 'blue' },
+    ],
+    [
+      { text: '◥███', color: 'blue' },
+      { text: '◇', color: 'yellow' },
+      { text: '◆◆', color: 'cyan' },
+      { text: '███◤', color: 'blue' },
+    ],
+    [
+      { text: '  ' },
+      { text: '◥██', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '██◤', color: 'blue' },
+    ],
+    [{ text: '    ' }, { text: '◥█◤', color: 'blue' }],
+  ],
+  'look-right': [
+    [{ text: '    ' }, { text: '◢█◣', color: 'blue' }],
+    [
+      { text: '  ' },
+      { text: '◢██', color: 'blue' },
+      { text: '◇', color: 'yellow' },
+      { text: '██◣', color: 'blue' },
+    ],
+    [
+      { text: '◢███', color: 'blue' },
+      { text: '◆◆', color: 'cyan' },
+      { text: '◇', color: 'yellow' },
+      { text: '███◣', color: 'blue' },
+    ],
+    [
+      { text: '◥███', color: 'blue' },
+      { text: '◆◆', color: 'cyan' },
+      { text: '◇', color: 'yellow' },
+      { text: '███◤', color: 'blue' },
+    ],
+    [
+      { text: '  ' },
+      { text: '◥██', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '██◤', color: 'blue' },
+    ],
+    [{ text: '    ' }, { text: '◥█◤', color: 'blue' }],
+  ],
+  'arms-up': [
+    [{ text: '   ' }, { text: '◢◆█◆◣', color: 'cyan' }],
+    [
+      { text: '  ' },
+      { text: '◢██', color: 'blue' },
+      { text: '◆◆', color: 'cyan' },
+      { text: '██◣', color: 'blue' },
+    ],
+    [
+      { text: '◢███', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '◇', color: 'yellow' },
+      { text: '◆', color: 'cyan' },
+      { text: '███◣', color: 'blue' },
+    ],
+    [
+      { text: '◥███', color: 'blue' },
+      { text: '◆◆◆', color: 'cyan' },
+      { text: '███◤', color: 'blue' },
+    ],
+    [
+      { text: '  ' },
+      { text: '◥██', color: 'blue' },
+      { text: '◆', color: 'cyan' },
+      { text: '██◤', color: 'blue' },
+    ],
+    [{ text: '    ' }, { text: '◥█◤', color: 'blue' }],
+  ],
 }
 
 export function Clawd({
@@ -44,10 +139,16 @@ export function Clawd({
   const frame = POSES[pose] ?? POSES.default
 
   return (
-    <Box flexDirection="column" alignItems="center" width={9}>
-      <Text color="clawd_body">{frame.top}</Text>
-      <Text color="professionalBlue">{frame.middle}</Text>
-      <Text color="clawd_body">{frame.bottom}</Text>
+    <Box flexDirection="column" alignItems="center" width={11}>
+      {frame.map((line, lineIndex) => (
+        <Box key={lineIndex} flexDirection="row">
+          {line.map((segment, segmentIndex) => (
+            <Text key={`${lineIndex}-${segmentIndex}`} color={segment.color}>
+              {segment.text}
+            </Text>
+          ))}
+        </Box>
+      ))}
     </Box>
   )
 }
