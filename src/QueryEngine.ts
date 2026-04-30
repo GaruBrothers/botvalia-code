@@ -113,6 +113,7 @@ import {
   isResultSuccessful,
   normalizeMessage,
 } from './utils/queryHelpers.js'
+import { createQueryEngineSessionRuntimeController } from './runtime/queryEngineSession.js'
 
 // Dead code elimination: conditional import for coordinator mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1384,9 +1385,15 @@ export async function* ask({
         }
       : {}),
   })
+  const runtimeController = createQueryEngineSessionRuntimeController({
+    engine,
+    cwd,
+    getAppState,
+  })
 
   try {
-    yield* engine.submitMessage(prompt, {
+    yield* runtimeController.runPrompt({
+      text: prompt,
       uuid: promptUuid,
       isMeta,
     })

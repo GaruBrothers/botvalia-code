@@ -14,6 +14,14 @@ type QueryEngineSessionRuntimeConfig = {
   getAppState: () => AppState
 }
 
+export type QueryEngineSessionRuntimeController = {
+  runtime: SessionRuntime
+  engine: QueryEngine
+  runPrompt: (
+    input: RuntimeSendMessageInput,
+  ) => AsyncGenerator<SDKMessage, void, unknown>
+}
+
 function findMessageByUuid(
   messages: readonly Message[],
   uuid: string | undefined,
@@ -154,14 +162,46 @@ export function createQueryEngineSessionRuntime({
   cwd,
   getAppState,
 }: QueryEngineSessionRuntimeConfig): SessionRuntime {
+  return createQueryEngineSessionRuntimeController({
+    engine,
+    cwd,
+    getAppState,
+  }).runtime
+}
+
+export function createQueryEngineSessionRuntimeController({
+  engine,
+  cwd,
+  getAppState,
+}: QueryEngineSessionRuntimeConfig): QueryEngineSessionRuntimeController {
   let runtime: SessionRuntime
 
+  const runPrompt = async function* (
+    input: RuntimeSendMessageInput,
+  ): AsyncGenerator<SDKMessage, void, unknown> {
+    runtime.setStatus('running')
+
+    try {
+      for await (const message of engine.submitMessage(input.text, {
+        uuid: input.uuid,
+        isMeta: input.isMeta,
+      })) {
+        handleSdkMessage(runtime, message, engine, getAppState)
+        yield message
+      }
+
+      if (runtime.getStatus() === 'running') {
+        runtime.setStatus('completed')
+      }
+    } catch (error) {
+      runtime.emitError(error)
+      throw error
+    }
+  }
+
   const submitMessage = async (input: RuntimeSendMessageInput): Promise<void> => {
-    for await (const message of engine.submitMessage(input.text, {
-      uuid: input.uuid,
-      isMeta: input.isMeta,
-    })) {
-      handleSdkMessage(runtime, message, engine, getAppState)
+    for await (const _message of runPrompt(input)) {
+      // SessionRuntime.submit only needs side effects and events.
     }
   }
 
@@ -178,5 +218,9 @@ export function createQueryEngineSessionRuntime({
   runtime.emitSwarmUpdated()
   runtime.refreshSnapshot()
 
-  return runtime
+  return {
+    runtime,
+    engine,
+    runPrompt,
+  }
 }
