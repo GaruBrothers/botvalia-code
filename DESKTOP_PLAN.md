@@ -218,6 +218,13 @@ Resultado esperado:
 - BotValia puede correr como servicio local
 - el CLI y la desktop pueden hablar con el mismo runtime
 
+Estado actual del bridge:
+
+- [src/runtime/runtimeWsServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeWsServer.ts)
+- [src/runtime/runtimeWsClient.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeWsClient.ts)
+- [src/runtime/runtimeServerManager.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeServerManager.ts)
+- comando `/runtime` para levantar, consultar y apagar el bridge local
+
 ## Fase 3: desktop MVP
 
 Objetivo:
