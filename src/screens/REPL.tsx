@@ -229,6 +229,7 @@ const UndercoverAutoCallout = process.env.USER_TYPE === 'ant' ? require('../comp
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { activityManager } from '../utils/activityManager.js';
 import { createAbortController } from '../utils/abortController.js';
+import { sleep } from '../utils/sleep.js';
 import { MCPConnectionManager } from 'src/services/mcp/MCPConnectionManager.js';
 import { useFeedbackSurvey } from 'src/components/FeedbackSurvey/useFeedbackSurvey.js';
 import { useMemorySurvey } from 'src/components/FeedbackSurvey/useMemorySurvey.js';
@@ -282,6 +283,8 @@ import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
 import { CompanionSprite, CompanionFloatingBubble, MIN_COLS_FOR_FULL_SPRITE } from '../buddy/CompanionSprite.js';
 import { fireCompanionObserver } from '../buddy/observer.js';
 import { DevBar } from '../components/DevBar.js';
+import { registerRuntime } from '../runtime/runtimeRegistry.js';
+import { SessionRuntime } from '../runtime/sessionRuntime.js';
 // Session manager removed - using AppState now
 import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
@@ -1269,7 +1272,44 @@ export function REPL({
       }
     }
     rawSetMessages(next);
+    replSessionRuntime.refreshSnapshot();
   }, []);
+  const [replSessionRuntime] = useState(() => new SessionRuntime({
+    sessionId: getSessionId(),
+    cwd: getOriginalCwd(),
+    getAppState: () => store.getState(),
+    getMessages: () => messagesRef.current,
+    submitMessage: async input => {
+      const promptUuid = input.uuid ?? randomUUID();
+      enqueue({
+        mode: 'prompt',
+        value: input.text,
+        uuid: promptUuid,
+        isMeta: input.isMeta,
+        priority: 'next'
+      });
+      while (queryGuard.isActive || getCommandQueueLength() > 0) {
+        await sleep(50);
+      }
+    },
+    interrupt: () => {
+      abortControllerRef.current?.abort('interrupt');
+    },
+    initialStatus: 'idle'
+  }));
+  useEffect(() => {
+    replSessionRuntime.emitSwarmUpdated();
+    replSessionRuntime.refreshSnapshot();
+    const unregisterReplSessionRuntime = registerRuntime(replSessionRuntime);
+    return () => unregisterReplSessionRuntime();
+  }, [replSessionRuntime]);
+  useEffect(() => {
+    replSessionRuntime.setStatus(isQueryActive ? 'running' : 'idle');
+  }, [isQueryActive, replSessionRuntime]);
+  useEffect(() => {
+    replSessionRuntime.emitSwarmUpdated();
+    replSessionRuntime.refreshSnapshot();
+  }, [replSessionRuntime, teamContext, tasks, mainLoopModel]);
   // Capture the baseline message count alongside the placeholder text so
   // the render can hide it once displayedMessages grows past the baseline.
   const setUserInputOnProcessing = useCallback((input: string | undefined) => {
