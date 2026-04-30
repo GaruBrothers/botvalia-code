@@ -14,12 +14,12 @@ import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js';
 import { Box, Text } from '../../ink.js';
 import { useClaudeAiLimits } from '../../services/claudeAiLimitsHook.js';
 import { calculateTokenWarningState } from '../../services/compact/autoCompact.js';
+import { getMissingCredentialMessage } from '../../services/api/errors.js';
 import type { MCPServerConnection } from '../../services/mcp/types.js';
 import type { Message } from '../../types/message.js';
 import { getApiKeyHelperElapsedMs, getConfiguredApiKeyHelper, getSubscriptionType } from '../../utils/auth.js';
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { getExternalEditor } from '../../utils/editor.js';
-import { isEnvTruthy } from '../../utils/envUtils.js';
 import { formatDuration } from '../../utils/format.js';
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js';
 import { toIDEDisplayName } from '../../utils/ide.js';
@@ -305,7 +305,7 @@ function NotificationContent({
         </Box>}
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && <Box>
           <Text color="error" wrap="truncate">
-            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? 'Authentication error · Try again' : process.env.BOTVALIA_SHOW_LOGIN_HINT === '1' ? 'Not logged in · Run /login' : 'Missing API key · Set ANTHROPIC_API_KEY'}
+            {getMissingCredentialMessage()}
           </Text>
         </Box>}
       {debug && <Box>

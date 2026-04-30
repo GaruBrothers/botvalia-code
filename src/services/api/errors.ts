@@ -152,12 +152,9 @@ export function isMediaSizeErrorMessage(msg: AssistantMessage): boolean {
   )
 }
 export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
-export const INVALID_API_KEY_ERROR_MESSAGE =
-  process.env.BOTVALIA_SHOW_LOGIN_HINT === '1'
-    ? 'Not logged in · Please run /login'
-    : 'Missing API key · Set ANTHROPIC_API_KEY'
+export const INVALID_API_KEY_ERROR_MESSAGE = getMissingCredentialMessage()
 export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =
-  'Invalid API key · Fix external API key'
+  getExternalCredentialErrorMessage()
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
   'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
@@ -201,6 +198,128 @@ export function getRequestTooLargeErrorMessage(): string {
 }
 export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE =
   'Your account does not have access to BotValia Code. Please run /login.'
+
+function currentProviderHint():
+  | 'openrouter'
+  | 'ollama'
+  | 'anthropic'
+  | 'free'
+  | 'unknown' {
+  const activeProvider = process.env.BOTVALIA_ACTIVE_PROVIDER?.trim()
+  if (
+    activeProvider === 'openrouter' ||
+    activeProvider === 'ollama' ||
+    activeProvider === 'anthropic'
+  ) {
+    return activeProvider
+  }
+
+  const selection = (
+    process.env.BOTVALIA_MODEL_SELECTION ||
+    process.env.ANTHROPIC_MODEL ||
+    ''
+  )
+    .trim()
+    .toLowerCase()
+
+  if (
+    selection === 'auto-openrouter' ||
+    selection.includes('openrouter::') ||
+    selection.includes('openrouter/')
+  ) {
+    return 'openrouter'
+  }
+  if (
+    selection === 'auto-ollama' ||
+    selection.includes('ollama::') ||
+    selection.includes('ollama/')
+  ) {
+    return 'ollama'
+  }
+  if (selection === 'auto-all' || process.env.BOTVALIA_FREE_ONLY_MODE === '1') {
+    return 'free'
+  }
+  if (selection.includes('anthropic::') || selection.includes('claude')) {
+    return 'anthropic'
+  }
+
+  return 'unknown'
+}
+
+function isOpenRouterBaseUrlFromEnv(): boolean {
+  const raw = process.env.ANTHROPIC_BASE_URL
+  if (!raw) return false
+  try {
+    const url = new URL(raw)
+    return url.host === 'openrouter.ai' || url.host.endsWith('.openrouter.ai')
+  } catch {
+    return raw.includes('openrouter.ai')
+  }
+}
+
+function isOllamaBaseUrlFromEnv(): boolean {
+  const raw = process.env.ANTHROPIC_BASE_URL
+  if (!raw) return false
+  return (
+    raw.includes('localhost:11434') ||
+    raw.includes('127.0.0.1:11434') ||
+    process.env.BOTVALIA_ACTIVE_PROVIDER === 'ollama'
+  )
+}
+
+export function getMissingCredentialMessage(): string {
+  if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)) {
+    return 'Authentication error · Try again'
+  }
+
+  if (process.env.BOTVALIA_SHOW_LOGIN_HINT === '1') {
+    return 'Not logged in · Run /login'
+  }
+
+  switch (currentProviderHint()) {
+    case 'openrouter':
+      return 'Missing OpenRouter key · Set OPENROUTER_API_KEY or BOTVALIA_OPENROUTER_API_KEYS'
+    case 'ollama':
+      return 'Ollama unavailable · Start Ollama or set BOTVALIA_OLLAMA_ENDPOINTS'
+    case 'free':
+      return 'No free provider configured · Set OPENROUTER_API_KEY or start Ollama'
+    default:
+      return 'Missing API key · Set ANTHROPIC_API_KEY'
+  }
+}
+
+function getExternalCredentialErrorMessage(): string {
+  switch (currentProviderHint()) {
+    case 'openrouter':
+      return 'Invalid OpenRouter key · Fix OPENROUTER_API_KEY or BOTVALIA_OPENROUTER_API_KEYS'
+    case 'ollama':
+      return 'Ollama auth or endpoint error · Check BOTVALIA_OLLAMA_ENDPOINTS'
+    default:
+      return 'Invalid API key · Fix external API key'
+  }
+}
+
+function getOpenRouterFreeBillingMessage(): string {
+  return 'OpenRouter free blocked by account credits or key state · add a small positive balance, rotate keys, or use Ollama fallback'
+}
+
+function getProviderAuthErrorMessage(error: APIError): string {
+  if (isCCRMode()) {
+    return CCR_AUTH_ERROR_MESSAGE
+  }
+
+  if (isOpenRouterBaseUrlFromEnv()) {
+    return `OpenRouter authentication error · check your key pool or switch to Ollama (${API_ERROR_MESSAGE_PREFIX}: ${error.message})`
+  }
+
+  if (isOllamaBaseUrlFromEnv()) {
+    return `Ollama endpoint error · verify the endpoint is up and check BOTVALIA_OLLAMA_ENDPOINTS (${API_ERROR_MESSAGE_PREFIX}: ${error.message})`
+  }
+
+  return getIsNonInteractiveSession()
+    ? `Failed to authenticate. ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`
+    : `Please run /login · ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`
+}
 
 export function getTokenRevokedErrorMessage(): string {
   return getIsNonInteractiveSession()
@@ -779,7 +898,18 @@ export function getAssistantMessageFromError(
     error.message.includes('Your credit balance is too low')
   ) {
     return createAssistantAPIErrorMessage({
-      content: CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE,
+      content: isOpenRouterBaseUrlFromEnv()
+        ? getOpenRouterFreeBillingMessage()
+        : CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE,
+      error: 'billing_error',
+    })
+  }
+
+  if (error instanceof APIError && error.status === 402) {
+    return createAssistantAPIErrorMessage({
+      content: isOpenRouterBaseUrlFromEnv()
+        ? getOpenRouterFreeBillingMessage()
+        : CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE,
       error: 'billing_error',
     })
   }
@@ -871,19 +1001,9 @@ export function getAssistantMessageFromError(
     error instanceof APIError &&
     (error.status === 401 || error.status === 403)
   ) {
-    // In CCR mode, auth is via JWTs - this is likely a transient network issue
-    if (isCCRMode()) {
-      return createAssistantAPIErrorMessage({
-        error: 'authentication_failed',
-        content: CCR_AUTH_ERROR_MESSAGE,
-      })
-    }
-
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
-      content: getIsNonInteractiveSession()
-        ? `Failed to authenticate. ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`
-        : `Please run /login · ${API_ERROR_MESSAGE_PREFIX}: ${error.message}`,
+      content: getProviderAuthErrorMessage(error),
     })
   }
 
