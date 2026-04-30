@@ -49,6 +49,7 @@ import {
 } from '../utils/teammate.js'
 import { isInProcessTeammate } from '../utils/teammateContext.js'
 import {
+  formatTeammateMessageText,
   isModeSetRequest,
   isPermissionRequest,
   isPermissionResponse,
@@ -813,7 +814,7 @@ export function useInboxPoller({
       .map(m => {
         const colorAttr = m.color ? ` color="${m.color}"` : ''
         const summaryAttr = m.summary ? ` summary="${m.summary}"` : ''
-        const messageContent = m.text
+        const messageContent = formatTeammateMessageText(m.text)
 
         return `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${colorAttr}${summaryAttr}>\n${messageContent}\n</${TEAMMATE_MESSAGE_TAG}>`
       })
@@ -919,7 +920,7 @@ export function useInboxPoller({
       .map(m => {
         const colorAttr = m.color ? ` color="${m.color}"` : ''
         const summaryAttr = m.summary ? ` summary="${m.summary}"` : ''
-        return `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${colorAttr}${summaryAttr}>\n${m.text}\n</${TEAMMATE_MESSAGE_TAG}>`
+        return `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${colorAttr}${summaryAttr}>\n${formatTeammateMessageText(m.text)}\n</${TEAMMATE_MESSAGE_TAG}>`
       })
       .join('\n\n')
 

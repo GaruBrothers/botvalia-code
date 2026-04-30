@@ -38,6 +38,11 @@ import {
   createShutdownRequestMessage,
   writeToMailbox,
 } from '../../utils/teammateMailbox.js'
+import {
+  createTeamConversationEvent,
+  formatTeamConversationEventForDisplay,
+  getTeamConversationEventSummary,
+} from '../../utils/swarm/teamConversationEvents.js'
 import { resumeAgentBackground } from '../AgentTool/resumeAgent.js'
 import { SEND_MESSAGE_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, getPrompt } from './prompt.js'
@@ -60,6 +65,31 @@ const StructuredMessage = lazySchema(() =>
       request_id: z.string(),
       approve: semanticBoolean(),
       feedback: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal('team_event'),
+      kind: z.enum([
+        'question',
+        'answer',
+        'task',
+        'status',
+        'handoff',
+        'result',
+      ]),
+      body: z.union([
+        z.string(),
+        z.number(),
+        z.boolean(),
+        z.null(),
+        z.array(z.unknown()),
+        z.record(z.string(), z.unknown()),
+      ]),
+      topic: z.string().optional(),
+      thread_id: z.string().optional(),
+      reply_to: z.string().optional(),
+      priority: z.enum(['low', 'normal', 'high']).optional(),
+      requires_response: semanticBoolean().optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     }),
   ]),
 )
@@ -130,6 +160,25 @@ export type SendMessageToolOutput =
   | RequestOutput
   | ResponseOutput
 
+type TeamEventPayload =
+  | string
+  | number
+  | boolean
+  | null
+  | unknown[]
+  | Record<string, unknown>
+
+type TeamEventMessage = {
+  kind: 'question' | 'answer' | 'task' | 'status' | 'handoff' | 'result'
+  body: TeamEventPayload
+  topic?: string
+  thread_id?: string
+  reply_to?: string
+  priority?: 'low' | 'normal' | 'high'
+  requires_response?: boolean
+  metadata?: Record<string, unknown>
+}
+
 function findTeammateColor(
   appState: {
     teamContext?: { teammates: { [id: string]: { color?: string } } }
@@ -144,6 +193,133 @@ function findTeammateColor(
     }
   }
   return undefined
+}
+
+function formatTeamEventBody(body: TeamEventPayload): string {
+  if (typeof body === 'string') {
+    return body
+  }
+
+  return jsonStringify(body, null, 2) ?? String(body)
+}
+
+function summarizeTeamEventBody(body: TeamEventPayload): string {
+  if (typeof body === 'string') {
+    return body.trim().replace(/\s+/g, ' ')
+  }
+
+  if (body === null) {
+    return 'null'
+  }
+
+  if (Array.isArray(body)) {
+    return body.length > 0
+      ? `structured payload (${body.length} item${body.length === 1 ? '' : 's'})`
+      : 'structured payload'
+  }
+
+  if (typeof body === 'object') {
+    const summarySource = body as Record<string, unknown>
+    for (const key of ['summary', 'message', 'title', 'task', 'question']) {
+      const value = summarySource[key]
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim()
+      }
+    }
+
+    const keys = Object.keys(summarySource)
+    return keys.length > 0
+      ? `structured payload (${keys.slice(0, 3).join(', ')})`
+      : 'structured payload'
+  }
+
+  return String(body)
+}
+
+function enrichTeamEventMetadata(
+  eventMessage: TeamEventMessage,
+): Record<string, unknown> | undefined {
+  if (typeof eventMessage.body === 'string') {
+    return eventMessage.metadata
+  }
+
+  if (eventMessage.metadata?.structured_body !== undefined) {
+    return eventMessage.metadata
+  }
+
+  return {
+    ...(eventMessage.metadata ?? {}),
+    structured_body: eventMessage.body,
+  }
+}
+
+function buildTeamEvent(
+  recipientName: string,
+  eventMessage: TeamEventMessage,
+): {
+  event: ReturnType<typeof createTeamConversationEvent>
+  senderName: string
+  senderColor: string | undefined
+  displayContent: string
+} {
+  const senderName =
+    getAgentName() || (isTeammate() ? 'teammate' : TEAM_LEAD_NAME)
+  const senderColor = getTeammateColor()
+  const event = createTeamConversationEvent({
+    from: senderName,
+    to: recipientName,
+    body: formatTeamEventBody(eventMessage.body),
+    kind: eventMessage.kind,
+    topic: eventMessage.topic,
+    thread_id: eventMessage.thread_id,
+    reply_to: eventMessage.reply_to,
+    priority: eventMessage.priority,
+    requires_response: eventMessage.requires_response,
+    metadata: enrichTeamEventMetadata(eventMessage),
+  })
+
+  return {
+    event,
+    senderName,
+    senderColor,
+    displayContent: formatTeamConversationEventForDisplay(event),
+  }
+}
+
+function resolveTeamEventSummary(
+  event: ReturnType<typeof createTeamConversationEvent>,
+  eventMessage: TeamEventMessage,
+  explicitSummary?: string,
+): string {
+  if (explicitSummary) {
+    return explicitSummary
+  }
+
+  if (typeof eventMessage.body === 'string') {
+    return getTeamConversationEventSummary(event)
+  }
+
+  const base =
+    event.topic?.trim() ||
+    truncate(summarizeTeamEventBody(eventMessage.body), 72) ||
+    `${event.from} -> ${event.to}`
+
+  return `[${event.kind}] ${base}`
+}
+
+function getDirectAgentMessagePrompt(
+  recipientName: string,
+  message: Input['message'],
+): string | null {
+  if (typeof message === 'string') {
+    return message
+  }
+
+  if (message.type !== 'team_event') {
+    return null
+  }
+
+  return buildTeamEvent(recipientName, message).displayContent
 }
 
 async function handleMessage(
@@ -183,6 +359,71 @@ async function handleMessage(
         targetColor: recipientColor,
         summary,
         content,
+      },
+    },
+  }
+}
+
+async function handleTeamEvent(
+  recipientName: string,
+  eventMessage: {
+    kind: 'question' | 'answer' | 'task' | 'status' | 'handoff' | 'result'
+    body: string
+    topic?: string
+    thread_id?: string
+    reply_to?: string
+    priority?: 'low' | 'normal' | 'high'
+    requires_response?: boolean
+    metadata?: Record<string, unknown>
+  },
+  summary: string | undefined,
+  context: ToolUseContext,
+): Promise<{ data: MessageOutput }> {
+  const appState = context.getAppState()
+  const teamName = getTeamName(appState.teamContext)
+  const senderName =
+    getAgentName() || (isTeammate() ? 'teammate' : TEAM_LEAD_NAME)
+  const senderColor = getTeammateColor()
+
+  const event = createTeamConversationEvent({
+    from: senderName,
+    to: recipientName,
+    body: eventMessage.body,
+    kind: eventMessage.kind,
+    topic: eventMessage.topic,
+    thread_id: eventMessage.thread_id,
+    reply_to: eventMessage.reply_to,
+    priority: eventMessage.priority,
+    requires_response: eventMessage.requires_response,
+    metadata: eventMessage.metadata,
+  })
+  const resolvedSummary = summary ?? getTeamConversationEventSummary(event)
+
+  await writeToMailbox(
+    recipientName,
+    {
+      from: senderName,
+      event,
+      summary: resolvedSummary,
+      timestamp: new Date().toISOString(),
+      color: senderColor,
+    },
+    teamName,
+  )
+
+  const recipientColor = findTeammateColor(appState, recipientName)
+
+  return {
+    data: {
+      success: true,
+      message: `Team event sent to ${recipientName}'s inbox`,
+      routing: {
+        sender: senderName,
+        senderColor,
+        target: `@${recipientName}`,
+        targetColor: recipientColor,
+        summary: resolvedSummary,
+        content: event.body,
       },
     },
   }
@@ -537,7 +778,9 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     isReadOnly(input) {
-      return typeof input.message === 'string'
+      return (
+        typeof input.message === 'string' || input.message.type === 'team_event'
+      )
     },
 
     backfillObservableInput(input) {
@@ -558,12 +801,21 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           approve?: boolean
           reason?: string
           feedback?: string
+          body?: string
+          kind?: string
+          topic?: string
+          thread_id?: string
+          reply_to?: string
         }
         input.type = msg.type
         input.recipient = input.to
         if (msg.request_id !== undefined) input.request_id = msg.request_id
         if (msg.approve !== undefined) input.approve = msg.approve
-        const content = msg.reason ?? msg.feedback
+        if (msg.kind !== undefined) input.kind = msg.kind
+        if (msg.topic !== undefined) input.topic = msg.topic
+        if (msg.thread_id !== undefined) input.thread_id = msg.thread_id
+        if (msg.reply_to !== undefined) input.reply_to = msg.reply_to
+        const content = msg.body ?? msg.reason ?? msg.feedback
         if (content !== undefined) input.content = content
       }
     },
@@ -579,6 +831,8 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           return `shutdown_response ${input.message.approve ? 'approve' : 'reject'} ${input.message.request_id}`
         case 'plan_approval_response':
           return `plan_approval ${input.message.approve ? 'approve' : 'reject'} to ${input.to}`
+        case 'team_event':
+          return `${input.message.kind} to ${input.to}: ${input.message.body}`
       }
     },
 
@@ -909,6 +1163,8 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             input.message.feedback ?? 'Plan needs revision',
             context,
           )
+        case 'team_event':
+          return handleTeamEvent(input.to, input.message, input.summary, context)
       }
     },
 

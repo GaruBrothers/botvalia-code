@@ -25,6 +25,20 @@ import { logError } from './log.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { BackendType } from './swarm/backends/types.js'
 import { TEAM_LEAD_NAME } from './swarm/constants.js'
+import {
+  type ParsedTeamEvent,
+  type TeamEvent,
+  type TeamEventEncoding,
+  type TeamEventEnvelope,
+  parseTeamEventText,
+  serializeTeamEvent,
+} from './swarm/teamEvent.js'
+import {
+  parseTeamConversationEvent,
+  formatTeamConversationEventForDisplay,
+  getTeamConversationEventSummary,
+  parseTeamConversationEventText,
+} from './swarm/teamConversationEvents.js'
 import { sanitizePathComponent } from './tasks.js'
 import { getAgentName, getTeammateColor, getTeamName } from './teammate.js'
 
@@ -40,13 +54,137 @@ const LOCK_OPTIONS = {
   },
 }
 
-export type TeammateMessage = {
+type StoredTeammateMessage = {
   from: string
   text: string
   timestamp: string
   read: boolean
   color?: string // Sender's assigned color (e.g., 'red', 'blue', 'green')
   summary?: string // 5-10 word summary shown as preview in the UI
+}
+
+export type TeammateMessageContentType = 'plain_text' | 'structured_event'
+
+export type TeammateMessage = StoredTeammateMessage & {
+  contentType?: TeammateMessageContentType
+  event?: TeamEvent
+  eventEnvelope?: TeamEventEnvelope | null
+  eventEncoding?: TeamEventEncoding
+}
+
+export type TeammateMailboxMessageInput =
+  | Omit<StoredTeammateMessage, 'read'>
+  | (Omit<StoredTeammateMessage, 'read' | 'text'> & {
+      event: TeamEvent
+    })
+
+const STRUCTURED_PROTOCOL_MESSAGE_TYPES = new Set([
+  'permission_request',
+  'permission_response',
+  'sandbox_permission_request',
+  'sandbox_permission_response',
+  'shutdown_request',
+  'shutdown_approved',
+  'team_permission_update',
+  'mode_set_request',
+  'plan_approval_request',
+  'plan_approval_response',
+])
+
+function toMailboxMessageContent(
+  text: string,
+): {
+  contentType: TeammateMessageContentType
+  parsedEvent: ParsedTeamEvent | null
+} {
+  const parsedEvent = parseTeamEventText(text)
+  return {
+    contentType: parsedEvent ? 'structured_event' : 'plain_text',
+    parsedEvent,
+  }
+}
+
+function normalizeMailboxMessage(
+  message: StoredTeammateMessage,
+): TeammateMessage {
+  const { contentType, parsedEvent } = toMailboxMessageContent(message.text)
+
+  if (!parsedEvent) {
+    return {
+      ...message,
+      contentType,
+    }
+  }
+
+  return {
+    ...message,
+    contentType,
+    event: parsedEvent.event,
+    eventEnvelope: parsedEvent.envelope,
+    eventEncoding: parsedEvent.encoding,
+  }
+}
+
+function stripMailboxMessageMetadata(
+  message: StoredTeammateMessage | TeammateMessage,
+): StoredTeammateMessage {
+  return {
+    from: message.from,
+    text: message.text,
+    timestamp: message.timestamp,
+    read: message.read,
+    color: message.color,
+    summary: message.summary,
+  }
+}
+
+function serializeMailboxMessages(
+  messages: Array<StoredTeammateMessage | TeammateMessage>,
+): string {
+  return jsonStringify(messages.map(stripMailboxMessageMetadata), null, 2)
+}
+
+function materializeMailboxMessage(
+  message: TeammateMailboxMessageInput,
+): StoredTeammateMessage {
+  const text = 'event' in message ? serializeTeamEvent(message.event) : message.text
+
+  return {
+    from: message.from,
+    text,
+    timestamp: message.timestamp,
+    read: false,
+    color: message.color,
+    summary: message.summary,
+  }
+}
+
+function parseMailboxEvent<T>(
+  messageText: string,
+  parser: (value: unknown) => T | null,
+): T | null {
+  const parsedEvent = parseTeamEventText(messageText)
+  if (!parsedEvent) {
+    return null
+  }
+  return parser(parsedEvent.event)
+}
+
+function parseMailboxMessageType<T extends { type: string }>(
+  messageText: string,
+  expectedType: T['type'],
+): T | null {
+  return parseMailboxEvent(messageText, value => {
+    if (
+      value &&
+      typeof value === 'object' &&
+      'type' in value &&
+      (value as { type: unknown }).type === expectedType
+    ) {
+      return value as T
+    }
+    return null
+  })
 }
 
 /**
@@ -90,7 +228,9 @@ export async function readMailbox(
 
   try {
     const content = await readFile(inboxPath, 'utf-8')
-    const messages = jsonParse(content) as TeammateMessage[]
+    const messages = (jsonParse(content) as StoredTeammateMessage[]).map(
+      normalizeMailboxMessage,
+    )
     logForDebugging(
       `[TeammateMailbox] readMailbox: read ${messages.length} message(s)`,
     )
@@ -133,16 +273,17 @@ export async function readUnreadMessages(
  */
 export async function writeToMailbox(
   recipientName: string,
-  message: Omit<TeammateMessage, 'read'>,
+  message: TeammateMailboxMessageInput,
   teamName?: string,
 ): Promise<void> {
   await ensureInboxDir(teamName)
 
   const inboxPath = getInboxPath(recipientName, teamName)
   const lockFilePath = `${inboxPath}.lock`
+  const storedMessage = materializeMailboxMessage(message)
 
   logForDebugging(
-    `[TeammateMailbox] writeToMailbox: recipient=${recipientName}, from=${message.from}, path=${inboxPath}`,
+    `[TeammateMailbox] writeToMailbox: recipient=${recipientName}, from=${storedMessage.from}, path=${inboxPath}`,
   )
 
   // Ensure the inbox file exists before locking (proper-lockfile requires the file to exist)
@@ -170,16 +311,11 @@ export async function writeToMailbox(
     // Re-read messages after acquiring lock to get the latest state
     const messages = await readMailbox(recipientName, teamName)
 
-    const newMessage: TeammateMessage = {
-      ...message,
-      read: false,
-    }
+    messages.push(normalizeMailboxMessage(storedMessage))
 
-    messages.push(newMessage)
-
-    await writeFile(inboxPath, jsonStringify(messages, null, 2), 'utf-8')
+    await writeFile(inboxPath, serializeMailboxMessages(messages), 'utf-8')
     logForDebugging(
-      `[TeammateMailbox] Wrote message to ${recipientName}'s inbox from ${message.from}`,
+      `[TeammateMailbox] Wrote message to ${recipientName}'s inbox from ${storedMessage.from}`,
     )
   } catch (error) {
     logForDebugging(`Failed to write to inbox for ${recipientName}: ${error}`)
@@ -244,7 +380,7 @@ export async function markMessageAsReadByIndex(
 
     messages[messageIndex] = { ...message, read: true }
 
-    await writeFile(inboxPath, jsonStringify(messages, null, 2), 'utf-8')
+    await writeFile(inboxPath, serializeMailboxMessages(messages), 'utf-8')
     logForDebugging(
       `[TeammateMailbox] markMessageAsReadByIndex: marked message at index ${messageIndex} as read`,
     )
@@ -317,7 +453,7 @@ export async function markMessagesAsRead(
     // messages comes from jsonParse — fresh, unshared objects safe to mutate
     for (const m of messages) m.read = true
 
-    await writeFile(inboxPath, jsonStringify(messages, null, 2), 'utf-8')
+    await writeFile(inboxPath, serializeMailboxMessages(messages), 'utf-8')
     logForDebugging(
       `[TeammateMailbox] markMessagesAsRead: WROTE ${unreadCount} message(s) as read to ${inboxPath}`,
     )
@@ -383,9 +519,18 @@ export function formatTeammateMessages(
     .map(m => {
       const colorAttr = m.color ? ` color="${m.color}"` : ''
       const summaryAttr = m.summary ? ` summary="${m.summary}"` : ''
-      return `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${colorAttr}${summaryAttr}>\n${m.text}\n</${TEAMMATE_MESSAGE_TAG}>`
+      return `<${TEAMMATE_MESSAGE_TAG} teammate_id="${m.from}"${colorAttr}${summaryAttr}>\n${formatTeammateMessageText(m.text)}\n</${TEAMMATE_MESSAGE_TAG}>`
     })
     .join('\n\n')
+}
+
+export function formatTeammateMessageText(messageText: string): string {
+  const teamEvent = parseTeamConversationEventText(messageText)
+  if (teamEvent) {
+    return formatTeamConversationEventForDisplay(teamEvent)
+  }
+
+  return messageText
 }
 
 /**
@@ -435,15 +580,10 @@ export function createIdleNotification(
 export function isIdleNotification(
   messageText: string,
 ): IdleNotificationMessage | null {
-  try {
-    const parsed = jsonParse(messageText)
-    if (parsed && parsed.type === 'idle_notification') {
-      return parsed as IdleNotificationMessage
-    }
-  } catch {
-    // Not JSON or not a valid idle notification
-  }
-  return null
+  return parseMailboxMessageType<IdleNotificationMessage>(
+    messageText,
+    'idle_notification',
+  )
 }
 
 /**
@@ -541,15 +681,10 @@ export function createPermissionResponseMessage(params: {
 export function isPermissionRequest(
   messageText: string,
 ): PermissionRequestMessage | null {
-  try {
-    const parsed = jsonParse(messageText)
-    if (parsed && parsed.type === 'permission_request') {
-      return parsed as PermissionRequestMessage
-    }
-  } catch {
-    // Not JSON or not a valid permission request
-  }
-  return null
+  return parseMailboxMessageType<PermissionRequestMessage>(
+    messageText,
+    'permission_request',
+  )
 }
 
 /**
@@ -558,15 +693,10 @@ export function isPermissionRequest(
 export function isPermissionResponse(
   messageText: string,
 ): PermissionResponseMessage | null {
-  try {
-    const parsed = jsonParse(messageText)
-    if (parsed && parsed.type === 'permission_response') {
-      return parsed as PermissionResponseMessage
-    }
-  } catch {
-    // Not JSON or not a valid permission response
-  }
-  return null
+  return parseMailboxMessageType<PermissionResponseMessage>(
+    messageText,
+    'permission_response',
+  )
 }
 
 /**
@@ -650,15 +780,10 @@ export function createSandboxPermissionResponseMessage(params: {
 export function isSandboxPermissionRequest(
   messageText: string,
 ): SandboxPermissionRequestMessage | null {
-  try {
-    const parsed = jsonParse(messageText)
-    if (parsed && parsed.type === 'sandbox_permission_request') {
-      return parsed as SandboxPermissionRequestMessage
-    }
-  } catch {
-    // Not JSON or not a valid sandbox permission request
-  }
-  return null
+  return parseMailboxMessageType<SandboxPermissionRequestMessage>(
+    messageText,
+    'sandbox_permission_request',
+  )
 }
 
 /**
@@ -667,15 +792,10 @@ export function isSandboxPermissionRequest(
 export function isSandboxPermissionResponse(
   messageText: string,
 ): SandboxPermissionResponseMessage | null {
-  try {
-    const parsed = jsonParse(messageText)
-    if (parsed && parsed.type === 'sandbox_permission_response') {
-      return parsed as SandboxPermissionResponseMessage
-    }
-  } catch {
-    // Not JSON or not a valid sandbox permission response
-  }
-  return null
+  return parseMailboxMessageType<SandboxPermissionResponseMessage>(
+    messageText,
+    'sandbox_permission_response',
+  )
 }
 
 /**
@@ -852,7 +972,7 @@ export async function sendShutdownRequestToMailbox(
     targetName,
     {
       from: senderName,
-      text: jsonStringify(shutdownMessage),
+      event: shutdownMessage,
       timestamp: new Date().toISOString(),
       color: getTeammateColor(),
     },
@@ -868,15 +988,11 @@ export async function sendShutdownRequestToMailbox(
 export function isShutdownRequest(
   messageText: string,
 ): ShutdownRequestMessage | null {
-  try {
-    const result = ShutdownRequestMessageSchema().safeParse(
-      jsonParse(messageText),
-    )
+  return parseMailboxEvent(messageText, value => {
+    const result = ShutdownRequestMessageSchema().safeParse(value)
     if (result.success) return result.data
-  } catch {
-    // Not JSON
-  }
-  return null
+    return null
+  })
 }
 
 /**
@@ -885,15 +1001,11 @@ export function isShutdownRequest(
 export function isPlanApprovalRequest(
   messageText: string,
 ): PlanApprovalRequestMessage | null {
-  try {
-    const result = PlanApprovalRequestMessageSchema().safeParse(
-      jsonParse(messageText),
-    )
+  return parseMailboxEvent(messageText, value => {
+    const result = PlanApprovalRequestMessageSchema().safeParse(value)
     if (result.success) return result.data
-  } catch {
-    // Not JSON
-  }
-  return null
+    return null
+  })
 }
 
 /**
@@ -902,15 +1014,11 @@ export function isPlanApprovalRequest(
 export function isShutdownApproved(
   messageText: string,
 ): ShutdownApprovedMessage | null {
-  try {
-    const result = ShutdownApprovedMessageSchema().safeParse(
-      jsonParse(messageText),
-    )
+  return parseMailboxEvent(messageText, value => {
+    const result = ShutdownApprovedMessageSchema().safeParse(value)
     if (result.success) return result.data
-  } catch {
-    // Not JSON
-  }
-  return null
+    return null
+  })
 }
 
 /**
@@ -919,15 +1027,11 @@ export function isShutdownApproved(
 export function isShutdownRejected(
   messageText: string,
 ): ShutdownRejectedMessage | null {
-  try {
-    const result = ShutdownRejectedMessageSchema().safeParse(
-      jsonParse(messageText),
-    )
+  return parseMailboxEvent(messageText, value => {
+    const result = ShutdownRejectedMessageSchema().safeParse(value)
     if (result.success) return result.data
-  } catch {
-    // Not JSON
-  }
-  return null
+    return null
+  })
 }
 
 /**
@@ -936,15 +1040,11 @@ export function isShutdownRejected(
 export function isPlanApprovalResponse(
   messageText: string,
 ): PlanApprovalResponseMessage | null {
-  try {
-    const result = PlanApprovalResponseMessageSchema().safeParse(
-      jsonParse(messageText),
-    )
+  return parseMailboxEvent(messageText, value => {
+    const result = PlanApprovalResponseMessageSchema().safeParse(value)
     if (result.success) return result.data
-  } catch {
-    // Not JSON
-  }
-  return null
+    return null
+  })
 }
 
 /**
@@ -965,15 +1065,10 @@ export type TaskAssignmentMessage = {
 export function isTaskAssignment(
   messageText: string,
 ): TaskAssignmentMessage | null {
-  try {
-    const parsed = jsonParse(messageText)
-    if (parsed && parsed.type === 'task_assignment') {
-      return parsed as TaskAssignmentMessage
-    }
-  } catch {
-    // Not JSON or not a valid task assignment
-  }
-  return null
+  return parseMailboxMessageType<TaskAssignmentMessage>(
+    messageText,
+    'task_assignment',
+  )
 }
 
 /**
@@ -1001,15 +1096,10 @@ export type TeamPermissionUpdateMessage = {
 export function isTeamPermissionUpdate(
   messageText: string,
 ): TeamPermissionUpdateMessage | null {
-  try {
-    const parsed = jsonParse(messageText)
-    if (parsed && parsed.type === 'team_permission_update') {
-      return parsed as TeamPermissionUpdateMessage
-    }
-  } catch {
-    // Not JSON or not a valid team permission update
-  }
-  return null
+  return parseMailboxMessageType<TeamPermissionUpdateMessage>(
+    messageText,
+    'team_permission_update',
+  )
 }
 
 /**
@@ -1048,17 +1138,13 @@ export function createModeSetRequestMessage(params: {
 export function isModeSetRequest(
   messageText: string,
 ): ModeSetRequestMessage | null {
-  try {
-    const parsed = ModeSetRequestMessageSchema().safeParse(
-      jsonParse(messageText),
-    )
+  return parseMailboxEvent(messageText, value => {
+    const parsed = ModeSetRequestMessageSchema().safeParse(value)
     if (parsed.success) {
       return parsed.data
     }
-  } catch {
-    // Not JSON or not a valid mode set request
-  }
-  return null
+    return null
+  })
 }
 
 /**
@@ -1071,27 +1157,10 @@ export function isModeSetRequest(
  * raw text in attachments and never reach their intended handlers.
  */
 export function isStructuredProtocolMessage(messageText: string): boolean {
-  try {
-    const parsed = jsonParse(messageText)
-    if (!parsed || typeof parsed !== 'object' || !('type' in parsed)) {
-      return false
-    }
-    const type = (parsed as { type: unknown }).type
-    return (
-      type === 'permission_request' ||
-      type === 'permission_response' ||
-      type === 'sandbox_permission_request' ||
-      type === 'sandbox_permission_response' ||
-      type === 'shutdown_request' ||
-      type === 'shutdown_approved' ||
-      type === 'team_permission_update' ||
-      type === 'mode_set_request' ||
-      type === 'plan_approval_request' ||
-      type === 'plan_approval_response'
-    )
-  } catch {
-    return false
-  }
+  const parsedEvent = parseTeamEventText(messageText)
+  return parsedEvent
+    ? STRUCTURED_PROTOCOL_MESSAGE_TYPES.has(parsedEvent.event.type)
+    : false
 }
 
 /**
@@ -1123,7 +1192,7 @@ export async function markMessagesAsReadByPredicate(
       !m.read && predicate(m) ? { ...m, read: true } : m,
     )
 
-    await writeFile(inboxPath, jsonStringify(updatedMessages, null, 2), 'utf-8')
+    await writeFile(inboxPath, serializeMailboxMessages(updatedMessages), 'utf-8')
   } catch (error) {
     const code = getErrnoCode(error)
     if (code === 'ENOENT') {
@@ -1168,13 +1237,28 @@ export function getLastPeerDmSummary(messages: Message[]): string | undefined {
         block.input.to !== '*' &&
         block.input.to.toLowerCase() !== TEAM_LEAD_NAME.toLowerCase() &&
         'message' in block.input &&
-        typeof block.input.message === 'string'
+        (typeof block.input.message === 'string' ||
+          (typeof block.input.message === 'object' &&
+            block.input.message !== null))
       ) {
         const to = block.input.to
-        const summary =
-          'summary' in block.input && typeof block.input.summary === 'string'
-            ? block.input.summary
-            : block.input.message.slice(0, 80)
+        let summary: string | undefined
+        if ('summary' in block.input && typeof block.input.summary === 'string') {
+          summary = block.input.summary
+        } else if (typeof block.input.message === 'string') {
+          summary = block.input.message.slice(0, 80)
+        } else if (
+          typeof block.input.message === 'object' &&
+          block.input.message !== null
+        ) {
+          const teamEvent = parseTeamConversationEvent(block.input.message)
+          if (teamEvent) {
+            summary = getTeamConversationEventSummary(teamEvent)
+          }
+        }
+        if (!summary) {
+          continue
+        }
         return `[to ${to}] ${summary}`
       }
     }

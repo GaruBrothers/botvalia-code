@@ -53,6 +53,19 @@ bun run version:auto:openrouter
 bun run version:auto:ollama
 ```
 
+Smoke test del router:
+
+```bash
+bun run smoke:router:fallback
+bun run smoke:router:fallback:json
+```
+
+Ese smoke no usa red. Valida tres cosas del fallback free:
+
+- precedencia de `routeSpec` sobre `fallbackModels`
+- deduplicación de la cadena de fallback
+- cambio real del provider/modelo activo con `applyProviderRoute()` en cada salto
+
 #### Auto (All)
 
 `Auto (All)` is a hybrid free router with three lanes:
@@ -141,6 +154,12 @@ Important note:
 There is now a technical implementation plan for turning the existing agent/team system into real-time collaborating subagents:
 
 - [REALTIME_SWARM_PLAN.md](REALTIME_SWARM_PLAN.md)
+
+Estado actual de Fase 1:
+
+- `SendMessage` ya puede emitir `team_event` con `kind`, `thread_id`, `reply_to`, `topic` y `priority`
+- el mailbox ya soporta envelope estructurado retrocompatible
+- los mensajes estructurados ya se formatean para que no entren como JSON crudo al contexto del agente
 
 Implementation note:
 

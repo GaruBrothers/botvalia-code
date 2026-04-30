@@ -30,6 +30,19 @@ La base ya existe, pero todavía no es un swarm verdaderamente conversacional.
 - `src/utils/swarm/teammatePromptAddendum.ts`
   Ya obliga a los teammates a usar `SendMessage` para comunicarse.
 
+### Lo que ya quedó adelantado en Fase 1
+
+- `src/utils/swarm/teamEvent.ts`
+  Ya existe un envelope `team_event` v1 con serialización y parsing retrocompatible.
+- `src/utils/swarm/teamConversationEvents.ts`
+  Ya define un evento conversacional base con `kind`, `thread_id`, `reply_to`, `topic`, `priority` y `body`.
+- `src/tools/SendMessageTool/SendMessageTool.ts`
+  Ya puede emitir `team_event` estructurado hacia otro teammate.
+- `src/utils/teammateMailbox.ts`
+  Ya puede persistir y leer mensajes con envelope estructurado sin romper a los consumidores legacy.
+- `src/hooks/useInboxPoller.ts`
+  Ya formatea esos eventos para que el agente reciba contexto legible en vez de JSON crudo.
+
 ### Lo que todavía falta
 
 - `src/coordinator/coordinatorMode.ts`
@@ -144,6 +157,10 @@ Entregables:
 - `src/utils/swarm/teamEventTypes.ts`
 - adaptador texto <-> evento
 
+Estado:
+- parcialmente implementada
+- falta el despertar event-driven compartido entre `useInboxPoller`, `inProcessRunner` y `print.ts`
+
 ### Fase 2. Despertar compañeros por evento
 
 Objetivo:
@@ -207,3 +224,28 @@ La función se considera lista cuando cumpla esto:
 El siguiente paso con más retorno no es agregar más prompts a los agentes, sino construir primero la capa de `TeamEvent + wakeable workers`.
 
 Sin eso, BotValia seguirá teniendo “workers paralelos” pero no un equipo que piense junto.
+
+## Validación Manual
+
+### Router free
+
+```bash
+bun run smoke:router:fallback
+bun run smoke:router:fallback:json
+```
+
+Ese smoke verifica:
+
+1. Que `routeSpec` gane sobre `fallbackModels`.
+2. Que la cadena se deduplique.
+3. Que el provider/modelo activo cambie correctamente en cada salto.
+
+### Swarm fase 1
+
+Prueba manual mínima esperada:
+
+1. Crear un team con 2 o más workers.
+2. Enviar un `team_event` de tipo `question` desde un agente hacia otro.
+3. Verificar que el destinatario reciba texto formateado, no JSON crudo.
+4. Responder con `team_event` tipo `answer` reutilizando `thread_id`.
+5. Confirmar que el líder sigue viendo progreso por mailbox sin romper el flujo actual.
