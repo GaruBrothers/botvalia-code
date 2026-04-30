@@ -86,6 +86,10 @@ import {
   normalizeModelCandidate,
 } from './utils/model/providerRouting.js'
 import {
+  markModelRouteCooldown,
+  reorderModelRouteQueue,
+} from './utils/model/providerRouteCooldowns.js'
+import {
   doesMostRecentAssistantMessageExceed200k,
   finalContextTokensFromLastResponse,
   tokenCountWithEstimation,
@@ -266,6 +270,34 @@ function buildFallbackQueue(
   }
 
   return targets
+}
+
+function buildRouteQueue(
+  primaryTarget: FallbackTarget,
+  fallbackModels?: string[],
+  fallbackRouteSpecs?: Array<string | undefined>,
+): FallbackTarget[] {
+  const targets = [primaryTarget]
+  for (const fallbackTarget of buildFallbackQueue(
+    fallbackModels,
+    fallbackRouteSpecs,
+  )) {
+    if (!targets.some(existing => sameFallbackTarget(existing, fallbackTarget))) {
+      targets.push(fallbackTarget)
+    }
+  }
+
+  return reorderModelRouteQueue(targets)
+}
+
+function appendFallbackTargetToBack(
+  queue: FallbackTarget[],
+  target: FallbackTarget,
+): FallbackTarget[] {
+  return [
+    ...queue.filter(candidate => !sameFallbackTarget(candidate, target)),
+    target,
+  ]
 }
 
 function resolveFallbackTarget(
@@ -662,24 +694,46 @@ async function* queryLoop(
 
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
-    let currentModel = getRuntimeMainLoopModel({
-      permissionMode,
-      mainLoopModel: toolUseContext.options.mainLoopModel,
-      exceeds200kTokens:
-        permissionMode === 'plan' &&
-        doesMostRecentAssistantMessageExceed200k(messagesForQuery),
-    })
-    let currentRouteSpec = primaryRouteSpec
-    if (currentRouteSpec) {
-      applyProviderRoute(currentRouteSpec)
+    const primaryTarget: FallbackTarget = {
+      model: getRuntimeMainLoopModel({
+        permissionMode,
+        mainLoopModel: toolUseContext.options.mainLoopModel,
+        exceeds200kTokens:
+          permissionMode === 'plan' &&
+          doesMostRecentAssistantMessageExceed200k(messagesForQuery),
+      }),
+      ...(primaryRouteSpec !== undefined
+        ? { routeSpec: primaryRouteSpec }
+        : {}),
     }
-    let fallbackQueue = buildFallbackQueue(
+    let routeQueue = buildRouteQueue(
+      primaryTarget,
       fallbackModels,
       fallbackRouteSpecs,
-    ).filter(
-      candidate =>
-        candidate.model !== currentModel || candidate.routeSpec !== currentRouteSpec,
     )
+    const currentTarget = routeQueue[0] ?? primaryTarget
+    let currentModel = currentTarget.model
+    let currentRouteSpec = currentTarget.routeSpec
+    applyProviderRoute(currentRouteSpec)
+    if (toolUseContext.options.mainLoopModel !== currentModel) {
+      toolUseContext.options.mainLoopModel = currentModel
+      toolUseContext.setAppState(prev => {
+        if (prev.mainLoopModelForSession === currentModel) {
+          return prev
+        }
+        return {
+          ...prev,
+          mainLoopModelForSession: currentModel,
+        }
+      })
+    }
+    let fallbackQueue = routeQueue
+      .slice(1)
+      .filter(
+        candidate =>
+          candidate.model !== currentModel ||
+          candidate.routeSpec !== currentRouteSpec,
+      )
 
     queryCheckpoint('query_setup_end')
 
@@ -1006,17 +1060,31 @@ async function* queryLoop(
             innerError.fallbackModel
           ) {
             // Fallback was triggered - switch model and retry
+            const failedTarget: FallbackTarget = {
+              model: currentModel,
+              ...(currentRouteSpec !== undefined
+                ? { routeSpec: currentRouteSpec }
+                : {}),
+            }
+            if (innerError.reason) {
+              markModelRouteCooldown(
+                failedTarget,
+                innerError.reason,
+                innerError.cooldownMs,
+              )
+            }
             const nextFallback = resolveFallbackTarget(
               innerError.fallbackModel,
               fallbackQueue,
             )
             currentModel = nextFallback.model
-            if (nextFallback.routeSpec !== undefined) {
-              currentRouteSpec = nextFallback.routeSpec
-              applyProviderRoute(currentRouteSpec)
-            }
-            fallbackQueue = fallbackQueue.filter(
-              candidate => !sameFallbackTarget(candidate, nextFallback),
+            currentRouteSpec = nextFallback.routeSpec
+            applyProviderRoute(currentRouteSpec)
+            fallbackQueue = appendFallbackTargetToBack(
+              fallbackQueue.filter(
+                candidate => !sameFallbackTarget(candidate, nextFallback),
+              ),
+              failedTarget,
             )
             attemptWithFallback = true
 
@@ -1079,8 +1147,8 @@ async function* queryLoop(
             const fallbackReason = innerError.reason
             const fallbackMessage =
               fallbackReason === 'overloaded' || fallbackReason === 'rate_limit'
-                ? `Switched to ${renderModelName(innerError.fallbackModel)} due to high demand for ${renderModelName(innerError.originalModel)}`
-                : `Switched to ${renderModelName(innerError.fallbackModel)} because ${renderModelName(innerError.originalModel)} was unavailable`
+                ? `Switched to ${renderModelName(nextFallback.model)} due to high demand for ${renderModelName(innerError.originalModel)}`
+                : `Switched to ${renderModelName(nextFallback.model)} because ${renderModelName(innerError.originalModel)} was unavailable`
             yield createSystemMessage(
               fallbackMessage,
               'warning',

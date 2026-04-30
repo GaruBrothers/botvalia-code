@@ -5,6 +5,7 @@ import {
   AUTO_OPENROUTER_MODEL_ALIAS,
   parseUserSpecifiedModel,
 } from './model.js'
+import { reorderProviderRouteChain } from './providerRouteCooldowns.js'
 
 export type ProviderRouteKind = 'anthropic' | 'openrouter' | 'ollama'
 
@@ -26,20 +27,29 @@ const OPENROUTER_AUTO_FAST_FALLBACKS = [
   'openrouter::openai/gpt-oss-20b:free',
   'openrouter::z-ai/glm-4.5-air:free',
   'openrouter::nvidia/nemotron-nano-9b-v2:free',
+  'openrouter::google/gemma-3-12b-it:free',
+  'openrouter::meta-llama/llama-3.2-3b-instruct:free',
+  'openrouter::google/gemma-3-4b-it:free',
 ]
 const OPENROUTER_AUTO_COMPLEX_MODEL = 'openrouter::qwen/qwen3.6-plus:free'
 const OPENROUTER_AUTO_COMPLEX_FALLBACKS = [
+  'openrouter::tencent/hy3-preview:free',
   'openrouter::openai/gpt-oss-120b:free',
-  'openrouter::deepseek/deepseek-r1-0528:free',
   'openrouter::minimax/minimax-m2.5:free',
   'openrouter::nvidia/nemotron-3-super-120b-a12b:free',
+  'openrouter::inclusionai/ling-2.6-1t:free',
+  'openrouter::qwen/qwen3-next-80b-a3b-instruct:free',
+  'openrouter::meta-llama/llama-3.3-70b-instruct:free',
   'openrouter::openrouter/free',
 ]
 const OPENROUTER_AUTO_CODE_MODEL = 'openrouter::qwen/qwen3-coder:free'
 const OPENROUTER_AUTO_CODE_FALLBACKS = [
   'openrouter::poolside/laguna-m.1:free',
   'openrouter::qwen/qwen3.6-plus:free',
+  'openrouter::qwen/qwen3-next-80b-a3b-instruct:free',
   'openrouter::openai/gpt-oss-120b:free',
+  'openrouter::tencent/hy3-preview:free',
+  'openrouter::nvidia/nemotron-3-super-120b-a12b:free',
   'openrouter::google/gemma-4-31b-it:free',
   'openrouter::openrouter/free',
 ]
@@ -47,40 +57,45 @@ const OLLAMA_AUTO_FAST_MODEL = 'ollama::llama3.2:3b'
 const OLLAMA_AUTO_FAST_FALLBACKS = [
   'ollama::qwen2.5:3b',
   'ollama::qwen2.5-coder:3b',
+  'ollama::deepseek-r1:8b',
   'ollama::qwen2.5-coder:7b',
   'ollama::gpt-oss:20b',
 ]
-const OLLAMA_AUTO_COMPLEX_MODEL = 'ollama::deepseek-r1'
+const OLLAMA_AUTO_COMPLEX_MODEL = 'ollama::devstral'
 const OLLAMA_AUTO_COMPLEX_FALLBACKS = [
   'ollama::gpt-oss:20b',
-  'ollama::qwen3:30b',
-  'ollama::qwen2.5-coder:7b',
   'ollama::deepseek-r1:14b',
+  'ollama::qwen3-next:80b',
+  'ollama::qwen3:30b',
+  'ollama::qwen2.5-coder:14b',
+  'ollama::qwen2.5-coder:7b',
 ]
 const OLLAMA_AUTO_CODE_MODEL = 'ollama::qwen3-coder'
 const OLLAMA_AUTO_CODE_FALLBACKS = [
-  'ollama::qwen2.5-coder:7b',
+  'ollama::devstral',
   'ollama::gpt-oss:20b',
+  'ollama::qwen2.5-coder:32b',
+  'ollama::qwen2.5-coder:14b',
+  'ollama::qwen2.5-coder:7b',
   'ollama::deepseek-r1:14b',
-  'ollama::qwen2.5-coder:3b',
 ]
 const ALL_AUTO_FAST_ROUTES = [
   OPENROUTER_AUTO_FAST_MODEL,
   ...OPENROUTER_AUTO_FAST_FALLBACKS,
   OLLAMA_AUTO_FAST_MODEL,
-  OLLAMA_AUTO_FAST_FALLBACKS[0]!,
+  ...OLLAMA_AUTO_FAST_FALLBACKS.slice(0, 3),
 ]
 const ALL_AUTO_COMPLEX_ROUTES = [
   OPENROUTER_AUTO_COMPLEX_MODEL,
   ...OPENROUTER_AUTO_COMPLEX_FALLBACKS,
   OLLAMA_AUTO_COMPLEX_MODEL,
-  OLLAMA_AUTO_COMPLEX_FALLBACKS[0]!,
+  ...OLLAMA_AUTO_COMPLEX_FALLBACKS.slice(0, 3),
 ]
 const ALL_AUTO_CODE_ROUTES = [
   OPENROUTER_AUTO_CODE_MODEL,
   ...OPENROUTER_AUTO_CODE_FALLBACKS,
   OLLAMA_AUTO_CODE_MODEL,
-  OLLAMA_AUTO_CODE_FALLBACKS[0]!,
+  ...OLLAMA_AUTO_CODE_FALLBACKS.slice(0, 3),
 ]
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
@@ -105,6 +120,50 @@ function splitPoolValues(raw: string | undefined): string[] {
 
 function dedupeStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
+}
+
+function getLiveOpenRouterFreeModels(): Set<string> {
+  const raw = firstNonEmpty(
+    process.env.BOTVALIA_OPENROUTER_LIVE_FREE_MODELS,
+    process.env.BOTVALIA_OPENROUTER_FREE_MODELS,
+    process.env.OPENROUTER_LIVE_FREE_MODELS,
+  )
+
+  if (!raw) {
+    return new Set()
+  }
+
+  return new Set(
+    splitPoolValues(raw).map(value => parseUserSpecifiedModel(value)),
+  )
+}
+
+function prioritizeLiveOpenRouterRoutes(routes: string[]): string[] {
+  const normalizedRoutes = dedupeStrings(routes)
+  const liveModels = getLiveOpenRouterFreeModels()
+  if (liveModels.size === 0) {
+    return normalizedRoutes
+  }
+
+  const live: string[] = []
+  const unknown: string[] = []
+
+  for (const route of normalizedRoutes) {
+    const parsed = parseProviderRoute(route)
+    if (!parsed || parsed.kind !== 'openrouter') {
+      live.push(route)
+      continue
+    }
+
+    if (parsed.model === 'openrouter/free' || liveModels.has(parsed.model)) {
+      live.push(route)
+      continue
+    }
+
+    unknown.push(route)
+  }
+
+  return live.length > 0 ? [...live, ...unknown] : normalizedRoutes
 }
 
 function applyEnvValue(key: string, value: string | undefined): void {
@@ -160,22 +219,35 @@ function applyModelRouterRoutes(routes: {
   complex: string[]
   code: string[]
 }): void {
+  const fastRoutes = reorderProviderRouteChain(
+    prioritizeLiveOpenRouterRoutes(routes.fast),
+  )
+  const complexRoutes = reorderProviderRouteChain(
+    prioritizeLiveOpenRouterRoutes(routes.complex),
+  )
+  const codeRoutes = reorderProviderRouteChain(
+    prioritizeLiveOpenRouterRoutes(routes.code),
+  )
+
   clearModelRouterEnvironment()
   setFreeOnlyModeEnvironment(true, routes.selection)
   process.env.BOTVALIA_MODEL_ROUTER_ENABLED = '1'
-  process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL = routes.fast[0] ?? ''
-  process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = routes.fast
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_MODEL = fastRoutes[0] ?? ''
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_FALLBACKS = fastRoutes
     .slice(1)
     .join(',')
-  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL = routes.complex[0] ?? ''
-  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS = routes.complex
+  process.env.BOTVALIA_MODEL_ROUTER_FAST_CHAIN = fastRoutes.join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_MODEL = complexRoutes[0] ?? ''
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_FALLBACKS = complexRoutes
     .slice(1)
     .join(',')
-  process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL = routes.code[0] ?? ''
-  process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = routes.code
+  process.env.BOTVALIA_MODEL_ROUTER_COMPLEX_CHAIN = complexRoutes.join(',')
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_MODEL = codeRoutes[0] ?? ''
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_FALLBACKS = codeRoutes
     .slice(1)
     .join(',')
-  applyProviderRoute(routes.fast[0])
+  process.env.BOTVALIA_MODEL_ROUTER_CODE_CHAIN = codeRoutes.join(',')
+  applyProviderRoute(fastRoutes[0])
 }
 
 function configureOpenRouterAutoRouting(): void {

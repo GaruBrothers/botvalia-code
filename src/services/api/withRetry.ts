@@ -205,6 +205,7 @@ export class FallbackTriggeredError extends Error {
       | 'invalid_model'
       | 'unavailable'
       | 'auth',
+    public readonly cooldownMs?: number,
   ) {
     super(
       `Model fallback triggered: ${originalModel} -> ${fallbackModel}${reason ? ` (${reason})` : ''}`,
@@ -437,10 +438,13 @@ export async function* withRetry<T>(
         error.status === 429 &&
         options.fallbackModel
       ) {
+        const cooldownMs =
+          getRateLimitResetDelayMs(error) ?? getRetryAfterMs(error) ?? undefined
         throw new FallbackTriggeredError(
           options.model,
           options.fallbackModel,
           'rate_limit',
+          cooldownMs,
         )
       }
 
@@ -500,10 +504,15 @@ export async function* withRetry<T>(
           }
 
           if (error.status === 429) {
+            const cooldownMs =
+              getRateLimitResetDelayMs(error) ??
+              getRetryAfterMs(error) ??
+              undefined
             throw new FallbackTriggeredError(
               options.model,
               options.fallbackModel!,
               'rate_limit',
+              cooldownMs,
             )
           }
 

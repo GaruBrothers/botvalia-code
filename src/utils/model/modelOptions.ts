@@ -51,119 +51,543 @@ export type ModelPickerModeOption = Omit<ModelOption, 'value'> & {
   value: string
 }
 
-const FREE_ONLY_MANUAL_MODEL_OPTIONS: ModelOption[] = [
+type FreeOnlyCatalogTier = 'code' | 'general' | 'fast'
+type FreeOnlyCatalogProvider = 'openrouter' | 'ollama'
+
+type FreeOnlyCatalogOption = ModelOption & {
+  provider: FreeOnlyCatalogProvider
+  tier: FreeOnlyCatalogTier
+}
+
+const FREE_ONLY_MANUAL_MODEL_CATALOG: FreeOnlyCatalogOption[] = [
+  {
+    value: 'openrouter::poolside/laguna-m.1:free',
+    label: 'Code · Laguna M.1 (OpenRouter)',
+    description: 'Coding agentico · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
+  },
   {
     value: 'openrouter::qwen/qwen3-coder:free',
-    label: 'Pro · Qwen 3 Coder (OpenRouter)',
-    description: 'Codigo · fijo · free',
+    label: 'Code · Qwen 3 Coder (OpenRouter)',
+    description: 'Codigo repo-scale · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
+  },
+  {
+    value: 'openrouter::tencent/hy3-preview:free',
+    label: 'Code · Hy3 Preview (OpenRouter)',
+    description: 'Agentes + codigo · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
   },
   {
     value: 'openrouter::openai/gpt-oss-120b:free',
-    label: 'Pro · GPT-OSS 120B (OpenRouter)',
-    description: 'Razonamiento · fijo · free',
+    label: 'Code · GPT-OSS 120B (OpenRouter)',
+    description: 'Razonamiento fuerte · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
   },
   {
-    value: 'ollama::qwen3-coder',
-    label: 'Pro · Qwen 3 Coder (Ollama)',
-    description: 'Codigo local · fijo',
+    value: 'openrouter::minimax/minimax-m2.5:free',
+    label: 'Code · MiniMax M2.5 (OpenRouter)',
+    description: 'Productividad + SWE · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
   },
   {
-    value: 'openrouter::qwen/qwen3.6-plus:free',
-    label: 'Medio · Qwen 3.6 Plus (OpenRouter)',
-    description: 'Generalista · fijo · free',
+    value: 'openrouter::qwen/qwen3-next-80b-a3b-instruct:free',
+    label: 'Code · Qwen3 Next 80B (OpenRouter)',
+    description: 'General potente con buen codigo · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
   },
   {
-    value: 'openrouter::deepseek/deepseek-r1-0528:free',
-    label: 'Medio · DeepSeek R1 (OpenRouter)',
-    description: 'Razonamiento · fijo · free',
+    value: 'openrouter::google/gemma-4-31b-it:free',
+    label: 'Code · Gemma 4 31B (OpenRouter)',
+    description: 'Codigo + documentos · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
   },
   {
-    value: 'ollama::deepseek-r1',
-    label: 'Medio · DeepSeek R1 (Ollama)',
-    description: 'Razonamiento local · fijo',
+    value: 'openrouter::nvidia/nemotron-3-super-120b-a12b:free',
+    label: 'Code · Nemotron 3 Super (OpenRouter)',
+    description: 'Multi-step + agentes · curado · free',
+    provider: 'openrouter',
+    tier: 'code',
+  },
+  {
+    value: 'ollama::qwen3-coder:30b',
+    label: 'Code · Qwen3 Coder 30B (Ollama)',
+    description: 'Codigo local fuerte · curado',
+    provider: 'ollama',
+    tier: 'code',
+  },
+  {
+    value: 'ollama::gpt-oss:20b',
+    label: 'Code · GPT-OSS 20B (Ollama)',
+    description: 'Agentes + razonamiento local · curado',
+    provider: 'ollama',
+    tier: 'code',
+  },
+  {
+    value: 'ollama::deepseek-r1:14b',
+    label: 'Code · DeepSeek R1 14B (Ollama)',
+    description: 'Codigo con razonamiento local · curado',
+    provider: 'ollama',
+    tier: 'code',
+  },
+  {
+    value: 'ollama::qwen3:30b',
+    label: 'Code · Qwen3 30B (Ollama)',
+    description: 'General potente para coding local · curado',
+    provider: 'ollama',
+    tier: 'code',
+  },
+  {
+    value: 'ollama::gemma3:12b',
+    label: 'Code · Gemma 3 12B (Ollama)',
+    description: 'Ligero pero util para coding local · curado',
+    provider: 'ollama',
+    tier: 'code',
+  },
+  {
+    value: 'ollama::qwen2.5-coder:14b',
+    label: 'Code · Qwen 2.5 Coder 14B (Ollama)',
+    description: 'Fallback local estable · curado',
+    provider: 'ollama',
+    tier: 'code',
   },
   {
     value: 'ollama::qwen2.5-coder:7b',
-    label: 'Medio · Qwen 2.5 Coder 7B (Ollama)',
-    description: 'Codigo local · fijo',
+    label: 'Code · Qwen 2.5 Coder 7B (Ollama)',
+    description: 'Fallback local compacto · curado',
+    provider: 'ollama',
+    tier: 'code',
   },
   {
     value: 'ollama::deepseek-coder-v2:16b',
-    label: 'Medio · DeepSeek Coder V2 16B (Ollama)',
-    description: 'Codigo local pesado · fijo',
+    label: 'Code · DeepSeek Coder V2 16B (Ollama)',
+    description: 'Fallback local pesado · curado',
+    provider: 'ollama',
+    tier: 'code',
+  },
+  {
+    value: 'openrouter::tencent/hy3-preview:free',
+    label: 'General · Hy3 Preview (OpenRouter)',
+    description: 'Top free actual para agentes · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'openrouter::openai/gpt-oss-120b:free',
+    label: 'General · GPT-OSS 120B (OpenRouter)',
+    description: 'Razonamiento + tools · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'openrouter::minimax/minimax-m2.5:free',
+    label: 'General · MiniMax M2.5 (OpenRouter)',
+    description: 'Productividad real-world · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'openrouter::qwen/qwen3-next-80b-a3b-instruct:free',
+    label: 'General · Qwen3 Next 80B (OpenRouter)',
+    description: 'General equilibrado · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'openrouter::google/gemma-4-31b-it:free',
+    label: 'General · Gemma 4 31B (OpenRouter)',
+    description: 'General + multimodal · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'openrouter::nvidia/nemotron-3-super-120b-a12b:free',
+    label: 'General · Nemotron 3 Super (OpenRouter)',
+    description: 'Planeacion larga · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'openrouter::inclusionai/ling-2.6-1t:free',
+    label: 'General · Ling 2.6 1T (OpenRouter)',
+    description: 'Top usage reciente · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'openrouter::z-ai/glm-4.5-air:free',
+    label: 'General · GLM 4.5 Air (OpenRouter)',
+    description: 'Ligero pero muy capaz · curado · free',
+    provider: 'openrouter',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::gpt-oss:20b',
+    label: 'General · GPT-OSS 20B (Ollama)',
+    description: 'General local recomendado · curado',
+    provider: 'ollama',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::qwen3:30b',
+    label: 'General · Qwen3 30B (Ollama)',
+    description: 'General local fuerte · curado',
+    provider: 'ollama',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::deepseek-r1:32b',
+    label: 'General · DeepSeek R1 32B (Ollama)',
+    description: 'Razonamiento local largo · curado',
+    provider: 'ollama',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::deepseek-r1:14b',
+    label: 'General · DeepSeek R1 14B (Ollama)',
+    description: 'Razonamiento local medio · curado',
+    provider: 'ollama',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::gemma3:27b',
+    label: 'General · Gemma 3 27B (Ollama)',
+    description: 'General local multimodal · curado',
+    provider: 'ollama',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::gemma3:12b',
+    label: 'General · Gemma 3 12B (Ollama)',
+    description: 'General local balanceado · curado',
+    provider: 'ollama',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::qwen3:14b',
+    label: 'General · Qwen3 14B (Ollama)',
+    description: 'Fallback local solido · curado',
+    provider: 'ollama',
+    tier: 'general',
+  },
+  {
+    value: 'ollama::qwen2.5-coder:14b',
+    label: 'General · Qwen 2.5 Coder 14B (Ollama)',
+    description: 'Fallback local por codigo/razonamiento · curado',
+    provider: 'ollama',
+    tier: 'general',
   },
   {
     value: 'openrouter::google/gemma-4-26b-a4b-it:free',
     label: 'Fast · Gemma 4 26B (OpenRouter)',
-    description: 'Ligero · fijo · free',
+    description: 'Rapido + muy competente · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
+  },
+  {
+    value: 'openrouter::z-ai/glm-4.5-air:free',
+    label: 'Fast · GLM 4.5 Air (OpenRouter)',
+    description: 'Fast reasoning ligero · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
   },
   {
     value: 'openrouter::openai/gpt-oss-20b:free',
     label: 'Fast · GPT-OSS 20B (OpenRouter)',
-    description: 'Rapido · fijo · free',
+    description: 'Rapido con tools · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
+  },
+  {
+    value: 'openrouter::nvidia/nemotron-nano-9b-v2:free',
+    label: 'Fast · Nemotron Nano 9B (OpenRouter)',
+    description: 'Nano tecnico · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
+  },
+  {
+    value: 'openrouter::nvidia/nemotron-3-nano-30b-a3b:free',
+    label: 'Fast · Nemotron 3 Nano 30B (OpenRouter)',
+    description: 'Nano agente rapido · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
+  },
+  {
+    value: 'openrouter::poolside/laguna-xs.2:free',
+    label: 'Fast · Laguna XS.2 (OpenRouter)',
+    description: 'Coding rapido de apoyo · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
+  },
+  {
+    value: 'openrouter::google/gemma-3-12b-it:free',
+    label: 'Fast · Gemma 3 12B (OpenRouter)',
+    description: 'Fallback rapido actual · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
+  },
+  {
+    value: 'openrouter::meta-llama/llama-3.2-3b-instruct:free',
+    label: 'Fast · Llama 3.2 3B (OpenRouter)',
+    description: 'Fallback minimo y estable · curado · free',
+    provider: 'openrouter',
+    tier: 'fast',
+  },
+  {
+    value: 'ollama::gemma3:4b',
+    label: 'Fast · Gemma 3 4B (Ollama)',
+    description: 'Rapido local recomendado · curado',
+    provider: 'ollama',
+    tier: 'fast',
+  },
+  {
+    value: 'ollama::qwen3:4b',
+    label: 'Fast · Qwen3 4B (Ollama)',
+    description: 'Fast general local · curado',
+    provider: 'ollama',
+    tier: 'fast',
   },
   {
     value: 'ollama::llama3.2:3b',
     label: 'Fast · Llama 3.2 3B (Ollama)',
-    description: 'Local liviano · fijo',
+    description: 'Fallback local muy liviano · curado',
+    provider: 'ollama',
+    tier: 'fast',
+  },
+  {
+    value: 'ollama::deepseek-r1:1.5b',
+    label: 'Fast · DeepSeek R1 1.5B (Ollama)',
+    description: 'Razonamiento minimo local · curado',
+    provider: 'ollama',
+    tier: 'fast',
   },
   {
     value: 'ollama::qwen2.5:3b',
     label: 'Fast · Qwen 2.5 3B (Ollama)',
-    description: 'Local liviano · fijo',
+    description: 'Fallback local clasico · curado',
+    provider: 'ollama',
+    tier: 'fast',
+  },
+  {
+    value: 'ollama::qwen2.5-coder:3b',
+    label: 'Fast · Qwen 2.5 Coder 3B (Ollama)',
+    description: 'Fallback local para snippets · curado',
+    provider: 'ollama',
+    tier: 'fast',
+  },
+  {
+    value: 'ollama::gemma3:1b',
+    label: 'Fast · Gemma 3 1B (Ollama)',
+    description: 'Fallback minimo local · curado',
+    provider: 'ollama',
+    tier: 'fast',
   },
 ]
+
+function splitCatalogEnv(raw: string | undefined): string[] {
+  if (!raw) {
+    return []
+  }
+
+  return raw
+    .split(/[,\n\r;]+/)
+    .map(value => value.trim())
+    .filter(Boolean)
+}
+
+function getRouteModelValue(route: string): string {
+  if (route.startsWith('openrouter::')) {
+    return route.slice('openrouter::'.length)
+  }
+  if (route.startsWith('ollama::')) {
+    return route.slice('ollama::'.length)
+  }
+
+  return route
+}
+
+function normalizeOllamaModelValue(model: string): string {
+  if (model.startsWith('ollama::')) {
+    return model.slice('ollama::'.length)
+  }
+  if (model.startsWith('ollama/')) {
+    return model.slice('ollama/'.length)
+  }
+
+  return model
+}
+
+function prettifyOllamaModel(model: string): string {
+  return normalizeOllamaModelValue(model)
+    .replace(/[-_/]+/g, ' ')
+    .replace(/:/g, ' ')
+    .replace(/\b([a-z])/g, (_, char: string) => char.toUpperCase())
+}
+
+function inferDynamicTier(model: string): FreeOnlyCatalogTier {
+  const normalized = normalizeOllamaModelValue(model).toLowerCase()
+  if (normalized.includes('coder')) {
+    return 'code'
+  }
+  if (
+    normalized.includes('gpt-oss') ||
+    normalized.includes('deepseek-r1') ||
+    normalized.includes(':14b') ||
+    normalized.includes(':27b') ||
+    normalized.includes(':30b') ||
+    normalized.includes(':32b') ||
+    normalized.includes(':70b')
+  ) {
+    return 'general'
+  }
+
+  return 'fast'
+}
+
+function buildAvailabilityAwareManualModelOptions(): ModelOption[] {
+  const openRouterSource = process.env.BOTVALIA_OPENROUTER_FREE_MODELS_SOURCE
+  const openRouterAvailable = process.env.BOTVALIA_OPENROUTER_AVAILABLE
+  const ollamaAvailable = process.env.BOTVALIA_OLLAMA_AVAILABLE
+  const ollamaInventoryKnown = process.env.BOTVALIA_OLLAMA_INVENTORY_KNOWN === '1'
+  const liveOpenRouterModels = new Set(
+    splitCatalogEnv(process.env.BOTVALIA_OPENROUTER_FREE_MODELS).map(model =>
+      model.toLowerCase(),
+    ),
+  )
+  const installedOllamaModels = splitCatalogEnv(
+    process.env.BOTVALIA_OLLAMA_AVAILABLE_MODELS,
+  )
+  const installedOllamaLookup = new Set(
+    installedOllamaModels.map(model =>
+      normalizeOllamaModelValue(model).toLowerCase(),
+    ),
+  )
+
+  const curatedOptions = FREE_ONLY_MANUAL_MODEL_CATALOG.filter(option => {
+    if (option.provider === 'openrouter') {
+      if (openRouterAvailable === '0') {
+        return false
+      }
+      if (openRouterSource === 'live' && liveOpenRouterModels.size > 0) {
+        return liveOpenRouterModels.has(
+          getRouteModelValue(option.value).toLowerCase(),
+        )
+      }
+
+      return true
+    }
+
+    if (ollamaAvailable === '0') {
+      return false
+    }
+    if (ollamaInventoryKnown) {
+      return installedOllamaLookup.has(
+        normalizeOllamaModelValue(option.value).toLowerCase(),
+      )
+    }
+
+    return true
+  })
+
+  const curatedValues = new Set(curatedOptions.map(option => option.value))
+  const dynamicOllamaOptions: FreeOnlyCatalogOption[] =
+    ollamaInventoryKnown && ollamaAvailable !== '0'
+      ? installedOllamaModels
+          .filter(
+            model =>
+              !curatedValues.has(`ollama::${normalizeOllamaModelValue(model)}`),
+          )
+          .map(model => {
+            const normalizedModel = normalizeOllamaModelValue(model)
+            const tier = inferDynamicTier(normalizedModel)
+            const tierLabel =
+              tier === 'code' ? 'Code' : tier === 'general' ? 'General' : 'Fast'
+
+            return {
+              value: `ollama::${normalizedModel}`,
+              label: `${tierLabel} · ${prettifyOllamaModel(normalizedModel)} (Ollama)`,
+              description: 'Modelo local detectado · inventario real',
+              provider: 'ollama' as const,
+              tier,
+            }
+          })
+      : []
+
+  const seenValues = new Set<string>()
+
+  return [...curatedOptions, ...dynamicOllamaOptions].filter(option => {
+    if (seenValues.has(option.value)) {
+      return false
+    }
+
+    seenValues.add(option.value)
+    return true
+  })
+}
 
 export function getFreeOnlyModePickerOptions(): ModelPickerModeOption[] {
   return [
     {
       value: AUTO_ALL_MODEL_ALIAS,
       label: 'Auto (All)',
-      description: 'Recomendado · mezcla OpenRouter + Ollama · Fast, medio y pro con multi-fallback',
+      description:
+        'Recomendado · mezcla cloud/local · code, general y fast con fallbacks enriquecidos',
     },
     {
       value: AUTO_OPENROUTER_MODEL_ALIAS,
       label: 'Auto (OpenRouter)',
-      description: 'Gratis en la nube · 1 primario + varios fallbacks OpenRouter por tier',
+      description:
+        'Gratis en la nube · rutas curadas segun free list real de OpenRouter',
     },
     {
       value: AUTO_OLLAMA_MODEL_ALIAS,
       label: 'Auto (Ollama)',
-      description: 'Gratis y local · 1 primario + varios fallbacks Ollama por tier',
+      description:
+        'Gratis y local · rutas curadas segun modelos realmente instalados',
     },
     {
       value: MANUAL_MODEL_PICKER_VALUE,
       label: 'Manual',
-      description: 'Abre la lista de modelos fijos ordenados por tier',
+      description:
+        'Catalogo curado de modelos fijos, filtrado por disponibilidad real cuando existe',
     },
   ]
 }
 
 export function getFreeOnlyManualModelOptions(): ModelOption[] {
-  return [...FREE_ONLY_MANUAL_MODEL_OPTIONS]
+  return buildAvailabilityAwareManualModelOptions()
 }
 
 function getFreeOnlyModelOptions(): ModelOption[] {
+  const manualOptions = getFreeOnlyManualModelOptions()
+
   return [
     {
       value: AUTO_ALL_MODEL_ALIAS,
       label: 'Auto (All)',
       description:
-        'Recomendado · Hibrido gratis · Fast, medio y pro con OpenRouter, Ollama y multi-fallback',
+        'Recomendado · hibrido gratis · code, general y fast con OpenRouter/Ollama y multi-fallback',
     },
     {
       value: AUTO_OPENROUTER_MODEL_ALIAS,
       label: 'Auto (OpenRouter)',
       description:
-        'Gratis en la nube · varios fallbacks OpenRouter del mismo proveedor',
+        'Gratis en la nube · varios fallbacks OpenRouter filtrados por free list vigente',
     },
     {
       value: AUTO_OLLAMA_MODEL_ALIAS,
       label: 'Auto (Ollama)',
       description:
-        'Gratis y local · varios fallbacks Ollama del mismo proveedor · requiere Ollama activo',
+        'Gratis y local · varios fallbacks Ollama priorizados por inventario instalado',
     },
-    ...FREE_ONLY_MANUAL_MODEL_OPTIONS,
+    ...manualOptions,
   ]
 }
 

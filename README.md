@@ -72,21 +72,37 @@ El REPL interactivo ahora usa la misma resolución rica de `routeSpec` y `fallba
 
 `Auto (All)` is a hybrid free router with three lanes:
 
-- **Fast**: lightweight prompts
-- **Medio**: general reasoning
-- **Pro**: coding / harder tasks
+- **Code**: coding and repo-scale work
+- **General**: reasoning / agentic productivity
+- **Fast**: lightweight prompts and quick loops
 
 Each lane uses **1 primary model + multiple fallbacks**.
 
-For `Medio` and `Pro`, the chain now also ends with `openrouter::openrouter/free`
-as a last-resort free router in case specific free model slugs change or become
-temporarily unavailable.
+BotValia now does two extra things to keep free routing alive longer:
 
-When both providers are available, default `Auto (All)` chains are:
+- It prioritizes the **live OpenRouter free catalog** detected at launch through `https://openrouter.ai/api/v1/models`.
+- It prefers **models that are actually installed in Ollama** when the endpoint can answer `/api/tags`.
+- It persists per-project cooldowns in `.claude/model-route-cooldowns.json`, so a route that just failed goes to the back of the queue for a while instead of being retried immediately next session.
 
-- Fast: `openrouter::openrouter/free` -> `openrouter::google/gemma-4-26b-a4b-it:free` -> `openrouter::openai/gpt-oss-20b:free` -> `openrouter::z-ai/glm-4.5-air:free` -> `openrouter::nvidia/nemotron-nano-9b-v2:free` -> `ollama::llama3.2:3b` -> `ollama::qwen2.5:3b`
-- Medio: `openrouter::qwen/qwen3.6-plus:free` -> `openrouter::openai/gpt-oss-120b:free` -> `openrouter::deepseek/deepseek-r1-0528:free` -> `openrouter::minimax/minimax-m2.5:free` -> `openrouter::nvidia/nemotron-3-super-120b-a12b:free` -> `ollama::deepseek-r1` -> `ollama::gpt-oss:20b`
-- Pro: `openrouter::qwen/qwen3-coder:free` -> `openrouter::poolside/laguna-m.1:free` -> `openrouter::qwen/qwen3.6-plus:free` -> `openrouter::openai/gpt-oss-120b:free` -> `openrouter::google/gemma-4-31b-it:free` -> `ollama::qwen3-coder` -> `ollama::qwen2.5-coder:7b`
+Current default primaries are:
+
+- Fast: `openrouter::google/gemma-4-26b-a4b-it:free`
+- General: `openrouter::tencent/hy3-preview:free`
+- Code: `openrouter::poolside/laguna-m.1:free`
+
+Notable OpenRouter free fallbacks now include:
+
+- Fast: `z-ai/glm-4.5-air:free`, `openai/gpt-oss-20b:free`, `nvidia/nemotron-nano-9b-v2:free`, `nvidia/nemotron-3-nano-30b-a3b:free`, `poolside/laguna-xs.2:free`, `google/gemma-3-12b-it:free`, `meta-llama/llama-3.2-3b-instruct:free`
+- General: `openai/gpt-oss-120b:free`, `minimax/minimax-m2.5:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `inclusionai/ling-2.6-1t:free`, `z-ai/glm-4.5-air:free`, `openrouter/free`
+- Code: `qwen/qwen3-coder:free`, `tencent/hy3-preview:free`, `openai/gpt-oss-120b:free`, `minimax/minimax-m2.5:free`, `qwen/qwen3-next-80b-a3b-instruct:free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `openrouter/free`
+
+Current Ollama-first primaries are:
+
+- Fast: `ollama::gemma3:4b`
+- General: `ollama::gpt-oss:20b`
+- Code: `ollama::qwen3-coder:30b`
+
+Notable Ollama fallbacks now include `qwen3:4b`, `llama3.2:3b`, `deepseek-r1:1.5b`, `qwen3:30b`, `deepseek-r1:14b`, `gemma3:12b`, `qwen2.5-coder:14b`, and `deepseek-coder-v2:16b`.
 
 If only one provider is available, BotValia automatically collapses to same-provider routing.
 
@@ -114,7 +130,7 @@ Useful helpers:
 
 ```bash
 bun run models:openrouter:free
-bun run model:openrouter:set -- -Model "qwen/qwen3.6-plus:free"
+bun run model:openrouter:set -- -Model "tencent/hy3-preview:free"
 bun run model:openrouter:clear
 ```
 
@@ -135,9 +151,9 @@ not bypassing OpenRouter-wide free-tier throttling.
 1. Start Ollama and pull the models you want, for example:
 
 ```bash
-ollama pull llama3.2:3b
-ollama pull qwen3-coder
-ollama pull deepseek-r1
+ollama pull gemma3:4b
+ollama pull gpt-oss:20b
+ollama pull qwen3-coder:30b
 ```
 
 2. Run Ollama-only routing:
@@ -175,13 +191,17 @@ before giving up on the current Ollama route.
 - `Auto (Ollama)`
 - `Manual`
 
-Inside `Manual`, BotValia opens a second list with fixed OpenRouter/Ollama models ordered by tier (`Pro`, `Medio`, `Fast`).
+Inside `Manual`, BotValia opens a second list with fixed OpenRouter/Ollama models ordered by use-case (`Code`, `General`, `Fast`).
+When BotValia can detect real availability at launch, that list is filtered/prioritized by:
+
+- the live OpenRouter free catalog
+- the actual Ollama inventory reported by the configured endpoint
 
 Important note:
 
 - `openrouter/free` is a router, not one fixed model.
-- BotValia uses `openrouter/free` inside the automatic OpenRouter fast lane.
-- Manual mode uses exact fixed models such as `openrouter::qwen/qwen3-coder:free` or `ollama::qwen3-coder`.
+- BotValia uses `openrouter/free` only as a late fallback/router, not as the preferred manual choice.
+- Manual mode uses exact fixed models such as `openrouter::poolside/laguna-m.1:free` or `ollama::qwen3-coder:30b`.
 
 ### Real-Time Swarm Roadmap
 
@@ -205,10 +225,10 @@ Implementation note:
 
 ### Infinite Memory (BotValia)
 
-BotValia now includes a 3-layer memory pipeline:
+BotValia currently includes a practical low-token local memory pipeline:
 - Short-term memory: sends only recent messages to the model.
 - Long-term memory: persists interactions on disk per project.
-- Semantic memory: stores embeddings and injects relevant memories by similarity.
+- Semantic memory: stores **local hash embeddings** and injects relevant memories by similarity.
 
 Storage (local project):
 - `.botvalia/memory/interactions.json`
@@ -216,12 +236,53 @@ Storage (local project):
 - `.botvalia/memory/summaries.json`
 - `.botvalia/memory/state.json`
 
+Important:
+
+- The current semantic layer is cheap and local, but it is **not** a full vector database or true global “infinite memory”.
+- Retrieval is currently lightweight JSON + cosine search over hash-based embeddings.
+- There is a separate `memory_plugin/` prototype for a heavier local-memory path, but it is not the main runtime path today.
+
 Environment toggles:
 - `BOTVALIA_MEMORY_DISABLED=1` disables the memory optimization layer.
 - `BOTVALIA_MEMORY_SHORT_TERM_LIMIT` default `10`
 - `BOTVALIA_MEMORY_RELEVANT_TOP_K` default `5`
 - `BOTVALIA_MEMORY_SUMMARY_TRIGGER` default `40`
 - `BOTVALIA_MEMORY_SUMMARY_KEEP_RECENT` default `14`
+
+### /init, Local Memory, and Activable UX/UI/QA
+
+- `/init` is the best current onboarding command for a project.
+- In the restored tree, `/init` always knows how to create or improve `CLAUDE.md`.
+- When the `NEW_INIT` feature is enabled, or `CLAUDE_CODE_NEW_INIT=1` is set, `/init` can also scaffold `CLAUDE.local.md`, project skills, and hooks.
+- `/memory` opens the currently discovered instruction files in your editor and, if auto-memory is enabled, can also open auto-memory, team-memory, and agent-memory folders.
+- `/skills` lists bundled, plugin, user, and project skills available to the current session.
+
+Current local instruction memory works like this:
+
+1. Managed memory: system-level `CLAUDE.md`
+2. User memory: `~/.claude/CLAUDE.md`
+3. Project memory: `CLAUDE.md`, `.claude/CLAUDE.md`, and `.claude/rules/*.md`
+4. Local memory: `CLAUDE.local.md`
+
+Important details:
+
+- Files closer to the current working directory override broader ones.
+- Memory files support `@path` includes such as `@./notes.md`, `@~/common.md`, or `@/absolute/file.md`.
+- `CLAUDE.local.md` is the right place for private endpoints, local test accounts, personal QA notes, or machine-specific workflow tweaks.
+
+For activable specialist behavior today, the cleanest path is:
+
+- **Skills** in `.claude/skills/<skill-name>/SKILL.md` for repeatable workflows you invoke with `/skill-name`
+- **Per-session profiles** with `--append-system-prompt-file` when you want a lightweight UX/UI/QA mode without creating a full skill
+- **Plugins** when you want opt-in bundles that ship multiple skills, hooks, and MCP config together
+
+Recommended split:
+
+- `ux-audit`: flows, copy, friction, navigation, edge cases
+- `ui-polish`: spacing, hierarchy, states, accessibility, finish
+- `qa-regression`: smoke checks, reproduction, verification evidence
+
+Starter templates live in [UX_UI_QA_SKILLS.md](UX_UI_QA_SKILLS.md).
 
 ---
 

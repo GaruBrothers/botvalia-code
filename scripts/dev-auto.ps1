@@ -8,7 +8,7 @@ param(
   [string]$OpenRouterComplexModel = "openrouter::qwen/qwen3.6-plus:free",
   [string]$OpenRouterCodeModel = "openrouter::qwen/qwen3-coder:free",
   [string]$OllamaFastModel = "ollama::llama3.2:3b",
-  [string]$OllamaComplexModel = "ollama::deepseek-r1",
+  [string]$OllamaComplexModel = "ollama::devstral",
   [string]$OllamaCodeModel = "ollama::qwen3-coder",
   [string]$OllamaBaseUrl = "",
   [string]$OllamaApiKey = "",
@@ -135,6 +135,341 @@ function Get-FirstSplitValue {
   }
 
   return ""
+}
+
+function ConvertTo-LookupTable {
+  param([string[]]$Values)
+
+  $table = @{}
+  foreach ($value in $Values) {
+    if ([string]::IsNullOrWhiteSpace($value)) {
+      continue
+    }
+
+    $trimmed = $value.Trim()
+    $table[$trimmed.ToLowerInvariant()] = $trimmed
+  }
+
+  return $table
+}
+
+function Get-RouteModelValue {
+  param([string]$Route)
+
+  if ([string]::IsNullOrWhiteSpace($Route)) {
+    return ""
+  }
+
+  $trimmed = $Route.Trim()
+  if ($trimmed.StartsWith("openrouter::")) {
+    return $trimmed.Substring("openrouter::".Length)
+  }
+  if ($trimmed.StartsWith("ollama::")) {
+    return $trimmed.Substring("ollama::".Length)
+  }
+  if ($trimmed.StartsWith("anthropic::")) {
+    return $trimmed.Substring("anthropic::".Length)
+  }
+
+  return $trimmed
+}
+
+function Normalize-OllamaModelValue {
+  param([string]$Model)
+
+  if ([string]::IsNullOrWhiteSpace($Model)) {
+    return ""
+  }
+
+  $trimmed = $Model.Trim()
+  if ($trimmed.StartsWith("ollama::")) {
+    $trimmed = $trimmed.Substring("ollama::".Length)
+  }
+  if ($trimmed.StartsWith("ollama/")) {
+    $trimmed = $trimmed.Substring("ollama/".Length)
+  }
+
+  return $trimmed
+}
+
+function Get-OpenRouterRequestHeaders {
+  $headers = @{
+    "Accept" = "application/json"
+  }
+
+  $openRouterKeys = First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEYS, $env:OPENROUTER_API_KEYS)
+  $openRouterKey = Get-FirstSplitValue -Raw $openRouterKeys
+  if ([string]::IsNullOrWhiteSpace($openRouterKey)) {
+    $openRouterKey = First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEY, $env:OPENROUTER_API_KEY)
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($openRouterKey)) {
+    $headers["Authorization"] = "Bearer $openRouterKey"
+  }
+
+  return $headers
+}
+
+function Get-OpenRouterFreeCatalog {
+  $baseUrl = First-NonEmpty @($env:BOTVALIA_OPENROUTER_BASE_URL, $env:OPENROUTER_BASE_URL, "https://openrouter.ai/api")
+  $modelsUrl = $baseUrl.TrimEnd("/") + "/v1/models"
+  $headers = Get-OpenRouterRequestHeaders
+
+  try {
+    $response = Invoke-RestMethod -Method Get -Uri $modelsUrl -Headers $headers -TimeoutSec 8
+    $freeModelIds = New-Object System.Collections.Generic.List[string]
+
+    foreach ($item in @($response.data)) {
+      if ($null -eq $item.id) {
+        continue
+      }
+
+      $id = [string]$item.id
+      $isFreeVariant = $id.ToLowerInvariant().EndsWith(":free")
+      $isFreeRouter = $id -eq "openrouter/free"
+      $isZeroPrice = $false
+      if ($null -ne $item.pricing) {
+        $isZeroPrice = $item.pricing.prompt -eq "0" -and $item.pricing.completion -eq "0"
+      }
+
+      if ($isFreeVariant -or $isFreeRouter -or $isZeroPrice) {
+        if (-not $freeModelIds.Contains($id)) {
+          $freeModelIds.Add($id)
+        }
+      }
+    }
+
+    return [pscustomobject]@{
+      Source = "live"
+      BaseUrl = $baseUrl.TrimEnd("/")
+      ModelIds = @($freeModelIds.ToArray())
+    }
+  } catch {
+    return [pscustomobject]@{
+      Source = "unavailable"
+      BaseUrl = $baseUrl.TrimEnd("/")
+      ModelIds = @()
+    }
+  }
+}
+
+function Get-OllamaRequestHeaders {
+  param([string]$ApiKey)
+
+  $headers = @{
+    "Accept" = "application/json"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+    $headers["Authorization"] = "Bearer $ApiKey"
+  }
+
+  return $headers
+}
+
+function Get-OllamaEndpointInventory {
+  param(
+    [string]$BaseUrl,
+    [string]$ApiKey
+  )
+
+  $trimmedBaseUrl = $BaseUrl.TrimEnd("/")
+  $headers = Get-OllamaRequestHeaders -ApiKey $ApiKey
+
+  $attempts = @(
+    [pscustomobject]@{
+      Source = "api-tags"
+      Url = "$trimmedBaseUrl/api/tags"
+    },
+    [pscustomobject]@{
+      Source = "v1-models"
+      Url = "$trimmedBaseUrl/v1/models"
+    }
+  )
+
+  foreach ($attempt in $attempts) {
+    try {
+      $response = Invoke-RestMethod -Method Get -Uri $attempt.Url -Headers $headers -TimeoutSec 5
+      $models = New-Object System.Collections.Generic.List[string]
+
+      if ($attempt.Source -eq "api-tags") {
+        foreach ($model in @($response.models)) {
+          if ($null -eq $model.name) {
+            continue
+          }
+          $name = Normalize-OllamaModelValue -Model ([string]$model.name)
+          if (-not [string]::IsNullOrWhiteSpace($name) -and -not $models.Contains($name)) {
+            $models.Add($name)
+          }
+        }
+      } else {
+        foreach ($model in @($response.data)) {
+          if ($null -eq $model.id) {
+            continue
+          }
+          $name = Normalize-OllamaModelValue -Model ([string]$model.id)
+          if (-not [string]::IsNullOrWhiteSpace($name) -and -not $models.Contains($name)) {
+            $models.Add($name)
+          }
+        }
+      }
+
+      return [pscustomobject]@{
+        Known = $true
+        Source = $attempt.Source
+        Models = @($models.ToArray())
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return [pscustomobject]@{
+    Known = $false
+    Source = "unavailable"
+    Models = @()
+  }
+}
+
+function Resolve-OllamaInstalledModelName {
+  param(
+    [string]$Candidate,
+    [string[]]$InstalledModels,
+    [hashtable]$InstalledLookup
+  )
+
+  $normalizedCandidate = Normalize-OllamaModelValue -Model $Candidate
+  if ([string]::IsNullOrWhiteSpace($normalizedCandidate)) {
+    return ""
+  }
+
+  $candidateKey = $normalizedCandidate.ToLowerInvariant()
+  if ($InstalledLookup.ContainsKey($candidateKey)) {
+    return $InstalledLookup[$candidateKey]
+  }
+
+  $family = ($normalizedCandidate -split ':', 2)[0]
+  $wantsTaggedVariant = $normalizedCandidate.Contains(":")
+
+  foreach ($installedModel in $InstalledModels) {
+    if ([string]::IsNullOrWhiteSpace($installedModel)) {
+      continue
+    }
+
+    $installedNormalized = Normalize-OllamaModelValue -Model $installedModel
+    $installedFamily = ($installedNormalized -split ':', 2)[0]
+    if ($installedFamily -ne $family) {
+      continue
+    }
+
+    if (-not $wantsTaggedVariant) {
+      return $installedNormalized
+    }
+
+    if ($installedNormalized.EndsWith(":latest")) {
+      return $installedNormalized
+    }
+  }
+
+  return ""
+}
+
+function Filter-OpenRouterCandidateRoutes {
+  param(
+    [string[]]$Routes,
+    [hashtable]$AvailableFreeModels,
+    [bool]$HasLiveCatalog
+  )
+
+  if (-not $HasLiveCatalog) {
+    return @(Get-UniqueRoutes -Routes $Routes)
+  }
+
+  $filteredRoutes = New-Object System.Collections.Generic.List[string]
+  foreach ($route in $Routes) {
+    if ([string]::IsNullOrWhiteSpace($route)) {
+      continue
+    }
+
+    if (-not $route.StartsWith("openrouter::")) {
+      $filteredRoutes.Add($route) | Out-Null
+      continue
+    }
+
+    $model = Get-RouteModelValue -Route $route
+    if ($model -eq "openrouter/free" -or $AvailableFreeModels.ContainsKey($model.ToLowerInvariant())) {
+      $filteredRoutes.Add($route) | Out-Null
+    }
+  }
+
+  return @(Get-UniqueRoutes -Routes @($filteredRoutes.ToArray()))
+}
+
+function Filter-OllamaCandidateRoutes {
+  param(
+    [string[]]$Routes,
+    [string[]]$InstalledModels,
+    [hashtable]$InstalledLookup,
+    [bool]$InventoryKnown
+  )
+
+  if (-not $InventoryKnown) {
+    return @(Get-UniqueRoutes -Routes $Routes)
+  }
+
+  $filteredRoutes = New-Object System.Collections.Generic.List[string]
+  foreach ($route in $Routes) {
+    if ([string]::IsNullOrWhiteSpace($route)) {
+      continue
+    }
+
+    if (-not $route.StartsWith("ollama::")) {
+      $filteredRoutes.Add($route) | Out-Null
+      continue
+    }
+
+    $resolvedModel = Resolve-OllamaInstalledModelName -Candidate (Get-RouteModelValue -Route $route) -InstalledModels $InstalledModels -InstalledLookup $InstalledLookup
+    if (-not [string]::IsNullOrWhiteSpace($resolvedModel)) {
+      $filteredRoutes.Add("ollama::$resolvedModel") | Out-Null
+    }
+  }
+
+  return @(Get-UniqueRoutes -Routes @($filteredRoutes.ToArray()))
+}
+
+function Get-OllamaOverflowRoutes {
+  param(
+    [string[]]$PreferredRoutes,
+    [string[]]$InstalledModels,
+    [hashtable]$InstalledLookup,
+    [bool]$InventoryKnown
+  )
+
+  if (-not $InventoryKnown) {
+    return @()
+  }
+
+  $preferredLookup = @{}
+  foreach ($route in $PreferredRoutes) {
+    $model = Normalize-OllamaModelValue -Model (Get-RouteModelValue -Route $route)
+    if (-not [string]::IsNullOrWhiteSpace($model)) {
+      $preferredLookup[$model.ToLowerInvariant()] = $true
+    }
+  }
+
+  $overflowRoutes = New-Object System.Collections.Generic.List[string]
+  foreach ($installedModel in $InstalledModels) {
+    $normalized = Normalize-OllamaModelValue -Model $installedModel
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+      continue
+    }
+
+    if (-not $preferredLookup.ContainsKey($normalized.ToLowerInvariant())) {
+      $overflowRoutes.Add("ollama::$normalized") | Out-Null
+    }
+  }
+
+  return @($overflowRoutes.ToArray())
 }
 
 function Get-OllamaEndpointSpecs {
@@ -273,26 +608,41 @@ function Get-OpenRouterTierRoutes {
     "fast" {
       @(
         "google/gemma-4-26b-a4b-it:free"
-        "openai/gpt-oss-20b:free"
         "z-ai/glm-4.5-air:free"
+        "openai/gpt-oss-20b:free"
         "nvidia/nemotron-nano-9b-v2:free"
+        "nvidia/nemotron-3-nano-30b-a3b:free"
+        "poolside/laguna-xs.2:free"
+        "google/gemma-3-12b-it:free"
+        "google/gemma-3-4b-it:free"
+        "meta-llama/llama-3.2-3b-instruct:free"
+        "openrouter/free"
       )
     }
     "complex" {
       @(
+        "tencent/hy3-preview:free"
         "openai/gpt-oss-120b:free"
-        "deepseek/deepseek-r1-0528:free"
         "minimax/minimax-m2.5:free"
+        "qwen/qwen3-next-80b-a3b-instruct:free"
         "nvidia/nemotron-3-super-120b-a12b:free"
+        "google/gemma-4-31b-it:free"
+        "inclusionai/ling-2.6-1t:free"
+        "z-ai/glm-4.5-air:free"
         "openrouter/free"
       )
     }
     default {
       @(
         "poolside/laguna-m.1:free"
-        "qwen/qwen3.6-plus:free"
+        "qwen/qwen3-coder:free"
+        "tencent/hy3-preview:free"
         "openai/gpt-oss-120b:free"
+        "minimax/minimax-m2.5:free"
+        "qwen/qwen3-next-80b-a3b-instruct:free"
         "google/gemma-4-31b-it:free"
+        "nvidia/nemotron-3-super-120b-a12b:free"
+        "z-ai/glm-4.5-air:free"
         "openrouter/free"
       )
     }
@@ -307,7 +657,12 @@ function Get-OpenRouterTierRoutes {
     $routes += Normalize-OpenRouterRoute -Route $route
   }
 
-  return @(Get-UniqueRoutes -Routes $routes)
+  return @(
+    Filter-OpenRouterCandidateRoutes `
+      -Routes (Get-UniqueRoutes -Routes $routes) `
+      -AvailableFreeModels $script:OpenRouterFreeModelLookup `
+      -HasLiveCatalog $script:HasLiveOpenRouterCatalog
+  )
 }
 
 function Get-OllamaTierRoutes {
@@ -332,26 +687,39 @@ function Get-OllamaTierRoutes {
   $tierDefaults = switch ($Tier) {
     "fast" {
       @(
+        "ollama::gemma3:4b"
+        "ollama::qwen3:4b"
+        "ollama::llama3.2:3b"
+        "ollama::deepseek-r1:1.5b"
         "ollama::qwen2.5:3b"
         "ollama::qwen2.5-coder:3b"
-        "ollama::qwen2.5-coder:7b"
-        "ollama::gpt-oss:20b"
+        "ollama::gemma3:1b"
       )
     }
     "complex" {
       @(
         "ollama::gpt-oss:20b"
         "ollama::qwen3:30b"
-        "ollama::qwen2.5-coder:7b"
+        "ollama::qwen3:14b"
+        "ollama::deepseek-r1:32b"
         "ollama::deepseek-r1:14b"
+        "ollama::gemma3:27b"
+        "ollama::gemma3:12b"
+        "ollama::qwen2.5-coder:14b"
+        "ollama::qwen2.5-coder:7b"
       )
     }
     default {
       @(
-        "ollama::qwen2.5-coder:7b"
+        "ollama::qwen3-coder:30b"
+        "ollama::qwen3-coder"
         "ollama::gpt-oss:20b"
         "ollama::deepseek-r1:14b"
-        "ollama::qwen2.5-coder:3b"
+        "ollama::qwen3:30b"
+        "ollama::gemma3:12b"
+        "ollama::qwen2.5-coder:14b"
+        "ollama::qwen2.5-coder:7b"
+        "ollama::deepseek-coder-v2:16b"
       )
     }
   }
@@ -360,7 +728,24 @@ function Get-OllamaTierRoutes {
     $tierOverrideRoutes = $tierDefaults
   }
 
-  return @(Get-UniqueRoutes -Routes @($primaryRoute + $tierOverrideRoutes))
+  $preferredRoutes = @(
+    Filter-OllamaCandidateRoutes `
+      -Routes (Get-UniqueRoutes -Routes @($primaryRoute + $tierOverrideRoutes)) `
+      -InstalledModels $script:OllamaAvailableModels `
+      -InstalledLookup $script:OllamaAvailableModelLookup `
+      -InventoryKnown $script:UseKnownOllamaInventory
+  )
+
+  return @(
+    Get-UniqueRoutes -Routes @(
+      $preferredRoutes +
+      (Get-OllamaOverflowRoutes `
+        -PreferredRoutes $preferredRoutes `
+        -InstalledModels $script:OllamaAvailableModels `
+        -InstalledLookup $script:OllamaAvailableModelLookup `
+        -InventoryKnown $script:UseKnownOllamaInventory)
+    )
+  )
 }
 
 function Get-AllTierRoutes {
@@ -391,41 +776,68 @@ function Get-AllTierRoutes {
       "fast" {
         @(
           $OpenRouterFastModel
-          "openrouter::google/gemma-4-26b-a4b-it:free"
           "openrouter::openai/gpt-oss-20b:free"
           "openrouter::z-ai/glm-4.5-air:free"
           "openrouter::nvidia/nemotron-nano-9b-v2:free"
+          "openrouter::nvidia/nemotron-3-nano-30b-a3b:free"
+          "openrouter::poolside/laguna-xs.2:free"
+          "openrouter::google/gemma-3-12b-it:free"
+          "openrouter::google/gemma-3-4b-it:free"
+          "openrouter::meta-llama/llama-3.2-3b-instruct:free"
+          "openrouter::openrouter/free"
           $OllamaFastModel
-          "ollama::qwen2.5:3b"
+          "ollama::qwen3:4b"
+          "ollama::llama3.2:3b"
         )
       }
       "complex" {
         @(
           $OpenRouterComplexModel
           "openrouter::openai/gpt-oss-120b:free"
-          "openrouter::deepseek/deepseek-r1-0528:free"
           "openrouter::minimax/minimax-m2.5:free"
+          "openrouter::qwen/qwen3-next-80b-a3b-instruct:free"
           "openrouter::nvidia/nemotron-3-super-120b-a12b:free"
+          "openrouter::google/gemma-4-31b-it:free"
+          "openrouter::inclusionai/ling-2.6-1t:free"
+          "openrouter::z-ai/glm-4.5-air:free"
           "openrouter::openrouter/free"
           $OllamaComplexModel
-          "ollama::gpt-oss:20b"
+          "ollama::qwen3:30b"
+          "ollama::deepseek-r1:14b"
         )
       }
       default {
         @(
           $OpenRouterCodeModel
-          "openrouter::poolside/laguna-m.1:free"
-          "openrouter::qwen/qwen3.6-plus:free"
+          "openrouter::qwen/qwen3-coder:free"
+          "openrouter::tencent/hy3-preview:free"
           "openrouter::openai/gpt-oss-120b:free"
+          "openrouter::minimax/minimax-m2.5:free"
+          "openrouter::qwen/qwen3-next-80b-a3b-instruct:free"
           "openrouter::google/gemma-4-31b-it:free"
+          "openrouter::nvidia/nemotron-3-super-120b-a12b:free"
+          "openrouter::z-ai/glm-4.5-air:free"
           "openrouter::openrouter/free"
           $OllamaCodeModel
-          "ollama::qwen2.5-coder:7b"
+          "ollama::gpt-oss:20b"
+          "ollama::deepseek-r1:14b"
         )
       }
     }
 
-    return @(Get-UniqueRoutes -Routes $hybridDefaults)
+    $liveRoutes = Filter-OpenRouterCandidateRoutes -Routes $hybridDefaults -AvailableFreeModels $script:OpenRouterFreeModelLookup -HasLiveCatalog $script:HasLiveOpenRouterCatalog
+    $liveRoutes = Filter-OllamaCandidateRoutes -Routes $liveRoutes -InstalledModels $script:OllamaAvailableModels -InstalledLookup $script:OllamaAvailableModelLookup -InventoryKnown $script:UseKnownOllamaInventory
+
+    return @(
+      Get-UniqueRoutes -Routes @(
+        $liveRoutes +
+        (Get-OllamaOverflowRoutes `
+          -PreferredRoutes $liveRoutes `
+          -InstalledModels $script:OllamaAvailableModels `
+          -InstalledLookup $script:OllamaAvailableModelLookup `
+          -InventoryKnown $script:UseKnownOllamaInventory)
+      )
+    )
   }
 
   if ($HasOpenRouter) {
@@ -437,12 +849,18 @@ function Get-AllTierRoutes {
   }
 
   $fallbackDefaults = switch ($Tier) {
-    "fast" { @($OllamaFastModel, "ollama::qwen2.5:3b", "ollama::qwen2.5-coder:3b", "ollama::qwen2.5-coder:7b") }
-    "complex" { @($OllamaComplexModel, "ollama::gpt-oss:20b", "ollama::qwen3:30b", "ollama::qwen2.5-coder:7b") }
-    default { @($OllamaCodeModel, "ollama::qwen2.5-coder:7b", "ollama::gpt-oss:20b", "ollama::deepseek-r1:14b") }
+    "fast" { @($OllamaFastModel, "ollama::qwen3:4b", "ollama::llama3.2:3b", "ollama::deepseek-r1:1.5b", "ollama::qwen2.5:3b") }
+    "complex" { @($OllamaComplexModel, "ollama::qwen3:30b", "ollama::deepseek-r1:14b", "ollama::gemma3:12b", "ollama::qwen2.5-coder:14b") }
+    default { @($OllamaCodeModel, "ollama::gpt-oss:20b", "ollama::deepseek-r1:14b", "ollama::qwen3:30b", "ollama::qwen2.5-coder:14b") }
   }
 
-  return @(Get-UniqueRoutes -Routes $fallbackDefaults)
+  return @(
+    Filter-OllamaCandidateRoutes `
+      -Routes (Get-UniqueRoutes -Routes $fallbackDefaults) `
+      -InstalledModels $script:OllamaAvailableModels `
+      -InstalledLookup $script:OllamaAvailableModelLookup `
+      -InventoryKnown $script:UseKnownOllamaInventory
+  )
 }
 
 function Apply-BootstrapRoute {
@@ -519,19 +937,69 @@ $resolvedOllamaApiKey = if ($primaryOllamaEndpoint) { $primaryOllamaEndpoint.Api
 $env:BOTVALIA_OLLAMA_BASE_URL = $resolvedOllamaBaseUrl
 $env:BOTVALIA_OLLAMA_API_KEY = $resolvedOllamaApiKey
 
+$openRouterCatalog = Get-OpenRouterFreeCatalog
+$script:HasLiveOpenRouterCatalog = $openRouterCatalog.Source -eq "live"
+$script:OpenRouterFreeModelIds = @($openRouterCatalog.ModelIds)
+$script:OpenRouterFreeModelLookup = ConvertTo-LookupTable -Values $script:OpenRouterFreeModelIds
+
+$script:HasKnownOllamaInventory = $false
+$script:UseKnownOllamaInventory = $false
+$script:OllamaAvailableModels = @()
+$script:OllamaAvailableModelLookup = @{}
+$selectedOllamaInventorySource = "unavailable"
+$selectedOllamaEndpointHadModels = $false
+$reachableOllamaEndpoint = $null
+$catalogAwareOllamaEndpoint = $null
+
 $hasAnthropic = -not [string]::IsNullOrWhiteSpace((First-NonEmpty @($env:BOTVALIA_ANTHROPIC_API_KEY, $env:BOTVALIA_ANTHROPIC_AUTH_TOKEN)))
 $hasOpenRouter = -not [string]::IsNullOrWhiteSpace((First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEYS, $env:BOTVALIA_OPENROUTER_API_KEY, $env:OPENROUTER_API_KEYS, $env:OPENROUTER_API_KEY)))
 $hasOllama = $false
 foreach ($endpointSpec in $ollamaEndpointSpecs) {
   if (Test-TcpEndpoint -Url $endpointSpec.BaseUrl) {
     $hasOllama = $true
-    $resolvedOllamaBaseUrl = $endpointSpec.BaseUrl
-    $resolvedOllamaApiKey = $endpointSpec.ApiKey
-    $env:BOTVALIA_OLLAMA_BASE_URL = $resolvedOllamaBaseUrl
-    $env:BOTVALIA_OLLAMA_API_KEY = $resolvedOllamaApiKey
-    break
+    if (-not $reachableOllamaEndpoint) {
+      $reachableOllamaEndpoint = $endpointSpec
+    }
+
+    $inventory = Get-OllamaEndpointInventory -BaseUrl $endpointSpec.BaseUrl -ApiKey $endpointSpec.ApiKey
+    if ($inventory.Known -and (-not $catalogAwareOllamaEndpoint -or @($inventory.Models).Count -gt 0)) {
+      $catalogAwareOllamaEndpoint = [pscustomobject]@{
+        Spec = $endpointSpec
+        Inventory = $inventory
+      }
+      if (@($inventory.Models).Count -gt 0) {
+        break
+      }
+    }
   }
 }
+
+if ($catalogAwareOllamaEndpoint) {
+  $resolvedOllamaBaseUrl = $catalogAwareOllamaEndpoint.Spec.BaseUrl
+  $resolvedOllamaApiKey = $catalogAwareOllamaEndpoint.Spec.ApiKey
+  $script:HasKnownOllamaInventory = $catalogAwareOllamaEndpoint.Inventory.Known
+  $script:OllamaAvailableModels = @($catalogAwareOllamaEndpoint.Inventory.Models)
+  $script:OllamaAvailableModelLookup = ConvertTo-LookupTable -Values $script:OllamaAvailableModels
+  $selectedOllamaInventorySource = $catalogAwareOllamaEndpoint.Inventory.Source
+  $selectedOllamaEndpointHadModels = @($script:OllamaAvailableModels).Count -gt 0
+} elseif ($reachableOllamaEndpoint) {
+  $resolvedOllamaBaseUrl = $reachableOllamaEndpoint.BaseUrl
+  $resolvedOllamaApiKey = $reachableOllamaEndpoint.ApiKey
+}
+
+$env:BOTVALIA_OLLAMA_BASE_URL = $resolvedOllamaBaseUrl
+$env:BOTVALIA_OLLAMA_API_KEY = $resolvedOllamaApiKey
+$env:BOTVALIA_OPENROUTER_FREE_MODELS = ($script:OpenRouterFreeModelIds -join ",")
+$env:BOTVALIA_OPENROUTER_FREE_MODELS_SOURCE = $openRouterCatalog.Source
+$env:BOTVALIA_OPENROUTER_FREE_MODEL_COUNT = "$(@($script:OpenRouterFreeModelIds).Count)"
+$env:BOTVALIA_OLLAMA_AVAILABLE_MODELS = ($script:OllamaAvailableModels -join ",")
+$env:BOTVALIA_OLLAMA_AVAILABLE_MODELS_SOURCE = $selectedOllamaInventorySource
+$env:BOTVALIA_OLLAMA_AVAILABLE_MODEL_COUNT = "$(@($script:OllamaAvailableModels).Count)"
+$env:BOTVALIA_OLLAMA_INVENTORY_KNOWN = if ($script:HasKnownOllamaInventory) { "1" } else { "0" }
+$script:UseKnownOllamaInventory = -not $VersionOnly -and $script:HasKnownOllamaInventory
+
+$hasUsableOpenRouter = $hasOpenRouter
+$hasUsableOllama = $hasOllama -and ((-not $script:HasKnownOllamaInventory) -or @($script:OllamaAvailableModels).Count -gt 0)
 $openRouterKeyPoolCount = @(
   @(Split-RouteValues -Raw (First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEYS, $env:OPENROUTER_API_KEYS))) +
   @((First-NonEmpty @($env:BOTVALIA_OPENROUTER_API_KEY, $env:OPENROUTER_API_KEY)) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -546,29 +1014,38 @@ $modeLabel = $effectiveMode
 $costPolicy = "free-only"
 $routePolicy = ""
 $anthropicExcludedFromAuto = $hasAnthropic
+$routeHasOpenRouter = if ($VersionOnly) { $hasOpenRouter } else { $hasUsableOpenRouter }
+$routeHasOllama = if ($VersionOnly) { $hasOllama } else { $hasUsableOllama }
+$ollamaAvailabilityNote = if ($script:HasKnownOllamaInventory -and @($script:OllamaAvailableModels).Count -eq 0) {
+  "Ollama endpoint is reachable but no installed models were found."
+} elseif ($script:HasKnownOllamaInventory) {
+  "Ollama inventory loaded from $selectedOllamaInventorySource."
+} else {
+  "Ollama inventory unavailable, using curated fallbacks."
+}
 
 switch ($effectiveMode) {
   "auto-all" {
     $modeLabel = "Auto All"
-    if (-not $hasOpenRouter -and -not $hasOllama) {
+    if (-not $routeHasOpenRouter -and -not $routeHasOllama) {
       Write-Error "Auto (All) requiere OpenRouter configurado o un endpoint Ollama activo en $resolvedOllamaBaseUrl."
       exit 1
     }
-    if ($hasOpenRouter -and $hasOllama) {
-      $routePolicy = "Hybrid free routing: OpenRouter and Ollama. Each tier uses one primary route plus multiple fallbacks."
-    } elseif ($hasOpenRouter) {
+    if ($routeHasOpenRouter -and $routeHasOllama) {
+      $routePolicy = "Hybrid free routing: OpenRouter and Ollama. Each tier uses one curated primary route plus multiple fallbacks. $ollamaAvailabilityNote"
+    } elseif ($routeHasOpenRouter) {
       $routePolicy = "OpenRouter available only: Auto (All) collapses to same-provider OpenRouter routing."
     } else {
-      $routePolicy = "Ollama available only: Auto (All) collapses to same-provider Ollama routing."
+      $routePolicy = "Ollama available only: Auto (All) collapses to same-provider Ollama routing. $ollamaAvailabilityNote"
     }
-    $fastRoutes = @(Get-AllTierRoutes -Tier "fast" -HasOpenRouter $hasOpenRouter -HasOllama $hasOllama)
-    $complexRoutes = @(Get-AllTierRoutes -Tier "complex" -HasOpenRouter $hasOpenRouter -HasOllama $hasOllama)
-    $codeRoutes = @(Get-AllTierRoutes -Tier "code" -HasOpenRouter $hasOpenRouter -HasOllama $hasOllama)
+    $fastRoutes = @(Get-AllTierRoutes -Tier "fast" -HasOpenRouter $routeHasOpenRouter -HasOllama $routeHasOllama)
+    $complexRoutes = @(Get-AllTierRoutes -Tier "complex" -HasOpenRouter $routeHasOpenRouter -HasOllama $routeHasOllama)
+    $codeRoutes = @(Get-AllTierRoutes -Tier "code" -HasOpenRouter $routeHasOpenRouter -HasOllama $routeHasOllama)
   }
   "auto-openrouter" {
     $modeLabel = "Auto OpenRouter"
-    $routePolicy = "OpenRouter only: each tier uses one primary route plus multiple OpenRouter fallbacks"
-    if (-not $hasOpenRouter) {
+    $routePolicy = "OpenRouter only: each tier uses one curated primary route plus multiple live free-model fallbacks"
+    if (-not $routeHasOpenRouter) {
       Write-Error "Auto (OpenRouter) requiere OPENROUTER_API_KEY o BOTVALIA_OPENROUTER_API_KEY."
       exit 1
     }
@@ -578,8 +1055,8 @@ switch ($effectiveMode) {
   }
   "auto-ollama" {
     $modeLabel = "Auto Ollama"
-    $routePolicy = "Ollama only: each tier uses one primary route plus multiple Ollama fallbacks"
-    if (-not $hasOllama) {
+    $routePolicy = "Ollama only: each tier uses one curated primary route plus multiple installed-model fallbacks. $ollamaAvailabilityNote"
+    if (-not $routeHasOllama) {
       Write-Error "Auto (Ollama) requiere un endpoint Ollama activo en $resolvedOllamaBaseUrl."
       exit 1
     }
@@ -621,8 +1098,9 @@ $bootstrapProvider = Get-RouteProvider -Route $bootstrapRoute
 $transportMode = if ($bootstrapProvider -eq "anthropic") { "anthropic-native" } else { "anthropic-compat-env" }
 
 $env:BOTVALIA_FREE_ONLY_MODE = "1"
-$env:BOTVALIA_OPENROUTER_AVAILABLE = if ($hasOpenRouter) { "1" } else { "0" }
-$env:BOTVALIA_OLLAMA_AVAILABLE = if ($hasOllama) { "1" } else { "0" }
+$env:BOTVALIA_OPENROUTER_AVAILABLE = if ($hasUsableOpenRouter) { "1" } else { "0" }
+$env:BOTVALIA_OLLAMA_AVAILABLE = if ($hasUsableOllama) { "1" } else { "0" }
+$env:BOTVALIA_OLLAMA_ENDPOINT_REACHABLE = if ($hasOllama) { "1" } else { "0" }
 $env:BOTVALIA_MODEL_SELECTION = $effectiveMode
 $env:BOTVALIA_DEFAULT_MODEL_SELECTION = $effectiveMode
 $env:BOTVALIA_DEFAULT_FALLBACK_MODELS = "0"
@@ -658,8 +1136,15 @@ Write-Host "[botvalia auto] CODE_CHAIN=$(Format-RouteChain -Routes $codeRoutes)"
 Write-Host "[botvalia auto] BOOTSTRAP=$bootstrapRoute"
 Write-Host "[botvalia auto] BOOTSTRAP_PROVIDER=$bootstrapProvider"
 Write-Host "[botvalia auto] PROVIDERS_AVAILABLE=anthropic:$hasAnthropic openrouter:$hasOpenRouter ollama:$hasOllama"
+Write-Host "[botvalia auto] PROVIDERS_USABLE=openrouter:$hasUsableOpenRouter ollama:$hasUsableOllama"
 Write-Host "[botvalia auto] OPENROUTER_KEY_POOL_COUNT=$openRouterKeyPoolCount"
+Write-Host "[botvalia auto] OPENROUTER_FREE_MODELS_SOURCE=$($env:BOTVALIA_OPENROUTER_FREE_MODELS_SOURCE)"
+Write-Host "[botvalia auto] OPENROUTER_FREE_MODEL_COUNT=$($env:BOTVALIA_OPENROUTER_FREE_MODEL_COUNT)"
 Write-Host "[botvalia auto] OLLAMA_ENDPOINT_COUNT=$ollamaEndpointCount"
+Write-Host "[botvalia auto] OLLAMA_INVENTORY_KNOWN=$($env:BOTVALIA_OLLAMA_INVENTORY_KNOWN)"
+Write-Host "[botvalia auto] OLLAMA_AVAILABLE_MODELS_SOURCE=$($env:BOTVALIA_OLLAMA_AVAILABLE_MODELS_SOURCE)"
+Write-Host "[botvalia auto] OLLAMA_AVAILABLE_MODEL_COUNT=$($env:BOTVALIA_OLLAMA_AVAILABLE_MODEL_COUNT)"
+Write-Host "[botvalia auto] OLLAMA_ENDPOINT_HAS_MODELS=$selectedOllamaEndpointHadModels"
 Write-Host "[botvalia auto] ANTHROPIC_EXCLUDED_FROM_AUTO=$anthropicExcludedFromAuto"
 Write-Host "[botvalia auto] AUTO_ALL_CHAIN_ENRICHED=$isAutoAllPreset"
 Write-Host "[botvalia auto] AUTO_OPENROUTER_CHAIN_ENRICHED=$isOpenRouterAutoPreset"
