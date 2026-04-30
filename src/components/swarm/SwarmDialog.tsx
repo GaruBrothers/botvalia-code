@@ -96,6 +96,7 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
   const [events, setEvents] = useState<TeamConversationEvent[]>([])
   const [draft, setDraft] = useState('')
   const [cursorOffset, setCursorOffset] = useState(0)
+  const [interactionArmed, setInteractionArmed] = useState(false)
   const [notice, setNotice] = useState<string>()
   const [error, setError] = useState<string>()
 
@@ -138,6 +139,17 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
       setPickerIndex(previous => Math.max(0, Math.min(previous, statuses.length - 1)))
     }
   }, [mode.type, statuses.length])
+
+  useEffect(() => {
+    setInteractionArmed(false)
+    const timer = setTimeout(() => {
+      setInteractionArmed(true)
+    }, 0)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [mode.type, view])
 
   const selectedAgent = getSelected(statuses, selectedByView.agents)
   const selectedThread = getSelected(threadSummaries, selectedByView.threads)
@@ -296,6 +308,10 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
   )
 
   useInput((input, key) => {
+    if (!interactionArmed) {
+      return
+    }
+
     if (mode.type === 'message' || mode.type === 'compose-thread') {
       if (key.escape) {
         setMode({ type: 'browse' })
@@ -726,7 +742,7 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
       subtitle={subtitle}
       onCancel={() => onDone()}
       color="background"
-      isCancelActive={mode.type === 'browse'}
+      isCancelActive={mode.type === 'browse' && interactionArmed}
       inputGuide={() => {
         if (mode.type === 'message' || mode.type === 'compose-thread') {
           return 'Enter enviar · Esc volver'
