@@ -31,6 +31,24 @@ import {
   useShowOverageCreditUpsell,
 } from './OverageCreditUpsell.js'
 
+const BOTVALIA_BANNER = [
+  '██████╗  ██████╗ ████████╗██╗   ██╗ █████╗ ██╗     ██╗ █████╗ ',
+  '██╔══██╗██╔═══██╗╚══██╔══╝██║   ██║██╔══██╗██║     ██║██╔══██╗',
+  '██████╔╝██║   ██║   ██║   ██║   ██║███████║██║     ██║███████║',
+  '██╔══██╗██║   ██║   ██║   ╚██╗ ██╔╝██╔══██║██║     ██║██╔══██║',
+  '██████╔╝╚██████╔╝   ██║    ╚████╔╝ ██║  ██║███████╗██║██║  ██║',
+  '╚═════╝  ╚═════╝    ╚═╝     ╚═══╝  ╚═╝  ╚═╝╚══════╝╚═╝╚═╝  ╚═╝',
+] as const
+
+const CODE_BANNER = [
+  ' ██████╗ ██████╗ ██████╗ ███████╗',
+  '██╔════╝██╔═══██╗██╔══██╗██╔════╝',
+  '██║     ██║   ██║██║  ██║█████╗  ',
+  '██║     ██║   ██║██║  ██║██╔══╝  ',
+  '╚██████╗╚██████╔╝██████╔╝███████╗',
+  ' ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝',
+] as const
+
 export function CondensedLogo(): ReactNode {
   const { columns } = useTerminalSize()
   const agent = useAppState(s => s.agent)
@@ -63,6 +81,11 @@ export function CondensedLogo(): ReactNode {
     }
   }, [showGuestPassesUpsell, showOverageCreditUpsell])
 
+  const bannerLines = BOTVALIA_BANNER.map(
+    (line, index) => `${line}  ${CODE_BANNER[index]}`,
+  )
+  const bannerWidth = Math.max(...bannerLines.map(line => stringWidth(line)))
+  const showLargeWordmark = columns >= bannerWidth + 14
   const textWidth = Math.max(columns - 16, 20)
   const truncatedVersion = truncate(version, Math.max(textWidth - 1, 8))
   const effortSuffix = getEffortSuffix(model, effortValue)
@@ -85,17 +108,31 @@ export function CondensedLogo(): ReactNode {
         {isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />}
 
         <Box flexDirection="column">
-          <Text>
-            <Text bold color="white">
-              BotValia
-            </Text>{' '}
-            <Text bold color="professionalBlue">
-              Co
+          {showLargeWordmark ? (
+            <Box flexDirection="column">
+              {BOTVALIA_BANNER.map((line, index) => (
+                <Text key={index}>
+                  <Text bold color="white">
+                    {line}
+                  </Text>
+                  <Text color="professionalBlue">  {CODE_BANNER[index].slice(0, 18)}</Text>
+                  <Text color="magenta">{CODE_BANNER[index].slice(18)}</Text>
+                </Text>
+              ))}
+            </Box>
+          ) : (
+            <Text>
+              <Text bold color="white">
+                BotValia
+              </Text>{' '}
+              <Text bold color="professionalBlue">
+                Co
+              </Text>
+              <Text bold color="magenta">
+                de
+              </Text>
             </Text>
-            <Text bold color="magenta">
-              de
-            </Text>
-          </Text>
+          )}
 
           <Text color="cyan">v{truncatedVersion}</Text>
 
