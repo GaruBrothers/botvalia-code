@@ -482,6 +482,9 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
             Primero pídele a BotValia que cree un team real en esta misma sesión.
           </Text>
           <Text dimColor>
+            Atajo: usa /swarm create demo-swarm planner coder qa
+          </Text>
+          <Text dimColor>
             Ejemplo: crea un swarm llamado demo-swarm con planner, coder y qa;
             haz que se coordinen entre sí y me den avances parciales.
           </Text>

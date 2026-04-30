@@ -1119,6 +1119,7 @@ $env:FALLBACK_FOR_ALL_PRIMARY_MODELS = "1"
 $env:BOTVALIA_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:CLAUDE_CODE_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
+$env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"
 
 Write-Host "[botvalia auto] PRESET=$Preset"
 Write-Host "[botvalia auto] MODE=$effectiveMode"
@@ -1154,6 +1155,7 @@ Write-Host "[botvalia auto] ACTIVE_BASE_URL=$($env:ANTHROPIC_BASE_URL)"
 Write-Host "[botvalia auto] ACTIVE_MODEL=$($env:ANTHROPIC_MODEL)"
 Write-Host "[botvalia auto] BOTVALIA_MAX_OUTPUT_TOKENS=$($env:BOTVALIA_MAX_OUTPUT_TOKENS)"
 Write-Host "[botvalia auto] MAX_THINKING_TOKENS=$($env:MAX_THINKING_TOKENS)"
+Write-Host "[botvalia auto] AGENT_SWARMS=$($env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS)"
 Write-Host "[botvalia auto] BARE_MODE=$BareMode"
 
 if ($VersionOnly) {
