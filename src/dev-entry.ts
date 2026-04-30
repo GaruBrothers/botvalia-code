@@ -1,4 +1,5 @@
 import pkg from '../package.json'
+import { spawnSync } from 'child_process'
 import {
   existsSync,
   mkdirSync,
@@ -68,6 +69,59 @@ const MISSING_IMPORT_SCAN_CACHE_PATH = resolve(
 )
 const RELATIVE_IMPORT_PATTERN =
   /(?:import|export)\s+[\s\S]*?from\s+['"](\.\.?\/[^'"]+)['"]|require\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g
+
+function ensureAnthropicSdkRuntimeFiles(): void {
+  const sdkPackagePath = resolve(
+    'node_modules',
+    '@anthropic-ai',
+    'sdk',
+    'package.json',
+  )
+  const sdkInternalMarkerPath = resolve(
+    'node_modules',
+    '@anthropic-ai',
+    'sdk',
+    'internal',
+    'tslib.mjs',
+  )
+
+  if (existsSync(sdkInternalMarkerPath) || !existsSync(sdkPackagePath)) {
+    return
+  }
+
+  let sdkVersion = 'latest'
+  try {
+    const sdkPackage = JSON.parse(
+      readFileSync(sdkPackagePath, 'utf8'),
+    ) as { version?: string }
+    if (sdkPackage.version?.trim()) {
+      sdkVersion = sdkPackage.version.trim()
+    }
+  } catch {
+    // Best effort only; fall back to latest if package metadata is unreadable.
+  }
+
+  console.log(
+    `[botvalia repair] Missing @anthropic-ai/sdk runtime files. Repairing @anthropic-ai/sdk@${sdkVersion} with npm...`,
+  )
+
+  const repair = spawnSync(
+    'npm',
+    ['install', `@anthropic-ai/sdk@${sdkVersion}`, '--no-save'],
+    {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    },
+  )
+
+  if (repair.status !== 0 || !existsSync(sdkInternalMarkerPath)) {
+    console.error(
+      '[botvalia repair] Failed to restore @anthropic-ai/sdk internal runtime files.',
+    )
+    process.exit(repair.status ?? 1)
+  }
+}
 
 function scanFiles(dir: string, out: ScannedFile[]): void {
   if (!existsSync(dir)) return
@@ -276,6 +330,8 @@ if (missingImports.length > 0) {
   console.log('Use this workspace to continue restoration; once missing imports reach 0, this launcher will forward to src/main.tsx automatically.')
   process.exit(0)
 }
+
+ensureAnthropicSdkRuntimeFiles()
 
 // Route through the original CLI bootstrap so the exported `main()` is
 // actually invoked. Importing `main.tsx` directly only evaluates the module.
