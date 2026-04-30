@@ -125,3 +125,7 @@ export type RuntimeProtocolEventListener = (
 ) => void
 
 export type RuntimeProtocolEventUnsubscribe = () => void
+
+export type RuntimeProtocolMessage =
+  | RuntimeProtocolResponse
+  | RuntimeProtocolEvent
