@@ -2,6 +2,10 @@ import type { AppState } from '../state/AppStateStore.js'
 import type { TaskState } from '../tasks/types.js'
 import type { Message } from '../types/message.js'
 import type { ModelSetting } from '../utils/model/model.js'
+import type {
+  SwarmThreadSummary,
+  SwarmWaitingEdge,
+} from '../utils/swarm/teamConversationLog.js'
 
 export type RuntimeSessionId = string
 
@@ -51,6 +55,8 @@ export type RuntimeSessionDetail = {
   snapshot: RuntimeSessionSnapshot
   messages: RuntimeMessageSummary[]
   tasks: RuntimeTaskSummary[]
+  swarmThreads: SwarmThreadSummary[]
+  swarmWaitingEdges: SwarmWaitingEdge[]
 }
 
 export type RuntimeSendMessageInput = {
@@ -221,10 +227,14 @@ export function createRuntimeSessionDetail(params: {
   snapshot: RuntimeSessionSnapshot
   messages: readonly Message[]
   tasks: RuntimeTaskSummary[]
+  swarmThreads?: SwarmThreadSummary[]
+  swarmWaitingEdges?: SwarmWaitingEdge[]
 }): RuntimeSessionDetail {
   return {
     snapshot: params.snapshot,
     messages: params.messages.slice(-40).map(toRuntimeMessageSummary),
     tasks: params.tasks,
+    swarmThreads: params.swarmThreads ?? [],
+    swarmWaitingEdges: params.swarmWaitingEdges ?? [],
   }
 }

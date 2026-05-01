@@ -147,7 +147,8 @@ export class RuntimeBridge {
             ok: true,
             method: 'get_session_detail',
             detail:
-              this.runtimeService.getSessionDetail(request.sessionId) ?? null,
+              (await this.runtimeService.getSessionDetail(request.sessionId)) ??
+              null,
           }
 
         case 'send_message':

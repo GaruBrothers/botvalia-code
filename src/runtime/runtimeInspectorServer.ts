@@ -133,6 +133,16 @@ function renderInspectorHtml(): string {
         flex-wrap: wrap;
         align-items: center;
       }
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .toggle input {
+        accent-color: var(--cyan);
+      }
       button {
         border: 1px solid var(--border);
         border-radius: 999px;
@@ -436,6 +446,7 @@ function renderInspectorHtml(): string {
           </div>
         </div>
         <div class="toolbar">
+          <label class="toggle"><input id="autoRefresh" type="checkbox" checked /> Auto refresh</label>
           <button id="reconnect">Reconectar</button>
           <button id="refreshSessions">Refrescar sesiones</button>
           <button id="refreshSelected">Refrescar sesión</button>
@@ -501,6 +512,13 @@ function renderInspectorHtml(): string {
               </div>
 
               <div class="composer">
+                <div class="composer-head">Threads y waiting</div>
+                <div id="swarmThreads" class="summary-list">
+                  <div class="muted">Sin threads de swarm todavía.</div>
+                </div>
+              </div>
+
+              <div class="composer">
                 <div class="composer-head">Acciones de swarm</div>
                 <div id="swarmControls" class="summary-list">
                   <div class="muted">Selecciona una sesión para ver acciones del swarm.</div>
@@ -536,6 +554,8 @@ function renderInspectorHtml(): string {
         selectedDetail: null,
         events: [],
         sessionActivity: new Map(),
+        autoRefresh: true,
+        autoRefreshTimer: null,
       }
 
       const els = {
@@ -544,6 +564,7 @@ function renderInspectorHtml(): string {
         socketDot: document.getElementById('socketDot'),
         socketStatus: document.getElementById('socketStatus'),
         runtimeUrl: document.getElementById('runtimeUrl'),
+        autoRefresh: document.getElementById('autoRefresh'),
         sessions: document.getElementById('sessions'),
         sessionCount: document.getElementById('sessionCount'),
         selectedSessionLabel: document.getElementById('selectedSessionLabel'),
@@ -555,6 +576,7 @@ function renderInspectorHtml(): string {
         activityLog: document.getElementById('activityLog'),
         conversation: document.getElementById('conversation'),
         taskSummary: document.getElementById('taskSummary'),
+        swarmThreads: document.getElementById('swarmThreads'),
         swarmControls: document.getElementById('swarmControls'),
         events: document.getElementById('events'),
         eventCount: document.getElementById('eventCount'),
@@ -700,6 +722,7 @@ function renderInspectorHtml(): string {
         renderActionState()
         renderConversation()
         renderTaskSummary()
+        renderSwarmThreads()
         renderSwarmControls()
       }
 
@@ -822,6 +845,43 @@ function renderInspectorHtml(): string {
           : '<div class="muted">Sin datos de swarm o tasks todavía.</div>'
       }
 
+      function renderSwarmThreads() {
+        const detail = state.selectedDetail
+        if (!detail) {
+          els.swarmThreads.innerHTML = '<div class="muted">Sin threads de swarm todavía.</div>'
+          return
+        }
+
+        const waitingBlocks = detail.swarmWaitingEdges.map(edge =>
+          '<div class="summary-card">' +
+            '<div class="summary-title">Waiting: @' + escapeHtml(edge.from) + ' → @' + escapeHtml(edge.to) + '</div>' +
+            '<div class="summary-meta">' + escapeHtml(
+              (edge.topic ? edge.topic + '\n' : '') +
+              edge.body +
+              '\n\n' +
+              edge.createdAt
+            ) + '</div>' +
+          '</div>'
+        )
+
+        const threadBlocks = detail.swarmThreads.slice(0, 8).map(thread =>
+          '<div class="summary-card">' +
+            '<div class="summary-title">' + escapeHtml(thread.topic || thread.threadId.slice(0, 8)) + '</div>' +
+            '<div class="summary-meta">' + escapeHtml(
+              'Participantes: ' + thread.participants.filter(p => p !== '*').join(', ') +
+              '\nÚltimo: ' + thread.lastKind +
+              '\nAbierto: ' + (thread.open ? 'sí' : 'no') +
+              '\n' + thread.lastBody
+            ) + '</div>' +
+          '</div>'
+        )
+
+        const blocks = [...waitingBlocks, ...threadBlocks]
+        els.swarmThreads.innerHTML = blocks.length
+          ? blocks.join('')
+          : '<div class="muted">Sin threads de swarm todavía.</div>'
+      }
+
       function renderSwarmControls() {
         const snapshot = state.selectedDetail?.snapshot || state.selectedSnapshot
         if (!snapshot) {
@@ -937,6 +997,32 @@ function renderInspectorHtml(): string {
             reject(new Error('Timeout esperando respuesta del runtime.'))
           }, 10000)
         })
+      }
+
+      async function performAutoRefresh() {
+        if (!state.connected || !state.autoRefresh) {
+          return
+        }
+
+        await refreshSessions().catch(() => {})
+        if (state.selectedSessionId) {
+          await refreshSelectedSession().catch(() => {})
+        }
+      }
+
+      function syncAutoRefreshLoop() {
+        if (state.autoRefreshTimer) {
+          clearInterval(state.autoRefreshTimer)
+          state.autoRefreshTimer = null
+        }
+
+        if (!state.autoRefresh) {
+          return
+        }
+
+        state.autoRefreshTimer = setInterval(() => {
+          void performAutoRefresh()
+        }, 2500)
       }
 
       async function refreshSessions() {
@@ -1202,6 +1288,11 @@ function renderInspectorHtml(): string {
         })
       })
 
+      els.autoRefresh.addEventListener('change', () => {
+        state.autoRefresh = Boolean(els.autoRefresh.checked)
+        syncAutoRefreshLoop()
+      })
+
       els.refreshSessions.addEventListener('click', () => {
         refreshSessions().catch(error => {
           addEvent('refresh_sessions_error', 'runtime', error instanceof Error ? error.message : String(error))
@@ -1240,6 +1331,7 @@ function renderInspectorHtml(): string {
         els.socketStatus.textContent = 'No pude conectar'
         addEvent('connect_error', 'runtime', error instanceof Error ? error.message : String(error))
       })
+      syncAutoRefreshLoop()
     </script>
   </body>
 </html>`

@@ -12,13 +12,18 @@ import type {
   RuntimeSessionSnapshot,
 } from './types.js'
 import { createRuntimeSessionDetail } from './types.js'
+import {
+  buildSwarmThreadSummaries,
+  buildSwarmWaitingEdges,
+  readTeamConversationEvents,
+} from '../utils/swarm/teamConversationLog.js'
 
 export type RuntimeService = {
   listSessions: () => RuntimeSessionSnapshot[]
   getSession: (sessionId: RuntimeSessionId) => RuntimeSessionSnapshot | undefined
   getSessionDetail: (
     sessionId: RuntimeSessionId,
-  ) => RuntimeSessionDetail | undefined
+  ) => Promise<RuntimeSessionDetail | undefined>
   hasSession: (sessionId: RuntimeSessionId) => boolean
   sendMessage: (
     sessionId: RuntimeSessionId,
@@ -49,16 +54,30 @@ export function createRuntimeService(
   return {
     listSessions: () => registry.listSnapshots(),
     getSession: sessionId => registry.get(sessionId)?.getSnapshot(),
-    getSessionDetail: sessionId => {
+    getSessionDetail: async sessionId => {
       const runtime = registry.get(sessionId)
       if (!runtime) {
         return undefined
       }
 
+      const snapshot = runtime.getSnapshot()
+      let swarmThreads = []
+      let swarmWaitingEdges = []
+
+      if (snapshot.swarm.teamName) {
+        const conversationEvents = await readTeamConversationEvents(
+          snapshot.swarm.teamName,
+        )
+        swarmThreads = buildSwarmThreadSummaries(conversationEvents)
+        swarmWaitingEdges = buildSwarmWaitingEdges(conversationEvents)
+      }
+
       return createRuntimeSessionDetail({
-        snapshot: runtime.getSnapshot(),
+        snapshot,
         messages: runtime.getMessages(),
         tasks: runtime.getTasks(),
+        swarmThreads,
+        swarmWaitingEdges,
       })
     },
     hasSession: sessionId => registry.has(sessionId),
