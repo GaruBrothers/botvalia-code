@@ -6,6 +6,7 @@ import type {
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './types.js'
+import type { PermissionMode } from '../types/permissions.js'
 
 export type RuntimeProtocolRequest =
   | {
@@ -32,6 +33,12 @@ export type RuntimeProtocolRequest =
       requestId: string
       method: 'interrupt'
       sessionId: RuntimeSessionId
+    }
+  | {
+      requestId: string
+      method: 'set_permission_mode'
+      sessionId: RuntimeSessionId
+      mode: PermissionMode
     }
   | {
       requestId: string
@@ -80,6 +87,13 @@ export type RuntimeProtocolSuccessResponse =
       method: 'interrupt'
       interrupted: true
       sessionId: RuntimeSessionId
+    }
+  | {
+      requestId: string
+      ok: true
+      method: 'set_permission_mode'
+      sessionId: RuntimeSessionId
+      mode: PermissionMode
     }
   | {
       requestId: string

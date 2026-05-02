@@ -7,6 +7,11 @@ import type {
   RuntimeSendMessageInput,
   RuntimeTaskSummary,
 } from './types.js'
+import {
+  extractStreamTextDelta,
+  extractStreamThinkingDelta,
+  isThinkingStreamStart,
+} from './streamEventHelpers.js'
 
 type QueryEngineSessionRuntimeConfig = {
   engine: QueryEngine
@@ -105,19 +110,6 @@ function emitTaskFromAppStateOrMessage(
   runtime.emitSwarmUpdated()
 }
 
-function extractTextDelta(event: unknown): string | undefined {
-  if (!event || typeof event !== 'object') {
-    return undefined
-  }
-
-  const candidate = event as {
-    delta?: { text?: string }
-    content_block?: { text?: string }
-  }
-
-  return candidate.delta?.text || candidate.content_block?.text || undefined
-}
-
 function buildTransientChannelPrompt(
   input: RuntimeSendMessageInput,
 ): string | undefined {
@@ -141,8 +133,18 @@ function handleSdkMessage(
   getAppState: () => AppState,
 ): void {
   if (message.type === 'stream_event') {
-    const delta = extractTextDelta(message.event)
+    if (isThinkingStreamStart(message.event)) {
+      runtime.emitThinkingStarted()
+    }
+
+    const thinkingDelta = extractStreamThinkingDelta(message.event)
+    if (thinkingDelta) {
+      runtime.emitThinkingDelta(thinkingDelta)
+    }
+
+    const delta = extractStreamTextDelta(message.event)
     if (delta) {
+      runtime.emitThinkingCompleted()
       runtime.emitMessageDelta(delta)
     }
     return

@@ -37,6 +37,8 @@ type Props = {
   centered?: boolean;
   /** Optional width hint for centered hero content. */
   centeredWidth?: number;
+  /** Optional static left sidebar for wide fullscreen layouts. */
+  leftSidebar?: ReactNode;
   /** Optional static right sidebar for wide fullscreen layouts. */
   rightSidebar?: ReactNode;
   /** Content rendered inside the ScrollBox after messages — user can scroll
@@ -274,12 +276,13 @@ export function computeUnseenDivider(messages: readonly Message[], dividerIndex:
  * so nothing can accidentally render outside it.
  */
 export function FullscreenLayout(t0) {
-  const $ = _c(47);
+  const $ = _c(48);
   const {
     scrollable,
     bottom,
     centered: t0_0,
     centeredWidth,
+    leftSidebar,
     rightSidebar,
     overlay,
     bottomFloat,
@@ -457,27 +460,28 @@ export function FullscreenLayout(t0) {
     }
     const mainColumn = <Box flexGrow={1} flexDirection="column" overflow="hidden">{t14}{t17}</Box>;
     let t19;
-    if ($[38] !== mainColumn || $[39] !== rightSidebar || $[40] !== t18) {
-      t19 = <PromptOverlayProvider><Box flexGrow={1} flexDirection="row" overflow="hidden">{mainColumn}{rightSidebar}</Box>{t18}</PromptOverlayProvider>;
-      $[38] = mainColumn;
-      $[39] = rightSidebar;
-      $[40] = t18;
-      $[41] = t19;
+    if ($[38] !== leftSidebar || $[39] !== mainColumn || $[40] !== rightSidebar || $[41] !== t18) {
+      t19 = <PromptOverlayProvider><Box flexGrow={1} flexDirection="row" overflow="hidden">{leftSidebar}{mainColumn}{rightSidebar}</Box>{t18}</PromptOverlayProvider>;
+      $[38] = leftSidebar;
+      $[39] = mainColumn;
+      $[40] = rightSidebar;
+      $[41] = t18;
+      $[42] = t19;
     } else {
-      t19 = $[41];
+      t19 = $[42];
     }
     return t19;
   }
   let t8;
-  if ($[42] !== bottom || $[43] !== modal || $[44] !== overlay || $[45] !== scrollable) {
+  if ($[43] !== bottom || $[44] !== modal || $[45] !== overlay || $[46] !== scrollable) {
     t8 = <>{scrollable}{bottom}{overlay}{modal}</>;
-    $[42] = bottom;
-    $[43] = modal;
-    $[44] = overlay;
-    $[45] = scrollable;
-    $[46] = t8;
+    $[43] = bottom;
+    $[44] = modal;
+    $[45] = overlay;
+    $[46] = scrollable;
+    $[47] = t8;
   } else {
-    t8 = $[46];
+    t8 = $[47];
   }
   return t8;
 }

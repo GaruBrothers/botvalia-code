@@ -26,6 +26,7 @@ import type {
 
 const AVATAR_COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'];
 const STREAMING_ASSISTANT_PREFIX = 'streaming-assistant-';
+const STREAMING_THINKING_PREFIX = 'streaming-thinking-';
 
 function getBasename(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -207,7 +208,9 @@ function buildMessage(params: {
   timestamp: string;
   isHiddenInternally?: boolean;
   isPending?: boolean;
+  isEphemeral?: boolean;
   label?: string;
+  streamKind?: 'thinking' | 'response';
 }): Message {
   return {
     id: params.id,
@@ -216,7 +219,9 @@ function buildMessage(params: {
     timestamp: params.timestamp,
     isHiddenInternally: params.isHiddenInternally,
     isPending: params.isPending,
+    isEphemeral: params.isEphemeral,
     label: params.label,
+    streamKind: params.streamKind,
   };
 }
 
@@ -235,6 +240,7 @@ function shouldReplacePendingMessage(
   if (nextMessage.role === 'assistant') {
     return (
       pending.role === 'assistant' &&
+      pending.streamKind === 'response' &&
       pending.id.startsWith(STREAMING_ASSISTANT_PREFIX)
     );
   }
@@ -446,6 +452,9 @@ function createBaseSession(
     title: previous?.title || snapshot.sessionId.slice(0, 8),
     workspaceName: snapshot.cwd,
     status: mapRuntimeStatus(snapshot.status),
+    permissionMode: snapshot.permissionMode,
+    isBypassPermissionsModeAvailable: snapshot.isBypassPermissionsModeAvailable,
+    isAutoModeAvailable: snapshot.isAutoModeAvailable,
     model: formatModel(snapshot.mainLoopModelForSession || snapshot.mainLoopModel),
     messages: previous?.messages || [],
     swarm: previous?.swarm || swarm,
@@ -509,13 +518,17 @@ export function applyDetailToSession(
         continue;
       }
 
+      if (pendingMessage.streamKind === 'thinking') {
+        mergedMessages.push(pendingMessage);
+        continue;
+      }
+
       const hasMatchingAssistantMessage = mergedMessages.some(
         message =>
           message.role === 'assistant' &&
           !message.isPending &&
           normalizeMessageContent(message.content) ===
-            normalizeMessageContent(pendingMessage.content) &&
-          normalizeMessageContent(message.content) !== 'Pensando...',
+            normalizeMessageContent(pendingMessage.content),
       );
 
       if (!hasMatchingAssistantMessage) {
@@ -581,6 +594,40 @@ export function createOptimisticUserMessage(text: string): Message {
   });
 }
 
+function createStreamingThinkingMessage(
+  sessionId: string,
+  content: string,
+  timestamp: string,
+): Message {
+  return buildMessage({
+    id: `${STREAMING_THINKING_PREFIX}${sessionId}`,
+    role: 'assistant',
+    content: content || 'Pensando...',
+    timestamp,
+    isPending: true,
+    isEphemeral: true,
+    label: 'assistant:thinking',
+    streamKind: 'thinking',
+  });
+}
+
+function createStreamingAssistantMessage(
+  sessionId: string,
+  content: string,
+  timestamp: string,
+): Message {
+  return buildMessage({
+    id: `${STREAMING_ASSISTANT_PREFIX}${sessionId}`,
+    role: 'assistant',
+    content: content || '',
+    timestamp,
+    isPending: true,
+    isEphemeral: true,
+    label: 'assistant:stream',
+    streamKind: 'response',
+  });
+}
+
 export function appendMessageToSession(
   previousSessions: Session[],
   sessionId: string,
@@ -596,27 +643,25 @@ export function appendMessageToSession(
         return session;
       }
 
-      const keptMessages = session.messages.filter(
-        existing => !shouldReplacePendingMessage(existing, message),
-      );
+      const keptMessages = session.messages.filter(existing => {
+        if (message.role === 'assistant' && existing.isPending && existing.role === 'assistant') {
+          if (existing.streamKind === 'thinking') {
+            return false;
+          }
+        }
+
+        return !shouldReplacePendingMessage(existing, message);
+      });
       const assistantPendingMessages =
         message.role === 'user'
           ? keptMessages.filter(
-              existing =>
-                existing.isPending &&
-                existing.role === 'assistant' &&
-                existing.id.startsWith(STREAMING_ASSISTANT_PREFIX),
+              existing => existing.isPending && existing.role === 'assistant',
             )
           : [];
       const nonAssistantPendingMessages =
         message.role === 'user'
           ? keptMessages.filter(
-              existing =>
-                !(
-                  existing.isPending &&
-                  existing.role === 'assistant' &&
-                  existing.id.startsWith(STREAMING_ASSISTANT_PREFIX)
-                ),
+              existing => !(existing.isPending && existing.role === 'assistant'),
             )
           : keptMessages;
 
@@ -632,33 +677,29 @@ export function appendMessageToSession(
             : [...keptMessages, message],
         messageCount: Math.max(session.messageCount, session.messages.length + 1),
         updatedAt: message.timestamp,
+        status: message.role === 'assistant' ? 'running' : session.status,
       };
     }),
   );
 }
 
-function createStreamingAssistantMessage(
-  sessionId: string,
-  content: string,
-  timestamp: string,
-): Message {
-  return buildMessage({
-    id: `${STREAMING_ASSISTANT_PREFIX}${sessionId}`,
-    role: 'assistant',
-    content: content || 'Pensando...',
-    timestamp,
-    isPending: true,
-    label: 'assistant:stream',
-  });
-}
-
-function upsertStreamingAssistantMessage(
+function upsertStreamingMessage(
   previousSessions: Session[],
   sessionId: string,
-  delta: string,
-  timestamp: string,
+  options: {
+    streamKind: 'thinking' | 'response';
+    delta: string;
+    timestamp: string;
+  },
 ): Session[] {
-  const streamingId = `${STREAMING_ASSISTANT_PREFIX}${sessionId}`;
+  const streamingId =
+    options.streamKind === 'thinking'
+      ? `${STREAMING_THINKING_PREFIX}${sessionId}`
+      : `${STREAMING_ASSISTANT_PREFIX}${sessionId}`;
+  const createMessage =
+    options.streamKind === 'thinking'
+      ? createStreamingThinkingMessage
+      : createStreamingAssistantMessage;
 
   return sortSessions(
     previousSessions.map(session => {
@@ -674,11 +715,46 @@ function upsertStreamingAssistantMessage(
             message.id === streamingId
               ? {
                   ...message,
-                  content: `${message.content === 'Pensando...' ? '' : message.content}${delta}`,
-                  timestamp,
+                  content: `${message.content === 'Pensando...' ? '' : message.content}${options.delta}`,
+                  timestamp: options.timestamp,
                 }
               : message,
           ),
+          updatedAt: options.timestamp,
+          status: 'running',
+        };
+      }
+
+      return {
+        ...session,
+        messages: [
+          ...session.messages,
+          createMessage(sessionId, options.delta, options.timestamp),
+        ],
+        updatedAt: options.timestamp,
+        status: 'running',
+      };
+    }),
+  );
+}
+
+function ensureStreamingThinkingPlaceholder(
+  previousSessions: Session[],
+  sessionId: string,
+  timestamp: string,
+): Session[] {
+  const streamingId = `${STREAMING_THINKING_PREFIX}${sessionId}`;
+
+  return sortSessions(
+    previousSessions.map(session => {
+      if (session.id !== sessionId) {
+        return session;
+      }
+
+      const existing = session.messages.find(message => message.id === streamingId);
+      if (existing || session.messages.some(message => message.streamKind === 'response' && message.isPending)) {
+        return {
+          ...session,
           updatedAt: timestamp,
           status: 'running',
         };
@@ -688,7 +764,7 @@ function upsertStreamingAssistantMessage(
         ...session,
         messages: [
           ...session.messages,
-          createStreamingAssistantMessage(sessionId, delta, timestamp),
+          createStreamingThinkingMessage(sessionId, 'Pensando...', timestamp),
         ],
         updatedAt: timestamp,
         status: 'running',
@@ -697,31 +773,22 @@ function upsertStreamingAssistantMessage(
   );
 }
 
-function ensureRunningAssistantPlaceholder(
+function clearStreamingMessage(
   previousSessions: Session[],
   sessionId: string,
-  timestamp: string,
+  streamKind: 'thinking' | 'response',
 ): Session[] {
-  const streamingId = `${STREAMING_ASSISTANT_PREFIX}${sessionId}`;
-
   return sortSessions(
     previousSessions.map(session => {
       if (session.id !== sessionId) {
         return session;
       }
 
-      if (session.messages.some(message => message.id === streamingId)) {
-        return session;
-      }
-
       return {
         ...session,
-        messages: [
-          ...session.messages,
-          createStreamingAssistantMessage(sessionId, 'Pensando...', timestamp),
-        ],
-        updatedAt: timestamp,
-        status: 'running',
+        messages: session.messages.filter(
+          message => !(message.isPending && message.streamKind === streamKind),
+        ),
       };
     }),
   );
@@ -749,24 +816,30 @@ export function appendOptimisticMessage(
   text: string,
 ): Session[] {
   const optimistic = createOptimisticUserMessage(text);
-  const streamingId = `${STREAMING_ASSISTANT_PREFIX}${sessionId}`;
 
   return sortSessions(
     previousSessions.map(session =>
       session.id === sessionId
         ? {
             ...session,
-            messages: session.messages.some(message => message.id === streamingId)
-              ? [...session.messages, optimistic]
-              : [
-                  ...session.messages,
-                  optimistic,
-                  createStreamingAssistantMessage(
-                    sessionId,
-                    'Pensando...',
-                    optimistic.timestamp,
-                  ),
-                ],
+            messages: [
+              ...session.messages.filter(
+                message => !(message.streamKind === 'thinking' && message.isPending),
+              ),
+              optimistic,
+              ...(!session.messages.some(
+                message =>
+                  message.streamKind === 'response' && message.isPending,
+              )
+                ? [
+                    createStreamingThinkingMessage(
+                      sessionId,
+                      'Pensando...',
+                      optimistic.timestamp,
+                    ),
+                  ]
+                : []),
+            ],
             messageCount: session.messageCount + 1,
             updatedAt: optimistic.timestamp,
             status: session.status === 'idle' ? 'running' : session.status,
@@ -815,6 +888,13 @@ function eventLogFromRuntimeEvent(event: RuntimeEvent): EventLog | null {
         `model-switched-${event.sessionId}-${event.timestamp}`,
         'warn',
         `Model switched to ${event.model}.`,
+        event.timestamp,
+      );
+    case 'permission_mode_changed':
+      return createEventLog(
+        `permission-mode-${event.sessionId}-${event.timestamp}`,
+        'info',
+        `Permission mode: ${event.mode}.`,
         event.timestamp,
       );
     case 'interrupted':
@@ -947,7 +1027,7 @@ export function applyRuntimeSessionEvent(
     nextSessions = sortSessions([...sessionMap.values()]);
 
     if (event.snapshot.status === 'running') {
-      nextSessions = ensureRunningAssistantPlaceholder(
+      nextSessions = ensureStreamingThinkingPlaceholder(
         nextSessions,
         sessionId,
         event.timestamp,
@@ -955,20 +1035,52 @@ export function applyRuntimeSessionEvent(
     }
   }
 
-  if (event.type === 'message_delta') {
-    nextSessions = upsertStreamingAssistantMessage(
+  if (event.type === 'thinking_started') {
+    nextSessions = ensureStreamingThinkingPlaceholder(
       nextSessions,
       sessionId,
-      event.delta,
       event.timestamp,
     );
   }
 
+  if (event.type === 'thinking_delta') {
+    nextSessions = upsertStreamingMessage(nextSessions, sessionId, {
+      streamKind: 'thinking',
+      delta: event.delta,
+      timestamp: event.timestamp,
+    });
+  }
+
+  if (event.type === 'thinking_completed') {
+    nextSessions = clearStreamingMessage(nextSessions, sessionId, 'thinking');
+  }
+
+  if (event.type === 'message_delta') {
+    nextSessions = upsertStreamingMessage(nextSessions, sessionId, {
+      streamKind: 'response',
+      delta: event.delta,
+      timestamp: event.timestamp,
+    });
+  }
+
   if (event.type === 'message_completed') {
+    nextSessions = clearStreamingMessage(nextSessions, sessionId, 'thinking');
     const message = mapRawRuntimeMessageToUi(event.message);
     if (message) {
       nextSessions = appendMessageToSession(nextSessions, sessionId, message);
     }
+  }
+
+  if (event.type === 'permission_mode_changed') {
+    nextSessions = nextSessions.map(session =>
+      session.id === sessionId
+        ? {
+            ...session,
+            permissionMode: event.mode,
+            updatedAt: event.timestamp,
+          }
+        : session,
+    );
   }
 
   if (event.type === 'interrupted' || event.type === 'error') {

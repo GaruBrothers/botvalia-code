@@ -1,4 +1,5 @@
 import type { Message } from '../types/message.js'
+import type { PermissionMode } from '../types/permissions.js'
 import type {
   RuntimeSessionId,
   RuntimeSessionSnapshot,
@@ -26,6 +27,22 @@ export type RuntimeEvent =
       timestamp: string
     }
   | {
+      type: 'thinking_started'
+      sessionId: RuntimeSessionId
+      timestamp: string
+    }
+  | {
+      type: 'thinking_delta'
+      sessionId: RuntimeSessionId
+      delta: string
+      timestamp: string
+    }
+  | {
+      type: 'thinking_completed'
+      sessionId: RuntimeSessionId
+      timestamp: string
+    }
+  | {
       type: 'message_completed'
       sessionId: RuntimeSessionId
       message: Message
@@ -48,6 +65,12 @@ export type RuntimeEvent =
       sessionId: RuntimeSessionId
       model: string
       reason?: string
+      timestamp: string
+    }
+  | {
+      type: 'permission_mode_changed'
+      sessionId: RuntimeSessionId
+      mode: PermissionMode
       timestamp: string
     }
   | {

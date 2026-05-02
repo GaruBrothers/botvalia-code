@@ -1,6 +1,14 @@
 export type SessionStatus = 'idle' | 'running' | 'waiting' | 'error' | 'completed';
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 export type ConnectionState = 'missing' | 'connecting' | 'connected' | 'error';
+export type PermissionMode =
+  | 'default'
+  | 'acceptEdits'
+  | 'plan'
+  | 'bypassPermissions'
+  | 'dontAsk'
+  | 'auto'
+  | 'bubble';
 
 export interface AgentTask {
   id: string;
@@ -65,7 +73,9 @@ export interface Message {
   timestamp: string;
   isHiddenInternally?: boolean; // Used to mock stripping out XML/Thinking
   isPending?: boolean;
+  isEphemeral?: boolean;
   label?: string;
+  streamKind?: 'thinking' | 'response';
 }
 
 export interface EventLog {
@@ -82,6 +92,9 @@ export interface Session {
   title?: string;
   workspaceName: string;
   status: SessionStatus;
+  permissionMode: PermissionMode;
+  isBypassPermissionsModeAvailable: boolean;
+  isAutoModeAvailable: boolean;
   model: string;
   messages: Message[];
   swarm?: SwarmState;

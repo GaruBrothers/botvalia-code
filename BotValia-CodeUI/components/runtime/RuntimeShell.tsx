@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRuntimeInspector } from '@/hooks/useRuntimeInspector';
+import { formatPermissionModeLabel } from '@/lib/permission-modes';
 
 const THEME_STORAGE_KEY = 'botvalia.runtime.theme';
 
@@ -28,6 +29,7 @@ export function RuntimeShell() {
     refresh,
     sendMessage,
     interrupt,
+    cyclePermissionMode,
     toggleAutoRefresh,
     dismissNotice,
     reportPendingFeature,
@@ -55,6 +57,24 @@ export function RuntimeShell() {
   useEffect(() => {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      if (event.key !== 'Tab' || !event.shiftKey) {
+        return;
+      }
+
+      event.preventDefault();
+      void cyclePermissionMode();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cyclePermissionMode]);
 
   const handlePendingFeature = (feature: string) => {
     reportPendingFeature(feature);
@@ -88,12 +108,16 @@ export function RuntimeShell() {
 
       <TopStatusBar
         state={globalState}
+        permissionModeLabel={
+          selectedSession ? formatPermissionModeLabel(selectedSession.permissionMode) : undefined
+        }
         theme={theme}
         isRefreshing={isRefreshing}
         onToggleTheme={() => setTheme(current => (current === 'dark' ? 'light' : 'dark'))}
         onSettings={() => setShowSettings(true)}
         onRefresh={refresh}
         onReconnect={reconnect}
+        onCyclePermissionMode={cyclePermissionMode}
         onToggleAutoRefresh={toggleAutoRefresh}
       />
 
@@ -236,7 +260,13 @@ export function RuntimeShell() {
               isRunning={selectedSession?.status === 'running'}
               onSend={sendMessage}
               onStop={interrupt}
+              onCyclePermissionMode={cyclePermissionMode}
               onAttach={() => handlePendingFeature('Adjuntar archivos desde la UI')}
+              permissionModeLabel={
+                selectedSession
+                  ? formatPermissionModeLabel(selectedSession.permissionMode)
+                  : undefined
+              }
               disabled={!selectedSession || !globalState.isSocketConnected}
               placeholder={
                 !selectedSession

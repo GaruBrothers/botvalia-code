@@ -8,6 +8,7 @@ import type {
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './runtime-protocol';
+import type { PermissionMode } from './types';
 
 type PendingRequest = {
   resolve: (value: RuntimeProtocolResponse) => void;
@@ -221,6 +222,28 @@ export class BrowserRuntimeClient {
     if (response.method !== 'interrupt') {
       throw new Error('La respuesta runtime no coincide con interrupt.');
     }
+  }
+
+  async setPermissionMode(
+    sessionId: RuntimeSessionId,
+    mode: PermissionMode,
+  ): Promise<PermissionMode> {
+    const response = await this.sendRequest({
+      method: 'set_permission_mode',
+      sessionId,
+      mode,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'set_permission_mode') {
+      throw new Error(
+        'La respuesta runtime no coincide con set_permission_mode.',
+      );
+    }
+
+    return response.mode;
   }
 
   async subscribeRuntime(): Promise<string> {

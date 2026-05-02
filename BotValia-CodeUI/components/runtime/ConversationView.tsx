@@ -9,12 +9,17 @@ export function ConversationView({ messages }: { messages: Message[] }) {
     () => messages.filter(message => !message.isHiddenInternally),
     [messages],
   )
-  const lastMessageSignature = useMemo(() => {
-    const lastMessage = visibleMessages.at(-1)
-    if (!lastMessage) {
+  const streamSignature = useMemo(() => {
+    if (visibleMessages.length === 0) {
       return 'empty'
     }
-    return `${lastMessage.id}:${lastMessage.content}:${lastMessage.isPending ? 'pending' : 'final'}`
+    return visibleMessages
+      .slice(-3)
+      .map(
+        message =>
+          `${message.id}:${message.content}:${message.isPending ? 'pending' : 'final'}:${message.streamKind ?? 'none'}`,
+      )
+      .join('|')
   }, [visibleMessages])
 
   useEffect(() => {
@@ -31,7 +36,7 @@ export function ConversationView({ messages }: { messages: Message[] }) {
     })
 
     return () => window.cancelAnimationFrame(raf)
-  }, [lastMessageSignature, visibleMessages.length])
+  }, [streamSignature, visibleMessages.length])
 
   return (
     <div

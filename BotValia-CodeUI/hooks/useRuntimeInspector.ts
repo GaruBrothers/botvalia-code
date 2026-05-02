@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRuntimeClient } from '@/lib/runtime-client';
+import { getNextPermissionMode } from '@/lib/permission-modes';
 import {
   appendOptimisticMessage,
   applyRuntimeRegistryEvent,
@@ -32,6 +33,7 @@ type UseRuntimeInspectorResult = {
   refresh: () => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
   interrupt: () => Promise<void>;
+  cyclePermissionMode: () => Promise<void>;
   toggleAutoRefresh: () => void;
   dismissNotice: () => void;
   reportPendingFeature: (feature: string) => void;
@@ -336,7 +338,12 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
         applyRuntimeSessionEvent(previous, event.sessionId, event.event),
       );
 
-      if (event.sessionId === selectedSessionIdRef.current && event.event.type !== 'message_delta') {
+      if (
+        event.sessionId === selectedSessionIdRef.current &&
+        event.event.type !== 'message_delta' &&
+        event.event.type !== 'thinking_delta' &&
+        event.event.type !== 'thinking_started'
+      ) {
         scheduleSessionDetailRefresh(event.sessionId);
       }
     };
@@ -482,6 +489,43 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     }
   };
 
+  const cyclePermissionMode = async () => {
+    const client = clientRef.current;
+    const sessionId = selectedSessionIdRef.current;
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!client || !sessionId || !session) {
+      pushNotice('warn', 'Selecciona una sesión activa antes de cambiar el modo.');
+      return;
+    }
+
+    const nextMode = getNextPermissionMode(session.permissionMode, {
+      isBypassPermissionsModeAvailable: session.isBypassPermissionsModeAvailable,
+      isAutoModeAvailable: session.isAutoModeAvailable,
+    });
+
+    try {
+      await client.setPermissionMode(sessionId, nextMode);
+      setSessions(previous =>
+        previous.map(candidate =>
+          candidate.id === sessionId
+            ? {
+                ...candidate,
+                permissionMode: nextMode,
+                updatedAt: new Date().toISOString(),
+              }
+            : candidate,
+        ),
+      );
+      pushNotice('info', `Modo cambiado a ${nextMode}.`);
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error
+          ? error.message
+          : 'No pude cambiar el modo de permisos.',
+      );
+    }
+  };
+
   const toggleAutoRefresh = () => {
     setGlobalState(previous => {
       const nextValue = !previous.autoRefresh;
@@ -523,6 +567,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     },
     sendMessage,
     interrupt,
+    cyclePermissionMode,
     toggleAutoRefresh,
     dismissNotice: () => setNotice(null),
     reportPendingFeature,

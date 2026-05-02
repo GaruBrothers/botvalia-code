@@ -123,7 +123,7 @@ import useCanUseTool from '../hooks/useCanUseTool.js';
 import type { ToolPermissionContext, Tool } from '../Tool.js';
 import { applyPermissionUpdate, applyPermissionUpdates, persistPermissionUpdate } from '../utils/permissions/PermissionUpdate.js';
 import { buildPermissionUpdates } from '../components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.js';
-import { stripDangerousPermissionsForAutoMode } from '../utils/permissions/permissionSetup.js';
+import { stripDangerousPermissionsForAutoMode, transitionPermissionMode } from '../utils/permissions/permissionSetup.js';
 import { getScratchpadDir, isScratchpadEnabled } from '../utils/permissions/filesystem.js';
 import { WEB_FETCH_TOOL_NAME } from '../tools/WebFetchTool/prompt.js';
 import { SLEEP_TOOL_NAME } from '../tools/SleepTool/prompt.js';
@@ -286,6 +286,7 @@ import { fireCompanionObserver } from '../buddy/observer.js';
 import { DevBar } from '../components/DevBar.js';
 import { registerRuntime } from '../runtime/runtimeRegistry.js';
 import { SessionRuntime } from '../runtime/sessionRuntime.js';
+import { extractStreamTextDelta, extractStreamThinkingDelta, isThinkingStreamStart } from '../runtime/streamEventHelpers.js';
 // Session manager removed - using AppState now
 import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
 import { REMOTE_SAFE_COMMANDS } from '../commands.js';
@@ -1289,6 +1290,11 @@ export function REPL({
     }
     replSessionRuntime.refreshSnapshot();
   }, []);
+  const runtimeSetPermissionModeRef = useRef<
+    (mode: InternalPermissionMode) => Promise<void>
+  >(async () => {
+    throw new Error('El runtime todavía no terminó de preparar el cambio de modo.')
+  });
   const [replSessionRuntime] = useState(() => new SessionRuntime({
     sessionId: getSessionId(),
     cwd: getOriginalCwd(),
@@ -1310,6 +1316,7 @@ export function REPL({
     interrupt: () => {
       abortControllerRef.current?.abort('interrupt');
     },
+    setPermissionMode: mode => runtimeSetPermissionModeRef.current(mode),
     initialStatus: 'idle'
   }));
   useEffect(() => {
@@ -2478,6 +2485,21 @@ export function REPL({
       });
     }, setToolUseConfirmQueue);
   }, [setAppState, setToolUseConfirmQueue]);
+  useEffect(() => {
+    runtimeSetPermissionModeRef.current = async mode => {
+      const currentContext = store.getState().toolPermissionContext;
+      const nextContext = transitionPermissionMode(
+        currentContext.mode,
+        mode,
+        currentContext,
+      );
+      setToolPermissionContext(
+        mode === 'auto'
+          ? stripDangerousPermissionsForAutoMode(nextContext)
+          : nextContext,
+      );
+    };
+  }, [setToolPermissionContext, store]);
 
   // Register the leader's setToolPermissionContext for in-process teammates
   useEffect(() => {
@@ -2687,6 +2709,20 @@ export function REPL({
     onBackgroundQuery: handleBackgroundQuery
   });
   const onQueryEvent = useCallback((event: Parameters<typeof handleMessageFromStream>[0]) => {
+    if (event.type === 'stream_event') {
+      if (isThinkingStreamStart(event.event)) {
+        replSessionRuntime.emitThinkingStarted();
+      }
+      const thinkingDelta = extractStreamThinkingDelta(event.event);
+      if (thinkingDelta) {
+        replSessionRuntime.emitThinkingDelta(thinkingDelta);
+      }
+      const textDelta = extractStreamTextDelta(event.event);
+      if (textDelta) {
+        replSessionRuntime.emitThinkingCompleted();
+        replSessionRuntime.emitMessageDelta(textDelta);
+      }
+    }
     handleMessageFromStream(event, newMessage => {
       if (isCompactBoundaryMessage(newMessage)) {
         // Fullscreen: keep pre-compact messages for scrollback. query.ts
@@ -2762,7 +2798,7 @@ export function REPL({
         endResponseLength: baseline
       });
     }, onStreamingText);
-  }, [setMessages, setResponseLength, setStreamMode, setStreamingToolUses, setStreamingThinking, onStreamingText]);
+  }, [replSessionRuntime, setMessages, setResponseLength, setStreamMode, setStreamingToolUses, setStreamingThinking, onStreamingText]);
   const onQueryImpl = useCallback(async (messagesIncludingNewMessages: MessageType[], newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, effort?: EffortValue) => {
     // Prepare IDE integration for new prompt. Read mcpClients fresh from
     // store — useManageMCPConnections may have populated it since the
@@ -4720,7 +4756,7 @@ export function REPL({
     }
     return false;
   });
-  const showTaskSidebar = isFullscreenEnvEnabled() && screen === 'prompt' && !viewedAgentTask && !focusedInputDialog && !toolJSX?.isLocalJSXCommand && !!tasksV2?.length && transcriptCols >= 140 && (showExpandedTodos || hasActiveTaskSidebarWork);
+  const showTaskSidebar = isFullscreenEnvEnabled() && screen === 'prompt' && !viewedAgentTask && !focusedInputDialog && !toolJSX?.isLocalJSXCommand && !!tasksV2?.length && transcriptCols >= 120 && (showExpandedTodos || hasActiveTaskSidebarWork);
   const canShowWelcomeLogo = screen === 'prompt' && !hideBanner && !viewedAgentTask && !focusedInputDialog && !toolJSX && centeredModal == null && toolPermissionOverlay == null && !hasVisiblePromptConversation && !placeholderText && !showSpinner;
   const showWelcomeHero = isFullscreenEnvEnabled() && canShowWelcomeLogo;
   const landingWidth = Math.max(62, Math.min(transcriptCols - 4, 124));
@@ -4774,7 +4810,7 @@ export function REPL({
       {feature('MESSAGE_ACTIONS') && isFullscreenEnvEnabled() && !disableMessageActions ? <MessageActionsKeybindings handlers={messageActionHandlers} isActive={cursor !== null} /> : null}
       <CancelRequestHandler {...cancelRequestProps} />
       <MCPConnectionManager key={remountKey} dynamicMcpConfig={dynamicMcpConfig} isStrictMcpConfig={strictMcpConfig}>
-        <FullscreenLayout scrollRef={scrollRef} overlay={toolPermissionOverlay} bottomFloat={feature('BUDDY') && companionVisible && !companionNarrow ? <CompanionFloatingBubble /> : undefined} modal={centeredModal} modalScrollRef={modalScrollRef} dividerYRef={dividerYRef} hidePill={!!viewedAgentTask} hideSticky={!!viewedTeammateTask} newMessageCount={unseenDivider?.count ?? 0} centered={showWelcomeHero} centeredWidth={landingWidth} rightSidebar={taskSidebar} onPillClick={() => {
+        <FullscreenLayout scrollRef={scrollRef} overlay={toolPermissionOverlay} bottomFloat={feature('BUDDY') && companionVisible && !companionNarrow ? <CompanionFloatingBubble /> : undefined} modal={centeredModal} modalScrollRef={modalScrollRef} dividerYRef={dividerYRef} hidePill={!!viewedAgentTask} hideSticky={!!viewedTeammateTask} newMessageCount={unseenDivider?.count ?? 0} centered={showWelcomeHero} centeredWidth={landingWidth} leftSidebar={taskSidebar} onPillClick={() => {
         setCursor(null);
         jumpToNew(scrollRef.current);
       }} scrollable={scrollableContent} bottom={<Box flexDirection={feature('BUDDY') && companionNarrow ? 'column' : 'row'} width="100%" alignItems={feature('BUDDY') && companionNarrow ? undefined : 'flex-end'}>

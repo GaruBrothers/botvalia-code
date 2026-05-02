@@ -5,23 +5,27 @@ import { GlobalRuntimeState } from "@/lib/types";
 
 type TopStatusBarProps = {
   state: GlobalRuntimeState;
+  permissionModeLabel?: string;
   theme?: 'dark' | 'light';
   isRefreshing?: boolean;
   onToggleTheme?: () => void;
   onSettings?: () => void;
   onRefresh?: () => void;
   onReconnect?: () => void;
+  onCyclePermissionMode?: () => void;
   onToggleAutoRefresh?: () => void;
 };
 
 export function TopStatusBar({
   state,
+  permissionModeLabel,
   theme,
   isRefreshing,
   onToggleTheme,
   onSettings,
   onRefresh,
   onReconnect,
+  onCyclePermissionMode,
   onToggleAutoRefresh,
 }: TopStatusBarProps) {
   return (
@@ -48,8 +52,19 @@ export function TopStatusBar({
         <button className="text-xs text-gray-500 font-mono tracking-tighter hover:text-gray-300 transition-colors">v3.1.0-alpha</button>
         <div className="h-4 w-px bg-white/[0.08]" />
 
+        {permissionModeLabel ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCyclePermissionMode}
+            className="h-8 rounded-full px-3 text-[11px] font-semibold uppercase tracking-wider text-emerald-200 hover:bg-white/10 hover:text-white"
+            title="Cycle permission mode (Shift+Tab)"
+          >
+            {permissionModeLabel}
+          </Button>
+        ) : null}
         <Button variant="ghost" size="sm" onClick={onToggleAutoRefresh} className={`h-8 rounded-full px-3 text-[11px] font-semibold uppercase tracking-wider ${state.autoRefresh ? 'bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25' : 'text-gray-500 hover:bg-white/10 hover:text-gray-300'}`} title="Toggle auto refresh">
-          Auto
+          Sync Auto
         </Button>
         <Button variant="ghost" size="icon" onClick={onReconnect} className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-all" title="Reconnect runtime">
           <RotateCcw className="h-4 w-4" />

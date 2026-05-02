@@ -1,6 +1,7 @@
 import type { AppState } from '../state/AppStateStore.js'
 import type { TaskState } from '../tasks/types.js'
 import type { Message } from '../types/message.js'
+import type { PermissionMode } from '../types/permissions.js'
 import type { ModelSetting } from '../utils/model/model.js'
 import type {
   SwarmThreadSummary,
@@ -35,6 +36,9 @@ export type RuntimeSessionSnapshot = {
   sessionId: RuntimeSessionId
   cwd: string
   status: RuntimeSessionStatus
+  permissionMode: PermissionMode
+  isBypassPermissionsModeAvailable: boolean
+  isAutoModeAvailable: boolean
   messageCount: number
   taskCount: number
   mainLoopModel: ModelSetting
@@ -72,6 +76,7 @@ export type RuntimeSessionConfig = {
   getAppState: () => AppState
   getMessages?: () => readonly Message[]
   submitMessage?: (input: RuntimeSendMessageInput) => Promise<void>
+  setPermissionMode?: (mode: PermissionMode) => Promise<void> | void
   interrupt?: () => void
   initialStatus?: RuntimeSessionStatus
 }
@@ -212,6 +217,10 @@ export function createRuntimeSessionSnapshot(params: {
     sessionId,
     cwd,
     status,
+    permissionMode: appState.toolPermissionContext.mode,
+    isBypassPermissionsModeAvailable:
+      appState.toolPermissionContext.isBypassPermissionsModeAvailable,
+    isAutoModeAvailable: !!appState.toolPermissionContext.isAutoModeAvailable,
     messageCount: messages.length,
     taskCount: Object.keys(appState.tasks).length,
     mainLoopModel: appState.mainLoopModel,

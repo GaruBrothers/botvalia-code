@@ -14,6 +14,7 @@ import {
   type RuntimeSessionStatus,
   type RuntimeTaskSummary,
 } from './types.js'
+import type { PermissionMode } from '../types/permissions.js'
 
 export class SessionRuntime {
   readonly sessionId: string
@@ -22,6 +23,7 @@ export class SessionRuntime {
   private status: RuntimeSessionStatus
   private config: RuntimeSessionConfig
   private eventBus = new RuntimeEventBus()
+  private thinkingActive = false
 
   constructor(config: RuntimeSessionConfig) {
     this.config = config
@@ -90,7 +92,47 @@ export class SessionRuntime {
     })
   }
 
+  emitThinkingStarted(): void {
+    if (this.thinkingActive) {
+      return
+    }
+
+    this.thinkingActive = true
+    this.emit({
+      type: 'thinking_started',
+      sessionId: this.sessionId,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  emitThinkingDelta(delta: string): void {
+    if (!this.thinkingActive) {
+      this.emitThinkingStarted()
+    }
+
+    this.emit({
+      type: 'thinking_delta',
+      sessionId: this.sessionId,
+      delta,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  emitThinkingCompleted(): void {
+    if (!this.thinkingActive) {
+      return
+    }
+
+    this.thinkingActive = false
+    this.emit({
+      type: 'thinking_completed',
+      sessionId: this.sessionId,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
   emitMessageCompleted(message: Message): void {
+    this.emitThinkingCompleted()
     this.emit({
       type: 'message_completed',
       sessionId: this.sessionId,
@@ -129,6 +171,7 @@ export class SessionRuntime {
 
   emitError(error: unknown): void {
     this.status = 'errored'
+    this.thinkingActive = false
     this.emit({
       type: 'error',
       sessionId: this.sessionId,
@@ -163,9 +206,27 @@ export class SessionRuntime {
     }
   }
 
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    if (!this.config.setPermissionMode) {
+      throw new Error(
+        'SessionRuntime aún no tiene setPermissionMode conectado al motor real.',
+      )
+    }
+
+    await this.config.setPermissionMode(mode)
+    this.emit({
+      type: 'permission_mode_changed',
+      sessionId: this.sessionId,
+      mode,
+      timestamp: new Date().toISOString(),
+    })
+    this.refreshSnapshot()
+  }
+
   interrupt(): void {
     this.config.interrupt?.()
     this.status = 'interrupted'
+    this.thinkingActive = false
     this.emit({
       type: 'interrupted',
       sessionId: this.sessionId,

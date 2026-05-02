@@ -26,6 +26,16 @@ export interface RuntimeSessionSnapshot {
   sessionId: RuntimeSessionId;
   cwd: string;
   status: RuntimeSessionStatus;
+  permissionMode:
+    | 'default'
+    | 'acceptEdits'
+    | 'plan'
+    | 'bypassPermissions'
+    | 'dontAsk'
+    | 'auto'
+    | 'bubble';
+  isBypassPermissionsModeAvailable: boolean;
+  isAutoModeAvailable: boolean;
   messageCount: number;
   taskCount: number;
   mainLoopModel: string | null;
@@ -112,6 +122,19 @@ export type RuntimeProtocolRequest =
     }
   | {
       requestId: string;
+      method: 'set_permission_mode';
+      sessionId: RuntimeSessionId;
+      mode:
+        | 'default'
+        | 'acceptEdits'
+        | 'plan'
+        | 'bypassPermissions'
+        | 'dontAsk'
+        | 'auto'
+        | 'bubble';
+    }
+  | {
+      requestId: string;
       method: 'subscribe_runtime';
     }
   | {
@@ -157,6 +180,20 @@ export type RuntimeProtocolSuccessResponse =
       method: 'interrupt';
       interrupted: true;
       sessionId: RuntimeSessionId;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      method: 'set_permission_mode';
+      sessionId: RuntimeSessionId;
+      mode:
+        | 'default'
+        | 'acceptEdits'
+        | 'plan'
+        | 'bypassPermissions'
+        | 'dontAsk'
+        | 'auto'
+        | 'bubble';
     }
   | {
       requestId: string;
@@ -224,6 +261,22 @@ export type RuntimeEvent =
       timestamp: string;
     }
   | {
+      type: 'thinking_started';
+      sessionId: RuntimeSessionId;
+      timestamp: string;
+    }
+  | {
+      type: 'thinking_delta';
+      sessionId: RuntimeSessionId;
+      delta: string;
+      timestamp: string;
+    }
+  | {
+      type: 'thinking_completed';
+      sessionId: RuntimeSessionId;
+      timestamp: string;
+    }
+  | {
       type: 'message_completed';
       sessionId: RuntimeSessionId;
       message: RuntimeRawMessage;
@@ -246,6 +299,19 @@ export type RuntimeEvent =
       sessionId: RuntimeSessionId;
       model: string;
       reason?: string;
+      timestamp: string;
+    }
+  | {
+      type: 'permission_mode_changed';
+      sessionId: RuntimeSessionId;
+      mode:
+        | 'default'
+        | 'acceptEdits'
+        | 'plan'
+        | 'bypassPermissions'
+        | 'dontAsk'
+        | 'auto'
+        | 'bubble';
       timestamp: string;
     }
   | {

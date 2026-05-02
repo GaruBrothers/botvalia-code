@@ -24,11 +24,22 @@ type ComposerProps = {
   onSend: (text: string) => void;
   onStop?: () => void;
   onAttach?: () => void;
+  onCyclePermissionMode?: () => void;
   placeholder?: string;
+  permissionModeLabel?: string;
   disabled?: boolean;
 };
 
-export function Composer({ isRunning, onSend, onStop, onAttach, placeholder, disabled }: ComposerProps) {
+export function Composer({
+  isRunning,
+  onSend,
+  onStop,
+  onAttach,
+  onCyclePermissionMode,
+  placeholder,
+  permissionModeLabel,
+  disabled,
+}: ComposerProps) {
   const [text, setText] = useState("");
   const [showQuick, setShowQuick] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -151,7 +162,11 @@ export function Composer({ isRunning, onSend, onStop, onAttach, placeholder, dis
             if (disabled) {
               return;
             }
-            if (e.key === 'Enter' && !e.shiftKey && !suggestionType) {
+            if (e.key === 'Tab' && e.shiftKey) {
+              e.preventDefault();
+              e.stopPropagation();
+              onCyclePermissionMode?.();
+            } else if (e.key === 'Enter' && !e.shiftKey && !suggestionType) {
               e.preventDefault();
               handleSend();
             } else if (e.key === 'Enter' && !e.shiftKey && suggestionType) {
@@ -221,10 +236,24 @@ export function Composer({ isRunning, onSend, onStop, onAttach, placeholder, dis
         </div>
       </div>
       <div className="text-center mt-4">
-        <span className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold flex items-center justify-center space-x-1.5 opacity-50 mix-blend-plus-lighter">
-          <Zap className="w-3 h-3" />
-          <span>BotValia Runtime v3</span>
-        </span>
+        <div className="flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest font-semibold opacity-60">
+          <span className="flex items-center space-x-1.5 text-gray-500 mix-blend-plus-lighter">
+            <Zap className="w-3 h-3" />
+            <span>BotValia Runtime v3</span>
+          </span>
+          {permissionModeLabel ? (
+            <>
+              <span className="text-gray-700">•</span>
+              <button
+                type="button"
+                onClick={onCyclePermissionMode}
+                className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] tracking-[0.16em] text-indigo-200 transition-colors hover:bg-white/[0.08] hover:text-white"
+              >
+                Shift+Tab · {permissionModeLabel}
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   )

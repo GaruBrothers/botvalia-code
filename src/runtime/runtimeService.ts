@@ -12,6 +12,7 @@ import type {
   RuntimeSessionSnapshot,
 } from './types.js'
 import { createRuntimeSessionDetail } from './types.js'
+import type { PermissionMode } from '../types/permissions.js'
 import {
   buildSwarmThreadSummaries,
   buildSwarmWaitingEdges,
@@ -28,6 +29,10 @@ export type RuntimeService = {
   sendMessage: (
     sessionId: RuntimeSessionId,
     input: RuntimeSendMessageInput,
+  ) => Promise<void>
+  setPermissionMode: (
+    sessionId: RuntimeSessionId,
+    mode: PermissionMode,
   ) => Promise<void>
   interrupt: (sessionId: RuntimeSessionId) => void
   subscribe: (listener: RuntimeRegistryListener) => RuntimeEventUnsubscribe
@@ -84,6 +89,10 @@ export function createRuntimeService(
     sendMessage: async (sessionId, input) => {
       const runtime = requireRuntime(registry, sessionId)
       await runtime.submit(input)
+    },
+    setPermissionMode: async (sessionId, mode) => {
+      const runtime = requireRuntime(registry, sessionId)
+      await runtime.setPermissionMode(mode)
     },
     interrupt: sessionId => {
       const runtime = requireRuntime(registry, sessionId)

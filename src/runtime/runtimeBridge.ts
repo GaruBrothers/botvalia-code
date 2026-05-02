@@ -171,6 +171,19 @@ export class RuntimeBridge {
             sessionId: request.sessionId,
           }
 
+        case 'set_permission_mode':
+          await this.runtimeService.setPermissionMode(
+            request.sessionId,
+            request.mode,
+          )
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'set_permission_mode',
+            sessionId: request.sessionId,
+            mode: request.mode,
+          }
+
         case 'subscribe_runtime':
           return {
             requestId: request.requestId,
