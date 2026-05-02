@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { ArrowUp, Sparkles, StopCircle, Zap, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +19,16 @@ const SKILLS = [
   { name: "@OAuth", desc: "Auth integration" }
 ];
 
-export function Composer({ isRunning, onSend, onStop, placeholder }: { isRunning: boolean, onSend: (text: string) => void, onStop?: () => void, placeholder?: string }) {
+type ComposerProps = {
+  isRunning: boolean;
+  onSend: (text: string) => void;
+  onStop?: () => void;
+  onAttach?: () => void;
+  placeholder?: string;
+  disabled?: boolean;
+};
+
+export function Composer({ isRunning, onSend, onStop, onAttach, placeholder, disabled }: ComposerProps) {
   const [text, setText] = useState("");
   const [showQuick, setShowQuick] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -30,13 +39,18 @@ export function Composer({ isRunning, onSend, onStop, placeholder }: { isRunning
   const [suggestionQuery, setSuggestionQuery] = useState("");
 
   const handleSend = () => {
-    if (!text.trim()) return;
+    if (!text.trim() || disabled) return;
     onSend(text);
     setText("");
     setSuggestionType(null);
-  }
+  };
 
   const handleAttach = () => {
+    if (disabled) return;
+    if (onAttach) {
+      onAttach();
+      return;
+    }
     fileInputRef.current?.click();
   };
 
@@ -110,7 +124,8 @@ export function Composer({ isRunning, onSend, onStop, placeholder }: { isRunning
                <button 
                  key={p} 
                  onMouseDown={(e) => e.preventDefault()}
-                 onClick={() => { onSend(p); setShowQuick(false); }}
+                 onClick={() => { if (!disabled) { onSend(p); setShowQuick(false); } }}
+                 disabled={disabled}
                  className="text-[12px] font-medium px-4 py-2 rounded-full bg-white/[0.05] border border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.1] backdrop-blur-md transition-all shadow-[0_4px_12px_rgba(0,0,0,0.5)] flex items-center space-x-1.5"
                >
                  <Sparkles className="w-3 h-3 text-indigo-400" />
@@ -130,8 +145,12 @@ export function Composer({ isRunning, onSend, onStop, placeholder }: { isRunning
              setTimeout(() => setSuggestionType(null), 150);
           }}
           placeholder={placeholder || "Ask BotValia Code or send a command..."}
+          disabled={disabled}
           className="min-h-[56px] w-full resize-none border-0 bg-transparent py-4 px-5 focus-visible:ring-0 text-white placeholder:text-gray-500 scrollbar-hide text-base leading-relaxed"
           onKeyDown={(e) => {
+            if (disabled) {
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey && !suggestionType) {
               e.preventDefault();
               handleSend();
@@ -154,6 +173,7 @@ export function Composer({ isRunning, onSend, onStop, placeholder }: { isRunning
             <Button 
               variant="ghost" 
               size="sm" 
+              disabled={disabled}
               onClick={() => setShowQuick(!showQuick)}
               className={`h-8 px-3 rounded-full text-xs font-medium transition-colors ${showQuick ? 'bg-indigo-500/20 text-indigo-300' : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.05]'}`}
             >
@@ -167,13 +187,14 @@ export function Composer({ isRunning, onSend, onStop, placeholder }: { isRunning
               multiple 
               onChange={(e) => {
                 if (e.target.files && e.target.files.length > 0) {
-                  alert(`Mock: Attached ${e.target.files.length} file(s)`);
+                  onAttach?.();
                 }
               }}
             />
             <Button 
               variant="ghost" 
               size="icon" 
+              disabled={disabled}
               onClick={handleAttach}
               className="h-8 w-8 rounded-full text-gray-500 hover:text-gray-300 hover:bg-white/[0.05]"
               title="Attach File"
@@ -191,7 +212,7 @@ export function Composer({ isRunning, onSend, onStop, placeholder }: { isRunning
             <Button 
               size="icon" 
               className="h-8 w-8 rounded-full bg-white text-black hover:bg-gray-200 disabled:bg-white/10 disabled:text-white/30 transition-all font-bold shadow-md"
-              disabled={!text.trim() && !isRunning}
+              disabled={disabled || (!text.trim() && !isRunning)}
               onClick={handleSend}
             >
               <ArrowUp className="h-4 w-4" />

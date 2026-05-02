@@ -23,6 +23,109 @@ type GeneratedAgent = {
   systemPrompt: string
 }
 
+function extractBalancedJsonObject(text: string): string | null {
+  let startIndex = -1
+  let depth = 0
+  let inString = false
+  let isEscaped = false
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]
+
+    if (startIndex === -1) {
+      if (char === '{') {
+        startIndex = index
+        depth = 1
+      }
+      continue
+    }
+
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false
+      } else if (char === '\\') {
+        isEscaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === '{') {
+      depth++
+      continue
+    }
+
+    if (char === '}') {
+      depth--
+      if (depth === 0) {
+        return text.slice(startIndex, index + 1)
+      }
+    }
+  }
+
+  return null
+}
+
+function parseGeneratedAgentCandidate(candidate: string): GeneratedAgent | null {
+  const trimmed = candidate.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  try {
+    const parsed = jsonParse(trimmed) as Partial<GeneratedAgent>
+    if (
+      typeof parsed.identifier === 'string' &&
+      typeof parsed.whenToUse === 'string' &&
+      typeof parsed.systemPrompt === 'string'
+    ) {
+      return {
+        identifier: parsed.identifier,
+        whenToUse: parsed.whenToUse,
+        systemPrompt: parsed.systemPrompt,
+      }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function parseGeneratedAgentResponse(responseText: string): GeneratedAgent | null {
+  const candidates = new Set<string>()
+  const trimmed = responseText.trim()
+
+  if (trimmed) {
+    candidates.add(trimmed)
+  }
+
+  const fencedMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fencedMatch?.[1]) {
+    candidates.add(fencedMatch[1].trim())
+  }
+
+  const extractedObject = extractBalancedJsonObject(responseText)
+  if (extractedObject) {
+    candidates.add(extractedObject.trim())
+  }
+
+  for (const candidate of candidates) {
+    const parsed = parseGeneratedAgentCandidate(candidate)
+    if (parsed) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
 const AGENT_CREATION_SYSTEM_PROMPT = `You are an elite AI agent architect specializing in crafting high-performance agent configurations. Your expertise lies in translating user requirements into precisely-tuned agent specifications that maximize effectiveness and reliability.
 
 **Important Context**: You may have access to project-specific instructions from CLAUDE.md files and other context that may include coding standards, project structure, and custom requirements. Consider this context when creating agents to ensure they align with the project's established patterns and practices.
@@ -125,6 +228,35 @@ export async function generateAgent(
   existingIdentifiers: string[],
   abortSignal: AbortSignal,
 ): Promise<GeneratedAgent> {
+  async function queryAgentResponseText(promptText: string): Promise<string> {
+    const userMessage = createUserMessage({ content: promptText })
+    const messagesWithContext = prependUserContext([userMessage], userContext)
+
+    const response = await queryModelWithoutStreaming({
+      messages: normalizeMessagesForAPI(messagesWithContext),
+      systemPrompt: asSystemPrompt([systemPrompt]),
+      thinkingConfig: { type: 'disabled' as const },
+      tools: [],
+      signal: abortSignal,
+      options: {
+        getToolPermissionContext: async () => getEmptyToolPermissionContext(),
+        model,
+        toolChoice: undefined,
+        agents: [],
+        isNonInteractiveSession: false,
+        hasAppendSystemPrompt: false,
+        querySource: 'agent_creation',
+        mcpTools: [],
+      },
+    })
+
+    const textBlocks = response.message.content.filter(
+      (block): block is ContentBlock & { type: 'text' } => block.type === 'text',
+    )
+
+    return textBlocks.map(block => block.text).join('\n')
+  }
+
   const existingList =
     existingIdentifiers.length > 0
       ? `\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existingIdentifiers.join(', ')}`
@@ -133,55 +265,36 @@ export async function generateAgent(
   const prompt = `Create an agent configuration based on this request: "${userPrompt}".${existingList}
   Return ONLY the JSON object, no other text.`
 
-  const userMessage = createUserMessage({ content: prompt })
-
   // Fetch user and system contexts
   const userContext = await getUserContext()
-
-  // Prepend user context to messages and append system context to system prompt
-  const messagesWithContext = prependUserContext([userMessage], userContext)
 
   // Include memory instructions when the feature is enabled
   const systemPrompt = isAutoMemoryEnabled()
     ? AGENT_CREATION_SYSTEM_PROMPT + AGENT_MEMORY_INSTRUCTIONS
     : AGENT_CREATION_SYSTEM_PROMPT
 
-  const response = await queryModelWithoutStreaming({
-    messages: normalizeMessagesForAPI(messagesWithContext),
-    systemPrompt: asSystemPrompt([systemPrompt]),
-    thinkingConfig: { type: 'disabled' as const },
-    tools: [],
-    signal: abortSignal,
-    options: {
-      getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-      model,
-      toolChoice: undefined,
-      agents: [],
-      isNonInteractiveSession: false,
-      hasAppendSystemPrompt: false,
-      querySource: 'agent_creation',
-      mcpTools: [],
-    },
-  })
+  const responseText = await queryAgentResponseText(prompt)
+  let parsed = parseGeneratedAgentResponse(responseText)
 
-  const textBlocks = response.message.content.filter(
-    (block): block is ContentBlock & { type: 'text' } => block.type === 'text',
-  )
-  const responseText = textBlocks.map(block => block.text).join('\n')
+  if (!parsed) {
+    const repairPrompt = [
+      'Your previous response for an agent configuration was invalid because it was not valid JSON.',
+      `Original request: "${userPrompt}"`,
+      responseText.trim()
+        ? `Previous invalid response:\n${responseText.trim()}`
+        : 'Previous invalid response: <empty>',
+      'Return exactly one valid JSON object with these string fields: identifier, whenToUse, systemPrompt.',
+      'Do not include markdown, code fences, commentary, bullets, or any extra text.',
+    ].join('\n\n')
 
-  let parsed: GeneratedAgent
-  try {
-    parsed = jsonParse(responseText.trim())
-  } catch {
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      throw new Error('No JSON object found in response')
-    }
-    parsed = jsonParse(jsonMatch[0])
+    const repairedResponseText = await queryAgentResponseText(repairPrompt)
+    parsed = parseGeneratedAgentResponse(repairedResponseText)
   }
 
-  if (!parsed.identifier || !parsed.whenToUse || !parsed.systemPrompt) {
-    throw new Error('Invalid agent configuration generated')
+  if (!parsed) {
+    throw new Error(
+      'Failed to generate a valid agent configuration. Try Manual configuration or switch to a stronger model.',
+    )
   }
 
   logEvent('tengu_agent_definition_generated', {

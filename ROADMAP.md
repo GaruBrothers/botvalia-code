@@ -1,13 +1,12 @@
-# Runtime Inspector Roadmap
+# Runtime UI Roadmap
 
-Este roadmap mapea las funciones premium de la UI del inspector que todavía no tienen soporte real en el backend/runtime del CLI.
+Este roadmap refleja la integración real entre `BotValia-CodeUI` y el runtime actual del CLI.
 
-## Estado actual del protocolo runtime
+## Estado actual
 
-Hoy el protocolo solo expone estas operaciones en [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts):
+La UI web nueva ya quedó conectada al runtime real para estas capacidades existentes hoy en el backend:
 
 - `list_sessions`
-- `get_session`
 - `get_session_detail`
 - `send_message`
 - `interrupt`
@@ -15,188 +14,172 @@ Hoy el protocolo solo expone estas operaciones en [src/runtime/protocol.ts](/C:/
 - `subscribe_session`
 - `unsubscribe`
 
-Eso significa que cualquier función premium fuera de ese contrato debe verse como UI roadmap, no como acción funcional todavía.
+También está consumiendo lo que ya expone el runtime en lectura:
 
-## Funciones premium faltantes
+- `sessionId`, `cwd`, `status`, `messageCount`, `taskCount`
+- `mainLoopModel`, `mainLoopModelForSession`
+- `swarm.teamName`, `swarm.isLeader`, `swarm.teammateNames`
+- `tasks`
+- `swarmThreads`
+- `swarmWaitingEdges`
+- eventos live de runtime y de sesión
 
-### 1. Crear sesión desde el inspector
+## Fase 0
 
-UI objetivo:
-- botón `Nueva sesión`
-- posibilidad de abrir una sesión nueva sin pasar por el CLI principal
+Objetivo: reemplazo total de la UI antigua por `BotValia-CodeUI`.
 
-Backend faltante:
-- método de protocolo `create_session`
-- capacidad en runtime/registry para instanciar una sesión vacía o una sesión con `cwd` inicial
+Estado:
+- completado
 
-Archivos a tocar:
+Incluye:
+- `/runtime open` vuelve a levantar UI web real
+- `/runtime ui` vuelve a exponer la UI web
+- la app Next.js se lanza desde el CLI
+- la UI se conecta al WebSocket del runtime actual por query param
+- sesiones vivas, detalle, conversación, refresh, reconnect e interrupt ya están cableados
+
+Archivos base:
+- [src/runtime/runtimeInspectorServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeInspectorServer.ts)
+- [src/commands/runtime/runtime.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/commands/runtime/runtime.ts)
+- [BotValia-CodeUI/components/runtime/RuntimeShell.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/BotValia-CodeUI/components/runtime/RuntimeShell.tsx)
+- [BotValia-CodeUI/hooks/useRuntimeInspector.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/BotValia-CodeUI/hooks/useRuntimeInspector.ts)
+
+## Fase 1
+
+Objetivo: paridad funcional de lifecycle de sesión desde la UI.
+
+Pendientes backend:
+- `create_session`
+- `rename_session`
+- `archive_session`
+- `unarchive_session`
+- `pin_session`
+- persistencia de metadata visual por sesión
+  - `title`
+  - `archived`
+  - `pinned`
+
+Impacto UI actual:
+- `Nueva sesión` queda visible, pero pendiente
+- `Rename` queda visible, pero pendiente
+- `Archive` queda visible, pero pendiente
+- la sidebar agrupa sesiones activas reales, pero no hay biblioteca persistente
+
+Archivos a tocar cuando se implemente:
 - [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
 - [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
 - [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
 - [src/runtime/runtimeRegistry.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeRegistry.ts)
+- la capa que persista metadata de sesión
 
-Contrato sugerido:
-- request: `create_session { cwd?: string, model?: string, title?: string }`
-- response: `session: RuntimeSessionSnapshot`
+## Fase 2
 
-### 2. Renombrar sesión
+Objetivo: settings y control de modelo reales desde la UI.
 
-UI objetivo:
-- editar título visible de una sesión desde la sidebar
-
-Backend faltante:
-- metadata persistente por sesión
-- método `rename_session`
-
-Archivos a tocar:
-- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- [src/runtime/sessionRuntime.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/sessionRuntime.ts) o la capa que persista metadata
-
-Contrato sugerido:
-- request: `rename_session { sessionId, title }`
-- response: `session: RuntimeSessionSnapshot`
-
-### 3. Pinear y archivar sesiones
-
-UI objetivo:
-- secciones `Pinned` y `Recent`
-- archivar sin perder historial
-
-Backend faltante:
-- metadata `pinned`, `archived`
-- endpoints `pin_session`, `archive_session`, `unarchive_session`
-- persistencia de ese estado entre reinicios
-
-Archivos a tocar:
-- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- almacenamiento persistente de metadata de sesiones
-
-### 4. Cambiar modelo global o por sesión desde el inspector
-
-UI objetivo:
-- selector de modelo en settings
-- cambio de modelo sin salir del inspector
-
-Backend faltante:
-- método `set_session_model`
-- opcional `set_default_model`
-- evento runtime/session que notifique el cambio
-
-Archivos a tocar:
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- la capa real que administra `mainLoopModel` y `mainLoopModelForSession`
-
-### 5. Swarm premium con teammates ricos
-
-UI objetivo:
-- tarjetas de agentes con nombre, rol, estado, focus actual
-- instrucciones directas por teammate
-- cola de tareas por agente
-
-Backend faltante:
-- no basta con `teamName`, `isLeader` y `teammateNames`
-- hace falta una estructura más rica para teammates y tasks asignadas
-
-Shape sugerido:
-- `swarm.teammates[]` con `id`, `name`, `role`, `status`, `currentTask`
-- `swarm.tasks[]` con `id`, `title`, `status`, `assigneeId`
-
-Archivos a tocar:
-- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- cualquier origen real del estado swarm dentro del coordinator/team context
-
-### 6. Instrucción directa a un agente del swarm
-
-UI objetivo:
-- input `Direct instruction to <agent>`
-
-Backend faltante:
-- método explícito para enrutar una orden a un teammate concreto
-
-Contrato sugerido:
-- request: `send_swarm_instruction { sessionId, teammateName | teammateId, text }`
-
-Archivos a tocar:
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- integración con la capa real de swarm/coordinator
-
-### 7. Feed de conversación más rico
-
-UI objetivo:
-- markdown real
-- bloques de código
-- tablas
-- mejor tipado de mensajes del runtime
-
-Backend faltante:
-- el backend ya entrega mensajes, pero hoy `RuntimeMessageSummary.text` colapsa todo a texto plano
-- para llegar a una vista rica conviene exponer bloques estructurados o un formato más fiel al mensaje original
-
-Archivos a tocar:
-- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
-- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts) en `toRuntimeMessageSummary`
-- [src/runtime/runtimeInspectorServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeInspectorServer.ts)
-
-### 8. Timeline de eventos por sesión
-
-UI objetivo:
-- tab `Eventos` con timeline real
-- timestamps consistentes
-- severidad `info | warn | error`
-- filtro por sesión seleccionada
-
-Backend faltante:
-- hoy el inspector mezcla eventos de runtime y sesión en un solo feed local
-- faltan timestamps y severity normalizadas desde origen
-- conviene un stream por sesión o payload enriquecido en `runtime_session_event`
-
-Contrato sugerido:
-- `runtime_session_event` con `timestamp`, `severity`, `sessionId`, `scope`
-- opcional `get_session_events { sessionId, limit? }`
-
-Archivos a tocar:
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- [src/runtime/runtimeInspectorServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeInspectorServer.ts)
-
-## Prioridad recomendada
-
-### P1
-
-- `rename_session`
-- `pin_session`
-- `archive_session`
+Pendientes backend:
 - `set_session_model`
+- opcional `set_default_model`
+- endpoint/listado de modelos válidos para la UI
+- evento consistente de cambio de modelo accionado desde protocolo
 
-### P2
+Impacto UI actual:
+- el selector de modelo en settings queda en modo lectura
+- la UI sí muestra el modelo real de la sesión
+- `model_switched` existe como shape/evento, pero no hay acción expuesta para dispararlo desde la web
 
-- `create_session`
+Archivos a tocar:
+- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
+- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
+- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
+
+## Fase 3
+
+Objetivo: paridad real del `SwarmOfficeView`.
+
+Ya existe hoy:
+- `teamName`
+- `isLeader`
+- `teammateNames`
+- `tasks`
+- `swarmThreads`
+- `swarmWaitingEdges`
+
+Pendientes backend:
+- `swarm.teammates[]` ricos con:
+  - `id`
+  - `name`
+  - `role`
+  - `status`
+  - `currentTask`
+- `swarm.tasks[]` con `assigneeId` real
 - `send_swarm_instruction`
-- payload rico de teammates/tasks
+- un feed más fiel para `internalChat`
 
-### P3
+Impacto UI actual:
+- la vista swarm ya usa datos reales donde existen
+- teammates, roles y asignaciones siguen siendo heurísticos cuando el backend no los provee
+- `Direct instruction to <agent>` queda visible, pero pendiente
 
-- renderer de mensajes estructurados
-- más acciones de workspace desde el inspector
-- eventos enriquecidos por sesión
+Archivos a tocar:
+- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
+- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
+- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
+- la capa real de coordinator/swarm
+
+## Fase 4
+
+Objetivo: fidelidad completa del transcript y adjuntos.
+
+Ya existe hoy:
+- mensajes reales por sesión
+- timestamps reales
+- sanitización en frontend para esconder thinking, redacted thinking, caveats y XML interno
+
+Pendientes backend:
+- payload de mensaje más fiel que `RuntimeMessageSummary.text`
+- bloques estructurados para markdown/code/table con mejor preservación
+- soporte real de attachments desde la UI
+
+Impacto UI actual:
+- la conversación principal ya funciona con mensajes reales
+- aún depende de un adapter/sanitizador porque el runtime colapsa varios contenidos a texto plano
+- el botón attach queda visible, pero pendiente
+
+Archivos a tocar:
+- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
+- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
+
+## Fase 5
+
+Objetivo: timeline de eventos y observabilidad por sesión.
+
+Ya existe hoy:
+- `runtime_registry_event`
+- `runtime_session_event`
+- timestamps en eventos runtime
+
+Pendientes backend:
+- historial consultable de eventos por sesión
+- severidad normalizada
+- scope/source consistente
+- opcional `get_session_events`
+
+Impacto UI actual:
+- la pestaña `Eventos` ya muestra feed live acumulado localmente
+- todavía no existe histórico confiable al abrir una sesión antigua o recién cargada
+
+Archivos a tocar:
+- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
+- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
+- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
 
 ## Notas
 
-- La UI puede mostrar placeholders premium desde ya, pero cualquier acción sin endpoint real debe verse como disabled o roadmap.
-- El lugar correcto para añadir nuevos métodos es el trío:
-  - [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-  - [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-  - [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
+- La UI nueva ya está trayendo el diseño real de `BotValia-CodeUI`; lo pendiente ahora es mostly backend parity.
+- Las funciones que hoy no existen en protocolo quedan visibles como UX premium, pero deben reportarse como pendientes y no mentir soporte.
+- El orden recomendado para cerrar gaps es:
+  1. lifecycle de sesión
+  2. modelo/settings
+  3. swarm rico
+  4. transcript estructurado
+  5. historial de eventos

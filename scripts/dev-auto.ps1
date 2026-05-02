@@ -15,12 +15,29 @@ param(
   [int]$MaxOutputTokens = 384,
   [int]$MaxThinkingTokens = 128,
   [bool]$BareMode = $true,
+  [string]$ExtraArgsJson = "",
   [switch]$VersionOnly,
   [Parameter(ValueFromRemainingArguments = $true)]
   [string[]]$ExtraArgs
 )
 
 $ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$entrypoint = Join-Path $repoRoot "src/dev-entry.ts"
+
+if (-not [string]::IsNullOrWhiteSpace($ExtraArgsJson)) {
+  try {
+    $decodedExtraArgs = ConvertFrom-Json -InputObject $ExtraArgsJson
+    if ($decodedExtraArgs -is [System.Array]) {
+      $ExtraArgs = @($ExtraArgs) + @($decodedExtraArgs | ForEach-Object { [string]$_ })
+    } elseif ($null -ne $decodedExtraArgs) {
+      $ExtraArgs = @($ExtraArgs) + @([string]$decodedExtraArgs)
+    }
+  } catch {
+    Write-Error "No se pudo parsear ExtraArgsJson: $($_.Exception.Message)"
+    exit 1
+  }
+}
 
 function Get-BunPath {
   $wingetBunPath = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Oven-sh.Bun_Microsoft.Winget.Source_8wekyb3d8bbwe\bun-windows-x64\bun.exe"
@@ -1159,7 +1176,7 @@ Write-Host "[botvalia auto] AGENT_SWARMS=$($env:CLAUDE_CODE_EXPERIMENTAL_AGENT_T
 Write-Host "[botvalia auto] BARE_MODE=$BareMode"
 
 if ($VersionOnly) {
-  & $bunPath run version
+  & $bunPath run $entrypoint --version
   exit $LASTEXITCODE
 }
 
@@ -1168,8 +1185,8 @@ if ($BareMode) {
 }
 
 if ($ExtraArgs -and $ExtraArgs.Count -gt 0) {
-  & $bunPath run dev -- $ExtraArgs
+  & $bunPath run $entrypoint -- $ExtraArgs
 } else {
-  & $bunPath run dev
+  & $bunPath run $entrypoint
 }
 exit $LASTEXITCODE

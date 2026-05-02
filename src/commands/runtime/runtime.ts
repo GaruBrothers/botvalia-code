@@ -1,5 +1,7 @@
 import type { LocalCommandCall } from '../../types/command.js'
 import {
+  ensureRuntimeInspectorServer,
+  getRuntimeInspectorServerStatus,
   stopRuntimeInspectorServer,
 } from '../../runtime/runtimeInspectorServer.js'
 import { getGlobalRuntimeService } from '../../runtime/runtimeService.js'
@@ -13,8 +15,8 @@ const HELP_TEXT = [
   '/runtime inicia o muestra el bridge local para BotValia Desktop.',
   '/runtime start [puerto] inicia el server WebSocket local.',
   '/runtime status muestra el estado actual.',
-  '/runtime ui informa que la UI web fue retirada de este repo.',
-  '/runtime open informa que la UI web fue retirada de este repo.',
+  '/runtime ui inicia la app web BotValia-CodeUI conectada al runtime local.',
+  '/runtime open inicia la app web y abre la URL conectada al runtime actual.',
   '/runtime stop apaga el server local.',
   '/runtime help muestra esta ayuda.',
 ].join('\n')
@@ -40,8 +42,22 @@ function getSessionCount(): number {
   return getGlobalRuntimeService().listSessions().length
 }
 
+function buildInspectorLaunchUrl(
+  inspectorUrl: string,
+  runtimeUrl?: string,
+): string {
+  if (!runtimeUrl) {
+    return inspectorUrl
+  }
+
+  const url = new URL(inspectorUrl)
+  url.searchParams.set('runtime', runtimeUrl)
+  return url.toString()
+}
+
 function formatRuntimeStatus(): string {
   const runtimeStatus = getRuntimeServerStatus()
+  const inspectorStatus = getRuntimeInspectorServerStatus()
   const lines: string[] = []
 
   if (runtimeStatus.status === 'running') {
@@ -58,7 +74,24 @@ function formatRuntimeStatus(): string {
     lines.push('Bridge runtime apagado.')
   }
 
-  lines.push('UI web del runtime: retirada de este repo.')
+  if (inspectorStatus.status === 'running') {
+    lines.push('UI web BotValia-CodeUI activa.')
+    lines.push(`URL inspector: ${inspectorStatus.server.url}`)
+    if (runtimeStatus.status === 'running') {
+      lines.push(
+        `Launch URL: ${buildInspectorLaunchUrl(
+          inspectorStatus.server.url,
+          runtimeStatus.server.url,
+        )}`,
+      )
+    }
+  } else if (inspectorStatus.status === 'starting') {
+    lines.push('UI web BotValia-CodeUI iniciando.')
+  } else if (inspectorStatus.status === 'failed') {
+    lines.push(`UI web BotValia-CodeUI con error: ${inspectorStatus.error.message}`)
+  } else {
+    lines.push('UI web BotValia-CodeUI apagada.')
+  }
 
   return lines.join('\n')
 }
@@ -104,35 +137,50 @@ export const call: LocalCommandCall = async args => {
     }
 
     if (normalizedSubcommand === 'ui') {
+      const runtimeServer = await ensureRuntimeServer()
+      const inspectorServer = await ensureRuntimeInspectorServer()
+      const inspectorUrl = buildInspectorLaunchUrl(
+        inspectorServer.url,
+        runtimeServer.url,
+      )
+
       return {
         type: 'text',
         value: [
-          'La UI web del runtime fue retirada de este repo.',
-          'El bridge runtime sigue disponible por WebSocket.',
-          formatRuntimeStatus(),
+          `BotValia-CodeUI lista en ${inspectorUrl}`,
+          `Runtime WebSocket: ${runtimeServer.url}`,
+          `Sesiones activas: ${getSessionCount()}`,
         ].join('\n'),
       }
     }
 
     if (normalizedSubcommand === 'open') {
+      const runtimeServer = await ensureRuntimeServer()
+      const inspectorServer = await ensureRuntimeInspectorServer()
+      const inspectorUrl = buildInspectorLaunchUrl(
+        inspectorServer.url,
+        runtimeServer.url,
+      )
+
       return {
         type: 'text',
         value: [
-          'La UI web del runtime fue retirada de este repo.',
-          'No se abrirá navegador porque ya no existe inspector embebido aquí.',
-          'Usa /runtime status para ver el bridge activo.',
+          `Inspector visual abierto en ${inspectorUrl}`,
+          `Runtime WebSocket: ${runtimeServer.url}`,
+          `Sesiones activas: ${getSessionCount()}`,
         ].join('\n'),
       }
     }
 
     if (normalizedSubcommand === 'stop') {
-      await stopRuntimeInspectorServer()
+      const inspectorStopped = await stopRuntimeInspectorServer()
       const runtimeStopped = await stopRuntimeServer()
       return {
         type: 'text',
-        value: runtimeStopped
-          ? 'Bridge runtime detenido.'
-          : 'El bridge runtime ya estaba apagado.',
+        value:
+          inspectorStopped || runtimeStopped
+            ? 'Bridge runtime y UI BotValia-CodeUI detenidos.'
+            : 'El bridge runtime y la UI ya estaban apagados.',
       }
     }
 

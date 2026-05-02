@@ -1,12 +1,22 @@
 import { useState } from "react";
-import { X, Network, Activity, FileJson, Clock } from "lucide-react";
+import { X, Network, Activity, FileJson, Clock, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Session } from "@/lib/types";
+import { GlobalRuntimeState, Session } from "@/lib/types";
 import { motion, AnimatePresence } from "motion/react";
 
 type TabId = 'ahora' | 'swarm' | 'eventos' | 'json';
 
-export function ContextPanel({ session, onClose }: { session: Session | null, onClose: () => void }) {
+export function ContextPanel({
+  session,
+  runtimeState,
+  onClose,
+  onReconnect,
+}: {
+  session: Session | null;
+  runtimeState: GlobalRuntimeState;
+  onClose: () => void;
+  onReconnect?: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<TabId>('ahora');
 
   if (!session) return null;
@@ -66,7 +76,11 @@ export function ContextPanel({ session, onClose }: { session: Session | null, on
                 </div>
                 <div className="group">
                   <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1.5 font-semibold">Workspace</div>
-                  <div className="text-sm text-gray-300 group-hover:text-white transition-colors">{session.workspaceName}</div>
+                  <div className="text-sm text-gray-300 group-hover:text-white transition-colors break-all">{session.workspaceName}</div>
+                </div>
+                <div className="group">
+                  <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1.5 font-semibold">Runtime URL</div>
+                  <div className="text-xs text-gray-300 break-all">{runtimeState.runtimeUrl || 'No runtime URL'}</div>
                 </div>
                 <div className="group">
                   <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1.5 font-semibold">Model</div>
@@ -76,8 +90,26 @@ export function ContextPanel({ session, onClose }: { session: Session | null, on
                 </div>
                 <div className="group">
                   <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1.5 font-semibold">Messages</div>
-                  <div className="text-sm text-gray-300 group-hover:text-white transition-colors">{session.messages.length}</div>
+                  <div className="text-sm text-gray-300 group-hover:text-white transition-colors">{session.messageCount}</div>
                 </div>
+                <div className="group">
+                  <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1.5 font-semibold">Tasks</div>
+                  <div className="text-sm text-gray-300 group-hover:text-white transition-colors">{session.taskCount}</div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onReconnect}
+                  className="h-8 border-white/[0.08] bg-white/[0.03] text-gray-300 hover:bg-white/[0.08]"
+                >
+                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                  Reconnect Runtime
+                </Button>
+                {runtimeState.lastError && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-200">
+                    {runtimeState.lastError}
+                  </div>
+                )}
               </>
             )}
 
@@ -129,6 +161,38 @@ export function ContextPanel({ session, onClose }: { session: Session | null, on
                           </div>
                        </div>
                      )}
+                     {session.swarm.waitingEdges.length > 0 && (
+                       <div>
+                         <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-3 font-semibold">Waiting Edges</div>
+                         <div className="space-y-2">
+                           {session.swarm.waitingEdges.map(edge => (
+                             <div key={edge.id} className="rounded-lg border border-amber-500/15 bg-amber-500/5 p-3">
+                               <div className="text-[11px] font-semibold text-amber-300">{edge.from} → {edge.to}</div>
+                               <div className="mt-1 text-xs text-gray-300">{edge.body}</div>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                     {session.swarm.threads.length > 0 && (
+                       <div>
+                         <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-3 font-semibold">Open Threads</div>
+                         <div className="space-y-2">
+                           {session.swarm.threads.map(thread => (
+                             <div key={thread.id} className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-3">
+                               <div className="flex items-center justify-between gap-3">
+                                 <div className="text-xs font-semibold text-gray-200">{thread.topic || thread.id}</div>
+                                 <span className={`text-[10px] uppercase tracking-widest ${thread.open ? 'text-amber-300' : 'text-emerald-300'}`}>
+                                   {thread.open ? 'Open' : 'Closed'}
+                                 </span>
+                               </div>
+                               <div className="mt-1 text-[11px] text-gray-500">{thread.participants.join(' · ')}</div>
+                               <div className="mt-2 text-xs text-gray-300">{thread.lastBody}</div>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
                   </>
                 ) : (
                   <div className="text-sm text-gray-500 text-center py-6">No swarm active in this session.</div>
@@ -163,7 +227,7 @@ export function ContextPanel({ session, onClose }: { session: Session | null, on
             {activeTab === 'json' && (
               <div className="bg-black/50 border border-white/[0.05] rounded-xl p-3 shadow-inner">
                 <pre className="text-[10px] text-gray-400 font-mono overflow-auto scollbar-hide">
-                   {JSON.stringify(session, null, 2)}
+                   {JSON.stringify(session.rawDetail || session.rawSnapshot || session, null, 2)}
                 </pre>
               </div>
             )}

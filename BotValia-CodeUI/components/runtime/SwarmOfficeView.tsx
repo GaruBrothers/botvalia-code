@@ -1,6 +1,6 @@
 import { SwarmState, AgentTask } from "@/lib/types";
 import { Users, Bot, Code, Edit3, Shield, Zap, Search, ArrowRight, CheckCircle2, Clock, PlayCircle, XCircle, ListTodo } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
 function getAgentIcon(role: string) {
@@ -27,7 +27,7 @@ function TaskStatusBadge({ status }: { status: AgentTask['status'] }) {
   }
 }
 
-export function SwarmOfficeView({ swarm }: { swarm: SwarmState | undefined }) {
+export function SwarmOfficeView({ swarm, onDirectInstruction }: { swarm: SwarmState | undefined, onDirectInstruction?: (teammateId: string, text: string) => void }) {
   if (!swarm) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-sm opacity-50 select-none">
@@ -160,7 +160,7 @@ export function SwarmOfficeView({ swarm }: { swarm: SwarmState | undefined }) {
                   className="w-full bg-black/50 border border-white/[0.1] rounded-lg pl-3 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all shadow-inner"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                      alert(`Sent direct instruction to ${agent.name}: ${e.currentTarget.value}`);
+                      onDirectInstruction?.(agent.id, e.currentTarget.value.trim());
                       e.currentTarget.value = '';
                     }
                   }}
@@ -183,7 +183,11 @@ export function SwarmOfficeView({ swarm }: { swarm: SwarmState | undefined }) {
         <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
           {swarm.internalChat && swarm.internalChat.length > 0 ? (
             swarm.internalChat.map((chat) => {
-              const receiver = chat.toId ? swarm.teammates.find(t => t.id === chat.toId)?.name || 'Swarm' : 'Swarm';
+              const receiver =
+                chat.toName ||
+                (chat.toId
+                  ? swarm.teammates.find(t => t.id === chat.toId)?.name || 'Swarm'
+                  : 'Swarm');
 
               return (
                 <div key={chat.id} className="flex flex-col mb-3">

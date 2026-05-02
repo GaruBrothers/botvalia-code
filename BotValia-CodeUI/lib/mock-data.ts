@@ -4,6 +4,7 @@ export const mockGlobalState: GlobalRuntimeState = {
   isReady: true,
   isSocketConnected: true,
   autoRefresh: true,
+  connectionState: 'connected',
 };
 
 export const mockSessions: Session[] = [
@@ -52,13 +53,17 @@ export const mockSessions: Session[] = [
       internalChat: [
         { id: 'ic_1', fromId: 'agent_1', fromName: 'Analyzer', toId: 'agent_2', content: 'Did you finish cleaning the nulls?', timestamp: '2026-05-01T13:16:10Z' },
         { id: 'ic_2', fromId: 'agent_2', fromName: 'Scraper', toId: 'agent_1', content: 'Yes, CSV is ready in memory. Proceeding to hand off.', timestamp: '2026-05-01T13:16:15Z' }
-      ]
+      ],
+      threads: [],
+      waitingEdges: [],
     },
     events: [
       { id: 'ev_1', timestamp: '2026-05-01T13:15:00Z', type: 'info', message: 'Session started.' },
       { id: 'ev_2', timestamp: '2026-05-01T13:16:00Z', type: 'info', message: 'Tool pandas_read invoked.' },
       { id: 'ev_3', timestamp: '2026-05-01T13:20:00Z', type: 'info', message: 'Reply sent to user.' },
     ],
+    messageCount: 3,
+    taskCount: 2,
   },
   {
     id: 'sess_01H1X5C9',
@@ -108,12 +113,16 @@ export const mockSessions: Session[] = [
       internalChat: [
         { id: 'ic_3', fromId: 'agent_qa_2', fromName: 'Writer', content: 'Spec is ready, handing over.', timestamp: '2026-05-01T13:28:00Z' },
         { id: 'ic_4', fromId: 'agent_qa_1', fromName: 'Tester', content: 'Running headless now.', timestamp: '2026-05-01T13:29:00Z' }
-      ]
+      ],
+      threads: [],
+      waitingEdges: [],
     },
     events: [
       { id: 'ev_4', timestamp: '2026-05-01T13:00:00Z', type: 'info', message: 'Session started.' },
       { id: 'ev_5', timestamp: '2026-05-01T13:29:00Z', type: 'info', message: 'Running playwright.' },
     ],
+    messageCount: 3,
+    taskCount: 5,
   },
   {
     id: 'sess_01H1Z9D1',
@@ -150,10 +159,14 @@ export const mockSessions: Session[] = [
       ],
       internalChat: [],
       waitingOn: 'User input (Screenshot)',
+      threads: [],
+      waitingEdges: [],
     },
     events: [
       { id: 'ev_6', timestamp: '2026-05-01T13:25:00Z', type: 'info', message: 'Session started.' },
       { id: 'ev_7', timestamp: '2026-05-01T13:26:00Z', type: 'warn', message: 'Waiting for user artifact' },
     ],
+    messageCount: 2,
+    taskCount: 1,
   },
 ];

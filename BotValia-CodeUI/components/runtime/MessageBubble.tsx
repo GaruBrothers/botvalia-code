@@ -35,6 +35,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
       className={cn("flex w-full group py-5", {
         "justify-end": isUser,
         "justify-start": !isUser,
+        "opacity-70": msg.isPending,
       })}
     >
       <div className={cn("flex max-w-[85%] sm:max-w-[75%]", {
@@ -64,7 +65,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
         })}>
            <div className={cn("flex items-center space-x-2 mb-1.5", isUser && "flex-row-reverse space-x-reverse")}>
              <span className="text-[11px] font-semibold text-gray-400 tracking-wide uppercase">
-               {isUser ? "You" : isSys ? "System" : "BotValia Code"}
+               {isUser ? (msg.isPending ? "You · pending" : "You") : isSys ? "System" : "BotValia Code"}
              </span>
              <span className="text-[10px] text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" suppressHydrationWarning>
                {formatTime(msg.timestamp)}

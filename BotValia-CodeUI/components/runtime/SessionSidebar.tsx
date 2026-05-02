@@ -1,4 +1,4 @@
-import { Search, Hash, Users, Plus, MoreHorizontal, Folder, FolderOpen, Archive, Edit2 } from "lucide-react";
+import { Search, Users, Plus, Folder, FolderOpen, Archive, Edit2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,12 @@ interface SidebarProps {
   sessions: Session[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onCreateSession?: (title: string, workspacePath: string) => void;
   onRename?: (id: string, newTitle: string) => void;
   onArchive?: (id: string) => void;
 }
 
-export function SessionSidebar({ sessions, selectedId, onSelect, onRename, onArchive }: SidebarProps) {
+export function SessionSidebar({ sessions, selectedId, onSelect, onCreateSession, onRename, onArchive }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -58,7 +59,7 @@ export function SessionSidebar({ sessions, selectedId, onSelect, onRename, onArc
 
   const handleCreateProject = () => {
     if (!newProjectName.trim()) return;
-    // Mock action
+    onCreateSession?.(newProjectName.trim(), newProjectPath.trim());
     setShowNewProjectModal(false);
     setNewProjectName("");
     setNewProjectPath("");
@@ -143,7 +144,7 @@ export function SessionSidebar({ sessions, selectedId, onSelect, onRename, onArc
                                   </Badge>
                                 )}
                                 <span className="text-[9px] text-gray-500 font-mono">
-                                  {s.messages.length}m
+                                  {s.messageCount}m
                                 </span>
                               </div>
                             </div>
