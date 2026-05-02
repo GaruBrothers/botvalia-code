@@ -18,7 +18,7 @@ type Props = {
 };
 const WORKFLOWS: WorkflowOption[] = [{
   value: 'claude' as const,
-  label: '@BotValia Code - Tag @claude in issues and PR comments'
+  label: '@BotValia Code - Tag @botvalia in issues and PR comments'
 }, {
   value: 'claude-review' as const,
   label: 'BotValia Code Review - Automated code review on new PRs'
@@ -79,7 +79,7 @@ export function WorkflowMultiselectDialog(t0) {
   const handleCancel = t3;
   let t4;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Box><Text dimColor={true}>More workflow examples (issue triage, CI fixes, etc.) at:{" "}<Link url="https://github.com/anthropics/claude-code-action/blob/main/examples/">https://github.com/anthropics/claude-code-action/blob/main/examples/</Link></Text></Box>;
+    t4 = <Box><Text dimColor={true}>More workflow examples (issue triage, CI fixes, etc.) at:{" "}<Link url="https://github.com/GaruBrothers/botvalia-code">https://github.com/GaruBrothers/botvalia-code</Link></Text></Box>;
     $[4] = t4;
   } else {
     t4 = $[4];

@@ -43,7 +43,7 @@ export function useMcpConnectivityStatus(t0) {
       if (failedClaudeAiClients.length > 0) {
         addNotification({
           key: "mcp-claudeai-failed",
-          jsx: <><Text color="error">{failedClaudeAiClients.length} claude.ai{" "}{failedClaudeAiClients.length === 1 ? "connector" : "connectors"}{" "}unavailable</Text><Text dimColor={true}> · /mcp</Text></>,
+          jsx: <><Text color="error">{failedClaudeAiClients.length} BotValia Web{" "}{failedClaudeAiClients.length === 1 ? "connector" : "connectors"}{" "}unavailable</Text><Text dimColor={true}> · /mcp</Text></>,
           priority: "medium"
         });
       }
@@ -57,7 +57,7 @@ export function useMcpConnectivityStatus(t0) {
       if (needsAuthClaudeAiServers.length > 0) {
         addNotification({
           key: "mcp-claudeai-needs-auth",
-          jsx: <><Text color="warning">{needsAuthClaudeAiServers.length} claude.ai{" "}{needsAuthClaudeAiServers.length === 1 ? "connector needs" : "connectors need"}{" "}auth</Text><Text dimColor={true}> · /mcp</Text></>,
+          jsx: <><Text color="warning">{needsAuthClaudeAiServers.length} BotValia Web{" "}{needsAuthClaudeAiServers.length === 1 ? "connector needs" : "connectors need"}{" "}auth</Text><Text dimColor={true}> · /mcp</Text></>,
           priority: "medium"
         });
       }

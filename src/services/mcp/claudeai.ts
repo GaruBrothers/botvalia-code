@@ -97,7 +97,7 @@ export const fetchClaudeAIMcpConfigsIfEligible = memoize(
       const usedNormalizedNames = new Set<string>()
 
       for (const server of response.data.data) {
-        const baseName = `claude.ai ${server.display_name}`
+        const baseName = `BotValia Web ${server.display_name}`
 
         // Try without suffix first, then increment until we find an unused normalized name
         let finalName = baseName

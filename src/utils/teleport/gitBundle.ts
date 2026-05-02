@@ -169,8 +169,8 @@ async function _bundleWithFallback(
 
   return {
     ok: false,
-    error:
-      'Repo is too large to bundle. Please setup GitHub on https://claude.ai/code',
+      error:
+        'Repo is too large to bundle. Please set up GitHub in BotValia Web or see https://github.com/GaruBrothers/botvalia-code',
     failReason: 'too_large',
   }
 }

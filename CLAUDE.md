@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to BotValia Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to BotValia Code when working with code in this repository.
 
 ## What This Is
 

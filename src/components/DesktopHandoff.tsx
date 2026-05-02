@@ -9,13 +9,13 @@ import { errorMessage } from '../utils/errors.js';
 import { gracefulShutdown } from '../utils/gracefulShutdown.js';
 import { flushSessionStorage } from '../utils/sessionStorage.js';
 import { LoadingState } from './design-system/LoadingState.js';
-const DESKTOP_DOCS_URL = 'https://clau.de/desktop';
+const DESKTOP_DOCS_URL = 'https://github.com/GaruBrothers/botvalia-code';
 export function getDownloadUrl(): string {
   switch (process.platform) {
     case 'win32':
-      return 'https://claude.ai/api/desktop/win32/x64/exe/latest/redirect';
+      return 'https://github.com/GaruBrothers/botvalia-code';
     default:
-      return 'https://claude.ai/api/desktop/darwin/universal/dmg/latest/redirect';
+      return 'https://github.com/GaruBrothers/botvalia-code';
   }
 }
 type DesktopHandoffState = 'checking' | 'prompt-download' | 'flushing' | 'opening' | 'success' | 'error';

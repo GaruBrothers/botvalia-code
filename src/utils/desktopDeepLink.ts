@@ -216,7 +216,7 @@ export async function openCurrentSessionInDesktop(): Promise<{
     return {
       success: false,
       error:
-        'BotValia Desktop is not installed. Install it from https://claude.ai/download',
+        'BotValia Desktop is not installed. Install it from https://github.com/GaruBrothers/botvalia-code',
     }
   }
 

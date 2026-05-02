@@ -81,13 +81,13 @@ You should keep it short and simple, ideally no more than 6 words. Avoid using j
 Use sentence case for the title (capitalize only the first word and proper nouns), not Title Case.
 
 The branch name should be clear, concise, and accurately reflect the content of the coding task.
-You should keep it short and simple, ideally no more than 4 words. The branch should always start with "claude/" and should be all lower case, with words separated by dashes.
+You should keep it short and simple, ideally no more than 4 words. The branch should always start with "botvalia/" and should be all lower case, with words separated by dashes.
 
 Return a JSON object with "title" and "branch" fields.
 
-Example 1: {"title": "Fix login button not working on mobile", "branch": "claude/fix-mobile-login-button"}
-Example 2: {"title": "Update README with installation instructions", "branch": "claude/update-readme"}
-Example 3: {"title": "Improve performance of data processing script", "branch": "claude/improve-data-processing"}
+Example 1: {"title": "Fix login button not working on mobile", "branch": "botvalia/fix-mobile-login-button"}
+Example 2: {"title": "Update README with installation instructions", "branch": "botvalia/update-readme"}
+Example 3: {"title": "Improve performance of data processing script", "branch": "botvalia/improve-data-processing"}
 
 Here is the session description:
 <description>{description}</description>
@@ -104,7 +104,7 @@ type TitleAndBranch = {
  */
 async function generateTitleAndBranch(description: string, signal: AbortSignal): Promise<TitleAndBranch> {
   const fallbackTitle = truncateToWidth(description, 75);
-  const fallbackBranch = 'claude/task';
+  const fallbackBranch = 'botvalia/task';
   try {
     const userPrompt = SESSION_TITLE_AND_BRANCH_PROMPT.replace('{description}', description);
     const response = await queryHaiku({
@@ -1013,7 +1013,7 @@ export async function teleportToRemote(options: {
       if (isBundleUploadFailure(bundle)) {
         logError(new Error(`Bundle upload failed: ${bundle.error}`));
         // Only steer users to GitHub setup when there's a remote to clone from.
-        const setup = repoInfo ? '. Please setup GitHub on https://claude.ai/code' : '';
+          const setup = repoInfo ? '. Please set up GitHub in BotValia Web or see https://github.com/GaruBrothers/botvalia-code' : '';
         let msg: string;
         switch (bundle.failReason) {
           case 'empty_repo':

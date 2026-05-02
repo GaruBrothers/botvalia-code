@@ -1503,7 +1503,7 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
         messages.push({
-          message: `Removed conflicting CLI alias from ${configFile}. Run: unalias botvalia or unalias claude`,
+          message: `Removed conflicting CLI alias from ${configFile}. Run: unalias botvalia`,
           userActionRequired: true,
           type: 'alias',
         })
@@ -1590,7 +1590,7 @@ async function manualRemoveNpmPackage(
 
       return {
         success: true,
-        warning: `${packageName} executables removed, but node_modules directory was left intact for safety. You may manually delete it later at: ${nodeModulesPath}`,
+        warning: `Legacy CLI executables were removed, but the node_modules directory was left intact for safety. You may manually delete it later at: ${nodeModulesPath}`,
       }
     } else {
       return { success: false }

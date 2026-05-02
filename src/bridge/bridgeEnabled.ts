@@ -70,7 +70,7 @@ export async function isBridgeEnabledBlocking(): Promise<boolean> {
 export async function getBridgeDisabledReason(): Promise<string | null> {
   if (feature('BRIDGE_MODE')) {
     if (!isClaudeAISubscriber()) {
-      return 'Remote Control requires a claude.ai subscription. Run `botvalia auth login` to sign in with your claude.ai account.'
+      return 'Remote Control requires a BotValia subscription. Run `botvalia auth login` to sign in with your BotValia account.'
     }
     if (!hasProfileScope()) {
       return 'Remote Control requires a full-scope login token. Long-lived tokens (from `botvalia setup-token` or CLAUDE_CODE_OAUTH_TOKEN) are limited to inference-only for security reasons. Run `botvalia auth login` to use Remote Control.'

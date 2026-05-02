@@ -4326,7 +4326,7 @@ export function REPL({
   useEffect(() => {
     const handleSuspend = () => {
       // Print suspension instructions
-      process.stdout.write(`\nClaude Code has been suspended. Run \`fg\` to bring BotValia Code back.\nNote: ctrl + z now suspends BotValia Code, ctrl + _ undoes input.\n`);
+      process.stdout.write(`\nBotValia Code has been suspended. Run \`fg\` to bring it back.\nNote: ctrl + z now suspends BotValia Code, ctrl + _ undoes input.\n`);
     };
     const handleResume = () => {
       // Force complete component tree replacement instead of terminal clear
@@ -4760,7 +4760,7 @@ export function REPL({
   const canShowWelcomeLogo = screen === 'prompt' && !hideBanner && !viewedAgentTask && !focusedInputDialog && !toolJSX && centeredModal == null && toolPermissionOverlay == null && !hasVisiblePromptConversation && !placeholderText && !showSpinner;
   const showWelcomeHero = isFullscreenEnvEnabled() && canShowWelcomeLogo;
   const landingWidth = Math.max(62, Math.min(transcriptCols - 4, 124));
-  const taskSidebar = showTaskSidebar ? <TaskSidebar tasks={tasksV2!} /> : null;
+  const taskSidebar = showTaskSidebar ? <TaskSidebar tasks={tasksV2!} side="right" /> : null;
   const promptMessagesView = <Messages messages={displayedMessages} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={isLoading} streamingText={isLoading && !viewedAgentTask ? visibleStreamingText : null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} unseenDivider={viewedAgentTask ? undefined : unseenDivider} scrollRef={isFullscreenEnvEnabled() ? scrollRef : undefined} trackStickyPrompt={isFullscreenEnvEnabled() ? true : undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner || !canShowWelcomeLogo} />;
   const welcomeMessages = <Messages messages={[]} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={false} streamingText={null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} unseenDivider={undefined} scrollRef={undefined} trackStickyPrompt={undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner} />;
   const scrollableContent = showWelcomeHero ? <Box flexDirection="column" width="100%" alignItems="center">
@@ -4810,7 +4810,7 @@ export function REPL({
       {feature('MESSAGE_ACTIONS') && isFullscreenEnvEnabled() && !disableMessageActions ? <MessageActionsKeybindings handlers={messageActionHandlers} isActive={cursor !== null} /> : null}
       <CancelRequestHandler {...cancelRequestProps} />
       <MCPConnectionManager key={remountKey} dynamicMcpConfig={dynamicMcpConfig} isStrictMcpConfig={strictMcpConfig}>
-        <FullscreenLayout scrollRef={scrollRef} overlay={toolPermissionOverlay} bottomFloat={feature('BUDDY') && companionVisible && !companionNarrow ? <CompanionFloatingBubble /> : undefined} modal={centeredModal} modalScrollRef={modalScrollRef} dividerYRef={dividerYRef} hidePill={!!viewedAgentTask} hideSticky={!!viewedTeammateTask} newMessageCount={unseenDivider?.count ?? 0} centered={showWelcomeHero} centeredWidth={landingWidth} leftSidebar={taskSidebar} onPillClick={() => {
+        <FullscreenLayout scrollRef={scrollRef} overlay={toolPermissionOverlay} bottomFloat={feature('BUDDY') && companionVisible && !companionNarrow ? <CompanionFloatingBubble /> : undefined} modal={centeredModal} modalScrollRef={modalScrollRef} dividerYRef={dividerYRef} hidePill={!!viewedAgentTask} hideSticky={!!viewedTeammateTask} newMessageCount={unseenDivider?.count ?? 0} centered={showWelcomeHero} centeredWidth={landingWidth} rightSidebar={taskSidebar} onPillClick={() => {
         setCursor(null);
         jumpToNew(scrollRef.current);
       }} scrollable={scrollableContent} bottom={<Box flexDirection={feature('BUDDY') && companionNarrow ? 'column' : 'row'} width="100%" alignItems={feature('BUDDY') && companionNarrow ? undefined : 'flex-end'}>

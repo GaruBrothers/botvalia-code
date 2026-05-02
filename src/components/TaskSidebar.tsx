@@ -7,6 +7,7 @@ import { truncateToWidth } from '../utils/format.js'
 
 type Props = {
   tasks: Task[]
+  side?: 'left' | 'right'
 }
 
 function byPriority(left: Task, right: Task): number {
@@ -63,7 +64,10 @@ function getStatusTone(status: Task['status']): {
   }
 }
 
-export function TaskSidebar({ tasks }: Props): React.ReactNode {
+export function TaskSidebar({
+  tasks,
+  side = 'right',
+}: Props): React.ReactNode {
   const { columns, rows } = useTerminalSize()
   const width = Math.max(34, Math.min(48, Math.floor(columns * 0.26)))
   const ordered = [...tasks].sort(byPriority)
@@ -79,13 +83,14 @@ export function TaskSidebar({ tasks }: Props): React.ReactNode {
       ? `${activeCount} active · ${queuedCount} queued · ${doneCount} done`
       : `${doneCount} done`
   const subjectWidth = Math.max(18, width - 12)
+  const sideSpacing = side === 'right' ? { paddingLeft: 1 } : { paddingRight: 1 }
 
   return (
     <Box
       width={width}
       flexShrink={0}
       flexDirection="column"
-      paddingRight={1}
+      {...sideSpacing}
       paddingBottom={1}
       overflow="hidden"
     >

@@ -1,7 +1,7 @@
 export const PR_TITLE = 'Add BotValia Code GitHub Workflow'
 
 export const GITHUB_ACTION_SETUP_DOCS_URL =
-  'https://github.com/anthropics/claude-code-action/blob/main/docs/setup.md'
+  'https://github.com/GaruBrothers/botvalia-code'
 
 export const WORKFLOW_CONTENT = `name: BotValia Code
 
@@ -18,10 +18,10 @@ on:
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@botvalia')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@botvalia')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@botvalia')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@botvalia') || contains(github.event.issue.title, '@botvalia')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,8 +49,8 @@ jobs:
           # prompt: 'Update the pull request description to include a summary of changes.'
 
           # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          # See https://github.com/GaruBrothers/botvalia-code
+          # for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
 
 `
@@ -61,7 +61,7 @@ This PR adds a GitHub Actions workflow that enables BotValia Code integration in
 
 ### What is BotValia Code?
 
-[BotValia Code](https://claude.com/claude-code) is an AI coding agent that can help with:
+[BotValia Code](https://github.com/GaruBrothers/botvalia-code) is an AI coding agent that can help with:
 - Bug fixes and improvements  
 - Documentation updates
 - Implementing new features
@@ -71,13 +71,13 @@ This PR adds a GitHub Actions workflow that enables BotValia Code integration in
 
 ### How it works
 
-Once this PR is merged, we'll be able to interact with BotValia by mentioning @claude in a pull request or issue comment.
+Once this PR is merged, we'll be able to interact with BotValia by mentioning @botvalia in a pull request or issue comment.
 Once the workflow is triggered, BotValia will analyze the comment and surrounding context, and execute on the request in a GitHub action.
 
 ### Important Notes
 
 - **This workflow won't take effect until this PR is merged**
-- **@claude mentions won't work until after the merge is complete**
+- **@botvalia mentions won't work until after the merge is complete**
 - The workflow runs automatically whenever BotValia is mentioned in PR or issue comments
 - BotValia gets access to the entire PR or issue context including files, diffs, and previous comments
 
@@ -93,9 +93,9 @@ Once the workflow is triggered, BotValia will analyze the comment and surroundin
 allowed_tools: Bash(npm install),Bash(npm run build),Bash(npm run lint),Bash(npm run test)
 \`\`\`
 
-There's more information in the [BotValia Code action repo](https://github.com/anthropics/claude-code-action).
+There's more information in the [BotValia Code action repo](https://github.com/GaruBrothers/botvalia-code).
 
-After merging this PR, let's try mentioning @claude in a comment on any PR to get started!`
+After merging this PR, let's try mentioning @botvalia in a comment on any PR to get started!`
 
 export const CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT = `name: BotValia Code Review
 
@@ -138,7 +138,7 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review \${{ github.repository }}/pull/\${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          # See https://github.com/GaruBrothers/botvalia-code
+          # for available options
 
 `

@@ -3,7 +3,7 @@ import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
   title: 'BotValia Runtime',
-  description: 'Live Session Inspector',
+  description: 'BotValia Runtime Inspector',
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
