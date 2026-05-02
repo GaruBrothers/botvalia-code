@@ -95,7 +95,7 @@ export function Composer({
   const filteredSkills = SKILLS.filter(s => s.name.toLowerCase().includes(suggestionQuery));
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 pt-0 relative mb-4">
+    <div className="w-full max-w-4xl mx-auto px-4 pt-0 pb-2 relative">
       {/* Glow Behind the Composer */}
       <div className={`absolute -inset-1 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-indigo-500/20 blur-xl transition-opacity duration-500 rounded-3xl ${isFocused ? 'opacity-100' : 'opacity-0'}`} />
       
@@ -157,7 +157,7 @@ export function Composer({
           }}
           placeholder={placeholder || "Ask BotValia Code or send a command..."}
           disabled={disabled}
-          className="min-h-[56px] w-full resize-none border-0 bg-transparent py-4 px-5 focus-visible:ring-0 text-white placeholder:text-gray-500 scrollbar-hide text-base leading-relaxed"
+          className="min-h-[46px] w-full resize-none border-0 bg-transparent py-3 px-4 focus-visible:ring-0 text-white placeholder:text-gray-500 scrollbar-hide text-[15px] leading-6"
           onKeyDown={(e) => {
             if (disabled) {
               return;
@@ -183,7 +183,7 @@ export function Composer({
           }}
         />
 
-        <div className="flex items-center justify-between px-3 pb-3">
+        <div className="flex items-center justify-between px-3 pb-2">
           <div className="flex items-center space-x-2">
             <Button 
               variant="ghost" 
@@ -235,7 +235,7 @@ export function Composer({
           </div>
         </div>
       </div>
-      <div className="text-center mt-4">
+      <div className="text-center mt-2.5">
         <div className="flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest font-semibold opacity-60">
           <span className="flex items-center space-x-1.5 text-gray-500 mix-blend-plus-lighter">
             <Zap className="w-3 h-3" />

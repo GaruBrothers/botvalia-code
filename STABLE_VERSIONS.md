@@ -9,9 +9,16 @@ de la conversación.
 ### Current stable
 
 - `431cf13` — `Stabilize BotValia CLI shell and runtime UI`
-  - Tag: `stable-cli-2026-05-02`
-  - Shell del CLI con arranque más pulido, chat más amplio y composer con marco mejorado.
+  - Tag actual: `stable-cli-2026-05-02`
+  - Último checkpoint formalmente etiquetado como estable para CLI.
   - Mantiene el boot sano con `bun run version` y el flujo `botvalia` alineado con `dev:auto`.
+
+### Current working head
+
+- `24a6d12` — `Add task rail and runtime thinking stream`
+  - Estado real de `main` al día de hoy.
+  - Incluye task rail lateral en CLI para procesos complejos y mejoras del shell/runtime compartido.
+  - Aún no tiene tag de estable separado; el estable formal sigue siendo `431cf13`.
 
 ### Previous stable checkpoints
 
@@ -26,9 +33,16 @@ de la conversación.
 ### Current stable
 
 - `431cf13` — `Stabilize BotValia CLI shell and runtime UI`
-  - Tag: `stable-ui-2026-05-02`
+  - Tag actual: `stable-ui-2026-05-02`
+  - Último checkpoint formalmente etiquetado como estable para UI.
   - Runtime inspector con `BotValia-CodeUI` compilando bien, bridge validado y carga preparada para el shell real.
-  - Validado con `npm run build`, `npm run lint` y subida/bajada del runtime inspector.
+
+### Current working head
+
+- `24a6d12` — `Add task rail and runtime thinking stream`
+  - Estado real de `main` al día de hoy.
+  - Incluye thinking stream conectado al runtime, contexto de canal web, modos en UI y task rail compartido con el shell.
+  - Aún no tiene tag de estable separado; el estable formal sigue siendo `431cf13`.
 
 ### Previous stable checkpoints
 
@@ -51,3 +65,4 @@ Cuando se confirme un nuevo punto estable:
 1. agregar el commit nuevo al bloque correspondiente (`CLI` o `UI`)
 2. mover el anterior a `Previous stable checkpoints`
 3. anotar en una línea qué quedó estable en ese commit
+4. si el `HEAD` de trabajo aún no fue etiquetado, dejarlo reflejado en `Current working head`

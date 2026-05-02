@@ -38,7 +38,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
       initial={{ opacity: 0, y: 15, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
-      className={cn("flex w-full group py-5", {
+      className={cn("flex w-full group py-2.5", {
         "justify-end": isUser,
         "justify-start": !isUser,
         "opacity-70": msg.isPending,
@@ -48,12 +48,12 @@ export function MessageBubble({ msg }: { msg: Message }) {
              "flex-row-reverse": isUser,
       })}>
         
-        <div className={cn("flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full border shadow-sm relative mt-1", {
-          "bg-gradient-to-tr from-gray-800 to-gray-700 border-gray-600 ml-4": isUser,
-          "bg-gradient-to-tr from-indigo-900 to-purple-900 border-indigo-700/50 mr-4 shadow-indigo-500/20": !isUser && !isSys,
-          "bg-black border-gray-800 mr-4": isSys,
+        <div className={cn("flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full border shadow-sm relative mt-0.5", {
+          "bg-gradient-to-tr from-gray-800 to-gray-700 border-gray-600 ml-3": isUser,
+          "bg-gradient-to-tr from-indigo-900 to-purple-900 border-indigo-700/50 mr-3 shadow-indigo-500/20": !isUser && !isSys,
+          "bg-black border-gray-800 mr-3": isSys,
         })}>
-          <Icon className={cn("w-4 h-4", {
+          <Icon className={cn("w-3.5 h-3.5", {
             "text-gray-200": isUser,
             "text-indigo-200 fill-indigo-200/20": !isUser && !isSys,
             "text-gray-500": isSys,
@@ -69,7 +69,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
           "items-start": !isUser,
           "w-full": !isUser && !isSys // let AI messages expand to show tables nicely
         })}>
-           <div className={cn("flex items-center space-x-2 mb-1.5", isUser && "flex-row-reverse space-x-reverse")}>
+           <div className={cn("flex items-center space-x-2 mb-1", isUser && "flex-row-reverse space-x-reverse")}>
              <span className="text-[11px] font-semibold text-gray-400 tracking-wide uppercase">
                {isUser
                  ? msg.isPending
@@ -88,7 +88,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
              </span>
            </div>
            
-           <div className={cn("px-5 py-3.5 text-[14px] leading-relaxed shadow-sm overflow-hidden", {
+           <div className={cn("px-4 py-2.5 text-[13px] leading-relaxed shadow-sm overflow-hidden", {
              "bg-white/[0.06] text-gray-100 rounded-2xl rounded-tr-sm border border-white/[0.05] whitespace-pre-wrap": isUser,
              "bg-transparent text-gray-200 w-full": !isUser && !isSys,
              "border border-white/[0.05] rounded-xl bg-black/50 text-gray-400 font-mono text-[11px] backdrop-blur-sm whitespace-pre-wrap": isSys,
@@ -96,9 +96,9 @@ export function MessageBubble({ msg }: { msg: Message }) {
              {isUser || isSys ? (
                 tryParseCleanContent(msg.content)
              ) : (
-                <div className="markdown-body text-[14px] leading-7 space-y-4">
+                <div className="markdown-body text-[13px] leading-6 space-y-3">
                   {(isAssistantThinking || isAssistantStreamingResponse) && (
-                    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-100 shadow-[0_0_24px_rgba(99,102,241,0.18)]">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-100 shadow-[0_0_24px_rgba(99,102,241,0.18)]">
                       <span className="relative flex h-2.5 w-2.5">
                         <span className="absolute inset-0 animate-ping rounded-full bg-indigo-300/60" />
                         <span className="relative h-2.5 w-2.5 rounded-full bg-indigo-200" />
@@ -118,7 +118,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
                   )}
 
                   {!assistantDisplayContent && isAssistantThinking ? (
-                    <div className="rounded-2xl border border-indigo-400/10 bg-indigo-500/5 px-4 py-3 text-sm text-indigo-100/80">
+                    <div className="rounded-2xl border border-indigo-400/10 bg-indigo-500/5 px-4 py-2.5 text-[13px] text-indigo-100/80">
                       BotValia Code está pensando y preparando la respuesta...
                     </div>
                   ) : (

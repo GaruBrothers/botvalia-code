@@ -19,4 +19,5 @@ coverage/
 .idea/
 .vscode/
 skills-lock.json
+BotValia-CodeUI/.next/
 BotValia-CodeUI/.runtime-next/

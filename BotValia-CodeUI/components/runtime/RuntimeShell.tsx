@@ -255,7 +255,7 @@ export function RuntimeShell() {
             />
           )}
 
-          <div className="z-20 mt-auto bg-gradient-to-t from-black via-black/80 to-transparent pt-6 pb-4 backdrop-blur-xl">
+          <div className="z-20 mt-auto bg-gradient-to-t from-black via-black/80 to-transparent pt-3 pb-2 backdrop-blur-xl">
             <Composer
               isRunning={selectedSession?.status === 'running'}
               onSend={sendMessage}

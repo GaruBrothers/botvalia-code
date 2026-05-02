@@ -858,6 +858,20 @@ function createEventLog(
   return { id, type, message, timestamp };
 }
 
+function createSystemRuntimeMessage(
+  sessionId: string,
+  content: string,
+  timestamp: string,
+): Message {
+  return buildMessage({
+    id: `system-${sessionId}-${timestamp}-${content.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    role: 'system',
+    content,
+    timestamp,
+    label: 'system',
+  });
+}
+
 function eventLogFromRuntimeEvent(event: RuntimeEvent): EventLog | null {
   switch (event.type) {
     case 'session_started':
@@ -1085,6 +1099,18 @@ export function applyRuntimeSessionEvent(
 
   if (event.type === 'interrupted' || event.type === 'error') {
     nextSessions = clearPendingMessagesFromSession(nextSessions, sessionId);
+  }
+
+  if (event.type === 'interrupted') {
+    nextSessions = appendMessageToSession(
+      nextSessions,
+      sessionId,
+      createSystemRuntimeMessage(
+        sessionId,
+        'Auto cancelado por el usuario.',
+        event.timestamp,
+      ),
+    );
   }
 
   const log = eventLogFromRuntimeEvent(event);

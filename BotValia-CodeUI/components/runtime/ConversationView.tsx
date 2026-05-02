@@ -41,7 +41,7 @@ export function ConversationView({ messages }: { messages: Message[] }) {
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-y-auto px-4 md:px-8 py-8 w-full max-w-4xl mx-auto flex flex-col space-y-1 scrollbar-hide relative"
+      className="flex-1 overflow-y-auto px-4 md:px-7 py-4 md:py-5 w-full max-w-4xl mx-auto flex flex-col space-y-0.5 scrollbar-hide relative"
     >
       {visibleMessages.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-sm opacity-50 select-none">
@@ -56,7 +56,7 @@ export function ConversationView({ messages }: { messages: Message[] }) {
         ))
       )}
 
-      <div ref={bottomRef} className="h-10 flex-shrink-0" />
+      <div ref={bottomRef} className="h-4 flex-shrink-0" />
     </div>
   )
 }

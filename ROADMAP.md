@@ -1,6 +1,6 @@
-# Runtime UI Roadmap
+# Runtime UI and Model Routing Roadmap
 
-Este roadmap refleja la integración real entre `BotValia-CodeUI` y el runtime actual del CLI.
+Este roadmap refleja la integración real entre `BotValia-CodeUI`, el runtime actual del CLI y los pendientes reales del router de modelos.
 
 ## Estado actual
 
@@ -23,6 +23,23 @@ También está consumiendo lo que ya expone el runtime en lectura:
 - `swarmThreads`
 - `swarmWaitingEdges`
 - eventos live de runtime y de sesión
+
+Además, hoy ya existe en producto:
+
+- topbar y shell nuevos de `BotValia-CodeUI` corriendo sobre el runtime real
+- placeholder de `thinking` en vivo en web
+- reemplazo limpio de `thinking` por respuesta final cuando llega el assistant message
+- `Shift+Tab` en la UI web para ciclar modo de ejecución
+- mensaje de sistema `Auto cancelado por el usuario.` al interrumpir desde la UI
+- transcript más compacto en altura para mostrar más conversación en pantalla
+- task rail lateral en CLI cuando el flujo expone tareas enumeradas o trabajo en curso
+
+Y hoy el routing de modelos funciona así:
+
+- la cola base `fast / complex / code` se construye en `scripts/dev-auto.ps1`
+- el catálogo live de modelos free de OpenRouter ya se consulta hoy
+- el CLI también puede aplicar rutas en caliente vía `src/utils/model/providerRouting.ts`
+- todavía no existe un comando de producto para auditar o reordenar esa cola con criterios públicos
 
 ## Fase 0
 
@@ -134,6 +151,8 @@ Ya existe hoy:
 - mensajes reales por sesión
 - timestamps reales
 - sanitización en frontend para esconder thinking, redacted thinking, caveats y XML interno
+- placeholder y lifecycle básico de `thinking` en web
+- contexto explícito de origen `web-ui` al enviar desde la UI
 
 Pendientes backend:
 - payload de mensaje más fiel que `RuntimeMessageSummary.text`
@@ -147,12 +166,18 @@ Pendientes backend:
   - `thinking_started`
   - `thinking_delta`
   - `thinking_completed`
+- texto de pensamiento realmente incremental y visible en tiempo real cuando el modelo/provider lo emite
+- diferenciación más fuerte entre:
+  - `thinking`
+  - `tool progress`
+  - `final answer`
 
 Impacto UI actual:
 - la conversación principal ya funciona con mensajes reales
 - aún depende de un adapter/sanitizador porque el runtime colapsa varios contenidos a texto plano
 - el botón attach queda visible, pero pendiente
-- la UI ya muestra streaming textual y placeholder de thinking en vivo, pero todavía no existe una fase backend separada y estructurada para “pensamiento bonito” ni un lock duro de canal por sesión
+- la UI ya muestra streaming textual y placeholder de thinking en vivo, pero todavía no existe una fase backend separada y estructurada para “pensamiento bonito” completo ni un lock duro de canal por sesión
+- si el modelo no emite deltas reales de pensamiento, la UI cae al placeholder y luego muestra la respuesta final
 
 Archivos a tocar:
 - [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
@@ -224,3 +249,50 @@ Archivos a tocar:
 - [src/utils/directMemberMessage.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/directMemberMessage.ts)
 - [src/tools/AgentTool/AgentTool.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/tools/AgentTool/AgentTool.tsx)
 - [src/tools/SendMessageTool/SendMessageTool.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/tools/SendMessageTool/SendMessageTool.ts)
+
+## Fase 7
+
+Objetivo: ranking dinámico de modelos free para programación con reordenamiento controlado de colas.
+
+Estado:
+- pendiente de producto
+
+Qué ya existe hoy:
+- comando `/model`
+- rutas separadas por lane:
+  - `fast`
+  - `complex`
+  - `code`
+- catálogo live de modelos free de OpenRouter
+- aplicación de rutas en caliente desde `providerRouting.ts`
+
+Qué falta:
+- `/model audit`
+  - comparar la cola actual vs ranking público y disponibilidad real
+- `/model update`
+  - reordenar la cola actual sin tocar el turno ya en vuelo
+- persistencia local de overrides de router
+  - por ejemplo `~/.botvalia/model-router-overrides.json`
+- scoring híbrido con múltiples señales:
+  - disponibilidad free real
+  - popularidad/uso para programación
+  - benchmark coding
+  - latencia/throughput
+- hysteresis para evitar reorder agresivo por ruido diario
+- policy clara:
+  - el modelo que ya está respondiendo no se mueve en medio de la ejecución
+  - el reorder aplica a próximos turnos
+  - si no hay modelos nuevos, reordenar solo si el score externo supera un umbral
+
+Fuentes públicas sugeridas:
+- OpenRouter rankings
+- OpenRouter programming collection
+- OpenRouter free models collection
+- Aider leaderboard
+- Artificial Analysis
+
+Archivos probables a tocar:
+- [src/commands/model/model.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/commands/model/model.tsx)
+- [src/utils/model/providerRouting.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/model/providerRouting.ts)
+- [scripts/dev-auto.ps1](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/scripts/dev-auto.ps1)
+- nuevo helper para fetch/score/persist de ranking
