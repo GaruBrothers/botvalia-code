@@ -8,11 +8,15 @@ de la conversación.
 
 ### Current stable
 
-- `f72b61d` — `Align botvalia launcher startup with auto mode`
-  - `botvalia` y `bun run dev:auto` quedaron alineados en el mismo flujo base.
-  - Es el último punto empujado pensado como referencia estable del shell CLI.
+- `431cf13` — `Stabilize BotValia CLI shell and runtime UI`
+  - Tag: `stable-cli-2026-05-02`
+  - Shell del CLI con arranque más pulido, chat más amplio y composer con marco mejorado.
+  - Mantiene el boot sano con `bun run version` y el flujo `botvalia` alineado con `dev:auto`.
 
 ### Previous stable checkpoints
+
+- `f72b61d` — `Align botvalia launcher startup with auto mode`
+  - Punto base donde `botvalia` y `bun run dev:auto` quedaron alineados.
 
 - `3930775` — `Mostrar BotValia Code grande en el arranque`
   - Punto útil para volver al arranque visual grande del CLI.
@@ -21,10 +25,15 @@ de la conversación.
 
 ### Current stable
 
-- `521cf00` — `Integrate CodeUI runtime shell and unify botvalia launcher`
-  - Primer punto donde la UI `BotValia-CodeUI` quedó integrada al runtime shell.
+- `431cf13` — `Stabilize BotValia CLI shell and runtime UI`
+  - Tag: `stable-ui-2026-05-02`
+  - Runtime inspector con `BotValia-CodeUI` compilando bien, bridge validado y carga preparada para el shell real.
+  - Validado con `npm run build`, `npm run lint` y subida/bajada del runtime inspector.
 
 ### Previous stable checkpoints
+
+- `521cf00` — `Integrate CodeUI runtime shell and unify botvalia launcher`
+  - Primer punto donde la UI `BotValia-CodeUI` quedó integrada al runtime shell.
 
 - `e831793` — `Rediseñar el inspector runtime como workspace de chat`
   - Rediseño base del inspector orientado a chat.
