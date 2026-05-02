@@ -15,5 +15,8 @@ coverage/
 
 .claude/
 .botvalia/
+.agents/
 .idea/
 .vscode/
+skills-lock.json
+BotValia-CodeUI/.runtime-next/
