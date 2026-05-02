@@ -18,6 +18,26 @@
   --color-text-muted: #9ca3af;
   --color-glass-bg: rgba(0, 0, 0, 0.4);
   --color-glass-border: rgba(255, 255, 255, 0.05);
+  --font-sans: "Segoe UI", "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-text-main);
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
 }
 
 /* Magic Premium Theme Inversion */

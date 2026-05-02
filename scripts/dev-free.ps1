@@ -7,6 +7,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Initialize-Utf8Console {
+  try {
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [Console]::InputEncoding = $utf8NoBom
+    [Console]::OutputEncoding = $utf8NoBom
+    $OutputEncoding = $utf8NoBom
+  } catch {
+  }
+
+  try {
+    & cmd /c "chcp 65001 >nul" | Out-Null
+  } catch {
+  }
+}
+
+Initialize-Utf8Console
+
 $bunPath = "bun"
 $wingetBunPath = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Oven-sh.Bun_Microsoft.Winget.Source_8wekyb3d8bbwe\bun-windows-x64\bun.exe"
 if (Test-Path $wingetBunPath) {

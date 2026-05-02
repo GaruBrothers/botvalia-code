@@ -132,68 +132,83 @@ export function CondensedLogo(): ReactNode {
     : textWidth
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10))
   const pathLine = agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd
+  const shellLabel = showLargeWordmark ? 'BotValia Console' : 'BotValia Shell'
 
   return (
     <OffscreenFreeze>
       <Box flexDirection="column" alignItems="center">
-        <Box alignItems="center" flexDirection="column" marginBottom={1}>
-          {isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />}
-          <Text color="professionalBlue">▁▁▁▁▁</Text>
-        </Box>
-
-        <Box flexDirection="column" alignItems="center">
-          {showLargeWordmark ? (
-            <Box flexDirection="column" alignItems="center">
-              {BOTVALIA_BANNER.map((line, index) => (
-                <Text key={index}>
-                  <Text bold color="claude">
-                    {line}
-                  </Text>
-                  <Text color="professionalBlue">
-                    {'  '}
-                    {CODE_BANNER[index].slice(0, 18)}
-                  </Text>
-                  <Text color="suggestion">{CODE_BANNER[index].slice(18)}</Text>
-                </Text>
-              ))}
-            </Box>
-          ) : (
-            <Text>
-              <Text bold color="white">
-                BotValia
-              </Text>{' '}
-              <Text bold color="professionalBlue">
-                Code
-              </Text>
-            </Text>
-          )}
-
-          <Box marginTop={1} flexDirection="row" gap={1}>
-            <MetaChip color="professionalBlue">v{truncatedVersion}</MetaChip>
-            <MetaChip color="fastMode">free-first</MetaChip>
+        <Box
+          flexDirection="column"
+          alignItems="center"
+          borderStyle="round"
+          borderColor="subtle"
+          paddingX={showLargeWordmark ? 3 : 2}
+          paddingY={1}
+        >
+          <Box marginBottom={1} flexDirection="row" gap={1}>
+            <MetaChip color="professionalBlue">{shellLabel}</MetaChip>
+            <MetaChip color="suggestion">chat-first</MetaChip>
           </Box>
 
-          {shouldSplit ? (
-            <Box marginTop={1} flexDirection="column" alignItems="center">
-              <MetaLine label="model" value={truncatedModel} />
-              <MetaLine label="billing" value={truncatedBilling} color="fastMode" />
+          <Box alignItems="center" flexDirection="column" marginBottom={1}>
+            {isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />}
+            <Text color="professionalBlue">╶────────╴</Text>
+          </Box>
+
+          <Box flexDirection="column" alignItems="center">
+            {showLargeWordmark ? (
+              <Box flexDirection="column" alignItems="center">
+                {BOTVALIA_BANNER.map((line, index) => (
+                  <Text key={index}>
+                    <Text bold color="claude">
+                      {line}
+                    </Text>
+                    <Text color="professionalBlue">
+                      {'  '}
+                      {CODE_BANNER[index].slice(0, 18)}
+                    </Text>
+                    <Text color="suggestion">{CODE_BANNER[index].slice(18)}</Text>
+                  </Text>
+                ))}
+              </Box>
+            ) : (
+              <Text>
+                <Text bold color="white">
+                  BotValia
+                </Text>{' '}
+                <Text bold color="professionalBlue">
+                  Code
+                </Text>
+              </Text>
+            )}
+
+            <Box marginTop={1} flexDirection="row" gap={1}>
+              <MetaChip color="professionalBlue">v{truncatedVersion}</MetaChip>
+              <MetaChip color="fastMode">free-first</MetaChip>
             </Box>
-          ) : (
-            <Box marginTop={1}>
-              <MetaLine
-                label="model"
-                value={`${truncatedModel} · ${truncatedBilling}`}
-              />
-            </Box>
-          )}
 
-          <MetaLine label="cwd" value={pathLine} color="subtle" />
+            {shouldSplit ? (
+              <Box marginTop={1} flexDirection="column" alignItems="center">
+                <MetaLine label="model" value={truncatedModel} />
+                <MetaLine label="billing" value={truncatedBilling} color="fastMode" />
+              </Box>
+            ) : (
+              <Box marginTop={1}>
+                <MetaLine
+                  label="model"
+                  value={`${truncatedModel} · ${truncatedBilling}`}
+                />
+              </Box>
+            )}
 
-          {showGuestPassesUpsell && <GuestPassesUpsell />}
+            <MetaLine label="cwd" value={pathLine} color="subtle" />
 
-          {!showGuestPassesUpsell && showOverageCreditUpsell && (
-            <OverageCreditUpsell maxWidth={textWidth} twoLine />
-          )}
+            {showGuestPassesUpsell && <GuestPassesUpsell />}
+
+            {!showGuestPassesUpsell && showOverageCreditUpsell && (
+              <OverageCreditUpsell maxWidth={textWidth} twoLine />
+            )}
+          </Box>
         </Box>
       </Box>
     </OffscreenFreeze>

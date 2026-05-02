@@ -444,8 +444,8 @@ export function FullscreenLayout(t0) {
     }
     if (centered) {
       return <PromptOverlayProvider>
-          <Box flexGrow={1} justifyContent="center" alignItems="center" overflow="hidden" paddingX={2}>
-            <Box flexDirection="column" width={centeredWidth ?? Math.max(60, columns - 8)} overflow="hidden">
+          <Box flexGrow={1} justifyContent="center" alignItems="center" overflow="hidden" paddingX={1}>
+            <Box flexDirection="column" width={centeredWidth ?? Math.max(68, columns - 6)} overflow="hidden" borderStyle="round" borderColor="professionalBlue" paddingX={2} paddingY={1}>
               <Box flexDirection="column" width="100%">
                 {scrollable}
               </Box>

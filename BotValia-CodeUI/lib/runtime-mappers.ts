@@ -25,6 +25,7 @@ import type {
 } from './runtime-protocol';
 
 const AVATAR_COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'];
+const STREAMING_ASSISTANT_PREFIX = 'streaming-assistant-';
 
 function getBasename(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -527,6 +528,112 @@ export function appendMessageToSession(
   );
 }
 
+function createStreamingAssistantMessage(
+  sessionId: string,
+  content: string,
+  timestamp: string,
+): Message {
+  return buildMessage({
+    id: `${STREAMING_ASSISTANT_PREFIX}${sessionId}`,
+    role: 'assistant',
+    content: content || 'Pensando...',
+    timestamp,
+    isPending: true,
+    label: 'assistant:stream',
+  });
+}
+
+function upsertStreamingAssistantMessage(
+  previousSessions: Session[],
+  sessionId: string,
+  delta: string,
+  timestamp: string,
+): Session[] {
+  const streamingId = `${STREAMING_ASSISTANT_PREFIX}${sessionId}`;
+
+  return sortSessions(
+    previousSessions.map(session => {
+      if (session.id !== sessionId) {
+        return session;
+      }
+
+      const existing = session.messages.find(message => message.id === streamingId);
+      if (existing) {
+        return {
+          ...session,
+          messages: session.messages.map(message =>
+            message.id === streamingId
+              ? {
+                  ...message,
+                  content: `${message.content === 'Pensando...' ? '' : message.content}${delta}`,
+                  timestamp,
+                }
+              : message,
+          ),
+          updatedAt: timestamp,
+          status: 'running',
+        };
+      }
+
+      return {
+        ...session,
+        messages: [
+          ...session.messages,
+          createStreamingAssistantMessage(sessionId, delta, timestamp),
+        ],
+        updatedAt: timestamp,
+        status: 'running',
+      };
+    }),
+  );
+}
+
+function ensureRunningAssistantPlaceholder(
+  previousSessions: Session[],
+  sessionId: string,
+  timestamp: string,
+): Session[] {
+  const streamingId = `${STREAMING_ASSISTANT_PREFIX}${sessionId}`;
+
+  return sortSessions(
+    previousSessions.map(session => {
+      if (session.id !== sessionId) {
+        return session;
+      }
+
+      if (session.messages.some(message => message.id === streamingId)) {
+        return session;
+      }
+
+      return {
+        ...session,
+        messages: [
+          ...session.messages,
+          createStreamingAssistantMessage(sessionId, 'Pensando...', timestamp),
+        ],
+        updatedAt: timestamp,
+        status: 'running',
+      };
+    }),
+  );
+}
+
+function clearPendingMessagesFromSession(
+  previousSessions: Session[],
+  sessionId: string,
+): Session[] {
+  return sortSessions(
+    previousSessions.map(session =>
+      session.id === sessionId
+        ? {
+            ...session,
+            messages: session.messages.filter(message => !message.isPending),
+          }
+        : session,
+    ),
+  );
+}
+
 export function appendOptimisticMessage(
   previousSessions: Session[],
   sessionId: string,
@@ -718,6 +825,23 @@ export function applyRuntimeSessionEvent(
       rawDetail: previousSession?.rawDetail,
     });
     nextSessions = sortSessions([...sessionMap.values()]);
+
+    if (event.snapshot.status === 'running') {
+      nextSessions = ensureRunningAssistantPlaceholder(
+        nextSessions,
+        sessionId,
+        event.timestamp,
+      );
+    }
+  }
+
+  if (event.type === 'message_delta') {
+    nextSessions = upsertStreamingAssistantMessage(
+      nextSessions,
+      sessionId,
+      event.delta,
+      event.timestamp,
+    );
   }
 
   if (event.type === 'message_completed') {
@@ -725,6 +849,10 @@ export function applyRuntimeSessionEvent(
     if (message) {
       nextSessions = appendMessageToSession(nextSessions, sessionId, message);
     }
+  }
+
+  if (event.type === 'interrupted' || event.type === 'error') {
+    nextSessions = clearPendingMessagesFromSession(nextSessions, sessionId);
   }
 
   const log = eventLogFromRuntimeEvent(event);

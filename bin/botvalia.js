@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,7 +27,25 @@ if (isVersionOnly) {
   args.push('-VersionOnly')
 }
 
-const child = spawn('powershell', args, {
+function pickPowerShellBinary() {
+  if (process.platform !== 'win32') return 'powershell'
+
+  const candidates = ['pwsh', 'powershell']
+  for (const candidate of candidates) {
+    const result = spawnSync(
+      candidate,
+      ['-NoLogo', '-NoProfile', '-Command', 'exit 0'],
+      { stdio: 'ignore' },
+    )
+    if (!result.error && result.status === 0) {
+      return candidate
+    }
+  }
+
+  return 'powershell'
+}
+
+const child = spawn(pickPowerShellBinary(), ['-NoLogo', '-NoProfile', ...args], {
   env: {
     ...process.env,
     BOTVALIA_AUTO_QUIET: '1',

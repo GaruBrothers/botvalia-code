@@ -4,8 +4,6 @@ import { Sparkles, TerminalSquare, User } from "lucide-react";
 import * as motion from "motion/react-client";
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 function tryParseCleanContent(content: string) {
   // Replace raw XML or `<internal_thinking>` with nice blocks if we needed to, 
@@ -22,6 +20,11 @@ export function MessageBubble({ msg }: { msg: Message }) {
 
   const isUser = msg.role === "user";
   const isSys = msg.role === "system";
+  const isAssistantThinking = msg.role === "assistant" && msg.isPending;
+  const assistantDisplayContent =
+    isAssistantThinking && (!msg.content.trim() || msg.content === 'Pensando...')
+      ? ''
+      : msg.content;
 
   let Icon = Sparkles;
   if (isUser) Icon = User;
@@ -65,7 +68,15 @@ export function MessageBubble({ msg }: { msg: Message }) {
         })}>
            <div className={cn("flex items-center space-x-2 mb-1.5", isUser && "flex-row-reverse space-x-reverse")}>
              <span className="text-[11px] font-semibold text-gray-400 tracking-wide uppercase">
-               {isUser ? (msg.isPending ? "You · pending" : "You") : isSys ? "System" : "BotValia Code"}
+               {isUser
+                 ? msg.isPending
+                   ? "You · pending"
+                   : "You"
+                 : isSys
+                   ? "System"
+                   : isAssistantThinking
+                     ? "BotValia Code · thinking"
+                     : "BotValia Code"}
              </span>
              <span className="text-[10px] text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" suppressHydrationWarning>
                {formatTime(msg.timestamp)}
@@ -81,6 +92,31 @@ export function MessageBubble({ msg }: { msg: Message }) {
                 tryParseCleanContent(msg.content)
              ) : (
                 <div className="markdown-body text-[14px] leading-7 space-y-4">
+                  {isAssistantThinking && (
+                    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-100 shadow-[0_0_24px_rgba(99,102,241,0.18)]">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="absolute inset-0 animate-ping rounded-full bg-indigo-300/60" />
+                        <span className="relative h-2.5 w-2.5 rounded-full bg-indigo-200" />
+                      </span>
+                      <span>Thinking</span>
+                      <div className="flex items-center gap-1">
+                        {[0, 1, 2].map(index => (
+                          <motion.span
+                            key={index}
+                            animate={{ opacity: [0.25, 1, 0.25], y: [0, -1.5, 0] }}
+                            transition={{ duration: 1.15, repeat: Infinity, delay: index * 0.14, ease: 'easeInOut' }}
+                            className="h-1.5 w-1.5 rounded-full bg-indigo-100"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!assistantDisplayContent && isAssistantThinking ? (
+                    <div className="rounded-2xl border border-indigo-400/10 bg-indigo-500/5 px-4 py-3 text-sm text-indigo-100/80">
+                      BotValia Code está pensando y preparando la respuesta...
+                    </div>
+                  ) : (
                   <Markdown 
                     remarkPlugins={[remarkGfm]}
                     components={{
@@ -91,37 +127,11 @@ export function MessageBubble({ msg }: { msg: Message }) {
                             <div className="bg-[#111111] px-4 py-2 flex justify-between items-center text-[10px] font-mono text-gray-400 border-b border-white/[0.05] uppercase tracking-wider font-semibold">
                               <span>{match[1]}</span>
                             </div>
-                            <div className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                              <SyntaxHighlighter
-                                {...props}
-                                style={vscDarkPlus as any}
-                                language={match[1]}
-                                PreTag="div"
-                                className="!m-0 text-[13px] !bg-[#050505] !p-4"
-                                wrapLines={true}
-                                showLineNumbers={match[1] !== 'diff'}
-                                lineNumberStyle={{ minWidth: '3em', paddingRight: '1em', color: '#444', textAlign: 'right' }}
-                                lineProps={(lineNumber) => {
-                                  const style: any = { display: 'block', padding: '0 4px' };
-                                  if (match[1] === 'diff') {
-                                    const lines = String(children).split('\n');
-                                    const line = lines[lineNumber - 1] || '';
-                                    if (line.startsWith('+')) {
-                                      style.backgroundColor = 'rgba(16, 185, 129, 0.15)'; // Emerald
-                                      style.boxShadow = 'inset 2px 0 0 rgba(16, 185, 129, 0.5)';
-                                    } else if (line.startsWith('-')) {
-                                      style.backgroundColor = 'rgba(239, 68, 68, 0.15)'; // Red
-                                      style.boxShadow = 'inset 2px 0 0 rgba(239, 68, 68, 0.5)';
-                                    } else if (line.startsWith('@@')) {
-                                      style.color = 'rgb(147, 197, 253)'; // Blue
-                                    }
-                                  }
-                                  return { style };
-                                }}
-                              >
+                            <pre className="overflow-x-auto overflow-y-auto max-h-[600px] scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent bg-[#050505] p-4 text-[13px] leading-6 text-gray-200">
+                              <code {...props} className={className}>
                                 {String(children).replace(/\n$/, '')}
-                              </SyntaxHighlighter>
-                            </div>
+                              </code>
+                            </pre>
                           </div>
                         ) : (
                           <code {...props} className={className ? className : "bg-white/[0.1] text-indigo-300 px-1.5 py-0.5 rounded-md font-mono text-[13px]"}>
@@ -135,8 +145,18 @@ export function MessageBubble({ msg }: { msg: Message }) {
                       a: ({node, ...props}) => <a className="text-indigo-400 hover:text-indigo-300 underline" {...props} />
                     }}
                   >
-                    {tryParseCleanContent(msg.content)}
+                    {tryParseCleanContent(assistantDisplayContent)}
                   </Markdown>
+                  )}
+
+                  {isAssistantThinking && assistantDisplayContent && (
+                    <motion.span
+                      aria-hidden="true"
+                      animate={{ opacity: [0.25, 1, 0.25] }}
+                      transition={{ duration: 0.95, repeat: Infinity, ease: 'easeInOut' }}
+                      className="inline-block h-5 w-2 rounded-full bg-indigo-300/70 align-middle"
+                    />
+                  )}
                 </div>
              )}
            </div>

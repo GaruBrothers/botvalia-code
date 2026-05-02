@@ -12,6 +12,7 @@ import type {
 type PendingRequest = {
   resolve: (value: RuntimeProtocolResponse) => void;
   reject: (error: Error) => void;
+  cleanup: () => void;
 };
 
 type RuntimeProtocolEventListener = (event: RuntimeProtocolEvent) => void;
@@ -27,6 +28,8 @@ function isProtocolResponse(
 ): value is RuntimeProtocolResponse {
   return 'requestId' in value;
 }
+
+const RUNTIME_REQUEST_TIMEOUT_MS = 20_000;
 
 export class BrowserRuntimeClient {
   private readonly url: string;
@@ -61,6 +64,7 @@ export class BrowserRuntimeClient {
         }
 
         this.pending.delete(parsed.requestId);
+        pending.cleanup();
         pending.resolve(parsed);
         return;
       }
@@ -74,6 +78,7 @@ export class BrowserRuntimeClient {
       this.emitConnectionChange(false);
       for (const [requestId, pending] of this.pending.entries()) {
         this.pending.delete(requestId);
+        pending.cleanup();
         pending.reject(new Error('La conexión runtime WebSocket fue cerrada.'));
       }
     });
@@ -82,6 +87,7 @@ export class BrowserRuntimeClient {
       this.emitConnectionChange(false);
       for (const [requestId, pending] of this.pending.entries()) {
         this.pending.delete(requestId);
+        pending.cleanup();
         pending.reject(new Error('Ocurrió un error en la conexión runtime WebSocket.'));
       }
     });
@@ -133,9 +139,17 @@ export class BrowserRuntimeClient {
 
     const responsePromise = new Promise<RuntimeProtocolResponse>(
       (resolvePromise, rejectPromise) => {
+        const timeoutId = window.setTimeout(() => {
+          this.pending.delete(requestId);
+          rejectPromise(
+            new Error('El runtime tardó demasiado en responder a la solicitud.'),
+          );
+        }, RUNTIME_REQUEST_TIMEOUT_MS);
+
         this.pending.set(requestId, {
           resolve: resolvePromise,
           reject: rejectPromise,
+          cleanup: () => window.clearTimeout(timeoutId),
         });
       },
     );

@@ -2276,8 +2276,14 @@ function PromptInput({
     }
     return 'promptBorder';
   };
+  const promptBorderColor = isLoading ? 'professionalBlue' : getBorderColor();
   if (isExternalEditorActive) {
-    return <Box flexDirection="row" alignItems="center" justifyContent="center" borderColor={getBorderColor()} borderStyle="round" borderLeft={false} borderRight={false} borderBottom width="100%">
+    return <Box flexDirection="row" alignItems="center" justifyContent="center" borderColor={promptBorderColor} borderStyle="round" width="100%" paddingX={2} borderText={{
+      content: ' editor lock ',
+      position: 'top',
+      align: 'center',
+      offset: 0
+    }}>
         <Text dimColor italic>
           Save and close editor to continue...
         </Text>
@@ -2308,7 +2314,7 @@ function PromptInput({
             </Box>
           </Box>
           <Text color={swarmBanner.bgColor}>{'─'.repeat(columns)}</Text>
-        </> : <Box flexDirection="row" alignItems="flex-start" justifyContent="flex-start" borderColor={getBorderColor()} borderStyle="round" borderLeft={false} borderRight={false} borderBottom width="100%" borderText={buildBorderText(showFastIcon ?? false, showFastIconHint, fastModeCooldown)}>
+        </> : <Box flexDirection="row" alignItems="flex-start" justifyContent="flex-start" borderColor={promptBorderColor} borderStyle="round" width="100%" paddingX={1} borderText={buildBorderText(mode, isLoading, showFastIcon ?? false, showFastIconHint, fastModeCooldown)}>
           <PromptInputModeIndicator mode={mode} isLoading={isLoading} viewingAgentName={viewingAgentName} viewingAgentColor={viewingAgentColor} />
           <Box flexGrow={1} flexShrink={1} onClick={handleInputClick}>
             {textInputElement}
@@ -2368,13 +2374,15 @@ function getInitialPasteId(messages: Message[]): number {
   }
   return maxId + 1;
 }
-function buildBorderText(showFastIcon: boolean, showFastIconHint: boolean, fastModeCooldown: boolean): BorderTextOptions | undefined {
-  if (!showFastIcon) return undefined;
+function buildBorderText(mode: string, isLoading: boolean, showFastIcon: boolean, showFastIconHint: boolean, fastModeCooldown: boolean): BorderTextOptions {
+  const shellLabel = mode === 'bash' ? 'BotValia shell' : 'BotValia chat';
+  const statusLabel = isLoading ? 'working' : shellLabel;
   const fastSeg = showFastIconHint ? `${getFastIconString(true, fastModeCooldown)} ${chalk.dim('/fast')}` : getFastIconString(true, fastModeCooldown);
+  const content = showFastIcon ? ` ${statusLabel} · ${fastSeg} ` : ` ${statusLabel} `;
   return {
-    content: ` ${fastSeg} `,
+    content,
     position: 'top',
-    align: 'end',
+    align: 'center',
     offset: 0
   };
 }

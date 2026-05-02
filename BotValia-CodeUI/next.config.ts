@@ -1,4 +1,9 @@
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type {NextConfig} from 'next';
+
+const appRoot = dirname(fileURLToPath(import.meta.url));
+const runtimeDistDir = process.env.BOTVALIA_NEXT_DIST_DIR?.trim();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -19,7 +24,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  distDir: runtimeDistDir || '.next',
   output: 'standalone',
+  outputFileTracingRoot: appRoot,
   transpilePackages: ['motion'],
   webpack: (config, {dev}) => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.

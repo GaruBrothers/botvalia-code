@@ -10,6 +10,7 @@ import {
   getRuntimeServerStatus,
   stopRuntimeServer,
 } from '../../runtime/runtimeServerManager.js'
+import { openBrowser } from '../../utils/browser.js'
 
 const HELP_TEXT = [
   '/runtime inicia o muestra el bridge local para BotValia Desktop.',
@@ -161,13 +162,19 @@ export const call: LocalCommandCall = async args => {
         inspectorServer.url,
         runtimeServer.url,
       )
+      const opened = await openBrowser(inspectorUrl)
 
       return {
         type: 'text',
         value: [
-          `Inspector visual abierto en ${inspectorUrl}`,
+          opened
+            ? `Inspector visual abierto en ${inspectorUrl}`
+            : `Inspector visual listo en ${inspectorUrl}`,
           `Runtime WebSocket: ${runtimeServer.url}`,
           `Sesiones activas: ${getSessionCount()}`,
+          opened
+            ? 'Se abrió el navegador por defecto.'
+            : 'No pude abrir el navegador automáticamente; abre esa URL manualmente.',
         ].join('\n'),
       }
     }

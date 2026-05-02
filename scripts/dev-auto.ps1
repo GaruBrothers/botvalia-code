@@ -22,6 +22,24 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Initialize-Utf8Console {
+  try {
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [Console]::InputEncoding = $utf8NoBom
+    [Console]::OutputEncoding = $utf8NoBom
+    $OutputEncoding = $utf8NoBom
+  } catch {
+  }
+
+  try {
+    & cmd /c "chcp 65001 >nul" | Out-Null
+  } catch {
+  }
+}
+
+Initialize-Utf8Console
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $entrypoint = Join-Path $repoRoot "src/dev-entry.ts"
 $quietAutoLogs = @("1", "true", "yes", "on") -contains ($env:BOTVALIA_AUTO_QUIET + "").ToLowerInvariant()

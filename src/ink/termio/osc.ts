@@ -211,9 +211,34 @@ function copyNative(text: string): void {
       return
     }
     case 'win32':
-      // clip.exe is always available on Windows. Unicode handling is
-      // imperfect (system locale encoding) but good enough for a fallback.
-      void execFileNoThrow('clip', [], opts)
+      // clip.exe regularly mangles Unicode by honoring the active OEM code
+      // page. Prefer Set-Clipboard with a base64 payload so Spanish text,
+      // emoji, box drawing and checkmarks survive intact. Fall back to
+      // clip.exe only if PowerShell is unavailable.
+      {
+        const b64 = Buffer.from(text, 'utf8').toString('base64')
+        const psArgs = [
+          '-NoLogo',
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          '$text = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:BOTVALIA_CLIPBOARD_BASE64)); Set-Clipboard -Value $text',
+        ]
+        void execFileNoThrow('powershell', psArgs, {
+          useCwd: false,
+          timeout: 3000,
+          env: {
+            ...process.env,
+            BOTVALIA_CLIPBOARD_BASE64: b64,
+          },
+        }).then(result => {
+          if (result.code !== 0) {
+            void execFileNoThrow('clip', [], opts)
+          }
+        })
+      }
       return
   }
 }
