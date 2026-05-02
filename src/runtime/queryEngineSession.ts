@@ -118,6 +118,22 @@ function extractTextDelta(event: unknown): string | undefined {
   return candidate.delta?.text || candidate.content_block?.text || undefined
 }
 
+function buildTransientChannelPrompt(
+  input: RuntimeSendMessageInput,
+): string | undefined {
+  if (input.channel !== 'web-ui') {
+    return undefined
+  }
+
+  return [
+    'Channel context for this turn:',
+    '- The user is speaking from the BotValia Runtime web UI in a browser.',
+    '- Treat the web UI as the active interface for this turn.',
+    '- If the user asks where they are chatting from, answer that they are in the web UI connected to the live BotValia session, not only in the terminal CLI.',
+    '- Keep this as transient channel context only.',
+  ].join('\n')
+}
+
 function handleSdkMessage(
   runtime: SessionRuntime,
   message: SDKMessage,
@@ -187,6 +203,8 @@ export function createQueryEngineSessionRuntimeController({
       for await (const message of engine.submitMessage(input.text, {
         uuid: input.uuid,
         isMeta: input.isMeta,
+        querySource: input.channel === 'web-ui' ? 'runtime-web' : 'sdk',
+        transientSystemPrompt: buildTransientChannelPrompt(input),
       })) {
         handleSdkMessage(runtime, message, engine, getAppState)
         yield message

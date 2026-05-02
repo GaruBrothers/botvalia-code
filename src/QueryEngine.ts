@@ -224,7 +224,12 @@ export class QueryEngine {
 
   async *submitMessage(
     prompt: string | ContentBlockParam[],
-    options?: { uuid?: string; isMeta?: boolean },
+    options?: {
+      uuid?: string
+      isMeta?: boolean
+      querySource?: string
+      transientSystemPrompt?: string
+    },
   ): AsyncGenerator<SDKMessage, void, unknown> {
     const {
       cwd,
@@ -338,6 +343,9 @@ export class QueryEngine {
       ...(customPrompt !== undefined ? [customPrompt] : defaultSystemPrompt),
       ...(memoryMechanicsPrompt ? [memoryMechanicsPrompt] : []),
       ...(appendSystemPrompt ? [appendSystemPrompt] : []),
+      ...(options?.transientSystemPrompt
+        ? [options.transientSystemPrompt]
+        : []),
     ])
 
     // Register function hook for structured output enforcement
@@ -440,7 +448,7 @@ export class QueryEngine {
       messages: this.mutableMessages,
       uuid: options?.uuid,
       isMeta: options?.isMeta,
-      querySource: 'sdk',
+      querySource: options?.querySource ?? 'sdk',
     })
 
     // Push new messages, including user input and any attachments

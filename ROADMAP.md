@@ -139,11 +139,20 @@ Pendientes backend:
 - payload de mensaje más fiel que `RuntimeMessageSummary.text`
 - bloques estructurados para markdown/code/table con mejor preservación
 - soporte real de attachments desde la UI
+- metadata explícita de origen/canal por turno
+  - `cli`
+  - `web-ui`
+- handoff estricto de canal activo para evitar ambigüedad cuando la misma sesión está abierta en terminal y navegador
+- eventos más ricos para pensamiento/streaming
+  - `thinking_started`
+  - `thinking_delta`
+  - `thinking_completed`
 
 Impacto UI actual:
 - la conversación principal ya funciona con mensajes reales
 - aún depende de un adapter/sanitizador porque el runtime colapsa varios contenidos a texto plano
 - el botón attach queda visible, pero pendiente
+- la UI ya muestra streaming textual y placeholder de thinking en vivo, pero todavía no existe una fase backend separada y estructurada para “pensamiento bonito” ni un lock duro de canal por sesión
 
 Archivos a tocar:
 - [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)

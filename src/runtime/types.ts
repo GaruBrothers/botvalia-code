@@ -63,6 +63,7 @@ export type RuntimeSendMessageInput = {
   text: string
   uuid?: string
   isMeta?: boolean
+  channel?: 'cli' | 'web-ui'
 }
 
 export type RuntimeSessionConfig = {

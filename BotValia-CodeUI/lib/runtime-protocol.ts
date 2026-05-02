@@ -81,6 +81,7 @@ export interface RuntimeSendMessageInput {
   text: string;
   uuid?: string;
   isMeta?: boolean;
+  channel?: 'cli' | 'web-ui';
 }
 
 export type RuntimeProtocolRequest =

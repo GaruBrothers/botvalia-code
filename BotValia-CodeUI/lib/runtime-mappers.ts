@@ -220,6 +220,32 @@ function buildMessage(params: {
   };
 }
 
+function normalizeMessageContent(content: string): string {
+  return content.replace(/\s+/g, ' ').trim();
+}
+
+function shouldReplacePendingMessage(
+  pending: Message,
+  nextMessage: Message,
+): boolean {
+  if (!pending.isPending) {
+    return false;
+  }
+
+  if (nextMessage.role === 'assistant') {
+    return (
+      pending.role === 'assistant' &&
+      pending.id.startsWith(STREAMING_ASSISTANT_PREFIX)
+    );
+  }
+
+  return (
+    pending.role === nextMessage.role &&
+    normalizeMessageContent(pending.content) ===
+      normalizeMessageContent(nextMessage.content)
+  );
+}
+
 export function mapRuntimeMessageSummaryToUi(
   message: RuntimeMessageSummary,
 ): Message | null {
@@ -466,10 +492,62 @@ export function applyDetailToSession(
   const messages = detail.messages
     .map(mapRuntimeMessageSummaryToUi)
     .filter((message): message is Message => message !== null);
+  const pendingMessages =
+    previousSession?.messages.filter(message => message.isPending) || [];
+  const mergedMessages = [...messages];
+  const shouldPreserveAssistantPending =
+    detail.snapshot.status === 'running' ||
+    detail.snapshot.status === 'requires_action';
+
+  for (const pendingMessage of pendingMessages) {
+    if (mergedMessages.some(message => message.id === pendingMessage.id)) {
+      continue;
+    }
+
+    if (pendingMessage.role === 'assistant') {
+      if (!shouldPreserveAssistantPending) {
+        continue;
+      }
+
+      const hasMatchingAssistantMessage = mergedMessages.some(
+        message =>
+          message.role === 'assistant' &&
+          !message.isPending &&
+          normalizeMessageContent(message.content) ===
+            normalizeMessageContent(pendingMessage.content) &&
+          normalizeMessageContent(message.content) !== 'Pensando...',
+      );
+
+      if (!hasMatchingAssistantMessage) {
+        mergedMessages.push(pendingMessage);
+      }
+      continue;
+    }
+
+    if (pendingMessage.role === 'user') {
+      const hasMatchingUserMessage = mergedMessages.some(
+        message =>
+          message.role === 'user' &&
+          normalizeMessageContent(message.content) ===
+            normalizeMessageContent(pendingMessage.content),
+      );
+
+      if (!hasMatchingUserMessage) {
+        mergedMessages.push(pendingMessage);
+      }
+      continue;
+    }
+
+    mergedMessages.push(pendingMessage);
+  }
+
+  mergedMessages.sort(
+    (left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp),
+  );
 
   return {
     ...base,
-    messages,
+    messages: mergedMessages,
     swarm: createSwarmState(
       detail.snapshot,
       detail.tasks,
@@ -518,9 +596,40 @@ export function appendMessageToSession(
         return session;
       }
 
+      const keptMessages = session.messages.filter(
+        existing => !shouldReplacePendingMessage(existing, message),
+      );
+      const assistantPendingMessages =
+        message.role === 'user'
+          ? keptMessages.filter(
+              existing =>
+                existing.isPending &&
+                existing.role === 'assistant' &&
+                existing.id.startsWith(STREAMING_ASSISTANT_PREFIX),
+            )
+          : [];
+      const nonAssistantPendingMessages =
+        message.role === 'user'
+          ? keptMessages.filter(
+              existing =>
+                !(
+                  existing.isPending &&
+                  existing.role === 'assistant' &&
+                  existing.id.startsWith(STREAMING_ASSISTANT_PREFIX)
+                ),
+            )
+          : keptMessages;
+
       return {
         ...session,
-        messages: [...session.messages.filter(existing => !existing.isPending), message],
+        messages:
+          message.role === 'user'
+            ? [
+                ...nonAssistantPendingMessages,
+                message,
+                ...assistantPendingMessages,
+              ]
+            : [...keptMessages, message],
         messageCount: Math.max(session.messageCount, session.messages.length + 1),
         updatedAt: message.timestamp,
       };
@@ -640,13 +749,24 @@ export function appendOptimisticMessage(
   text: string,
 ): Session[] {
   const optimistic = createOptimisticUserMessage(text);
+  const streamingId = `${STREAMING_ASSISTANT_PREFIX}${sessionId}`;
 
   return sortSessions(
     previousSessions.map(session =>
       session.id === sessionId
         ? {
             ...session,
-            messages: [...session.messages, optimistic],
+            messages: session.messages.some(message => message.id === streamingId)
+              ? [...session.messages, optimistic]
+              : [
+                  ...session.messages,
+                  optimistic,
+                  createStreamingAssistantMessage(
+                    sessionId,
+                    'Pensando...',
+                    optimistic.timestamp,
+                  ),
+                ],
             messageCount: session.messageCount + 1,
             updatedAt: optimistic.timestamp,
             status: session.status === 'idle' ? 'running' : session.status,

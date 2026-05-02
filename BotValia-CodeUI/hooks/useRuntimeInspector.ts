@@ -450,7 +450,10 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     setSessions(previous => appendOptimisticMessage(previous, sessionId, text));
 
     try {
-      await client.sendMessage(sessionId, { text });
+      await client.sendMessage(sessionId, {
+        text,
+        channel: 'web-ui',
+      });
       scheduleSessionDetailRefresh(sessionId);
     } catch (error) {
       await refresh(client);
