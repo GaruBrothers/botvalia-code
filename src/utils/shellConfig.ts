@@ -7,9 +7,13 @@ import { open, readFile, stat } from 'fs/promises'
 import { homedir as osHomedir } from 'os'
 import { join } from 'path'
 import { isFsInaccessible } from './errors.js'
-import { getLocalClaudePath } from './localInstaller.js'
+import { getLocalBotvaliaPath, getLocalClaudePath } from './localInstaller.js'
 
-export const CLAUDE_ALIAS_REGEX = /^\s*alias\s+claude\s*=/
+export const CLAUDE_ALIAS_REGEX = /^\s*alias\s+(?:claude|botvalia)\s*=/
+
+function getManagedAliasTargets(): Set<string> {
+  return new Set([getLocalClaudePath(), getLocalBotvaliaPath()])
+}
 
 type EnvLike = Record<string, string | undefined>
 
@@ -37,9 +41,9 @@ export function getShellConfigPaths(
 }
 
 /**
- * Filter out installer-created claude aliases from an array of lines
- * Only removes aliases pointing to $HOME/.claude/local/claude
- * Preserves custom user aliases that point to other locations
+ * Filter out installer-created CLI aliases from an array of lines.
+ * Only removes aliases pointing to managed local install wrappers.
+ * Preserves custom user aliases that point to other locations.
  * Returns the filtered lines and whether our default installer alias was found
  */
 export function filterClaudeAliases(lines: string[]): {
@@ -47,22 +51,23 @@ export function filterClaudeAliases(lines: string[]): {
   hadAlias: boolean
 } {
   let hadAlias = false
+  const managedTargets = getManagedAliasTargets()
   const filtered = lines.filter(line => {
-    // Check if this is a claude alias
+    // Check if this is a managed CLI alias
     if (CLAUDE_ALIAS_REGEX.test(line)) {
       // Extract the alias target - handle spaces, quotes, and various formats
       // First try with quotes
-      let match = line.match(/alias\s+claude\s*=\s*["']([^"']+)["']/)
+      let match = line.match(/alias\s+(?:claude|botvalia)\s*=\s*["']([^"']+)["']/)
       if (!match) {
         // Try without quotes (capturing until end of line or comment)
-        match = line.match(/alias\s+claude\s*=\s*([^#\n]+)/)
+        match = line.match(/alias\s+(?:claude|botvalia)\s*=\s*([^#\n]+)/)
       }
 
       if (match && match[1]) {
         const target = match[1].trim()
         // Only remove if it points to the installer location
         // The installer always creates aliases with the full expanded path
-        if (target === getLocalClaudePath()) {
+        if (managedTargets.has(target)) {
           hadAlias = true
           return false // Remove this line
         }
@@ -123,7 +128,7 @@ export async function findClaudeAlias(
     for (const line of lines) {
       if (CLAUDE_ALIAS_REGEX.test(line)) {
         // Extract the alias target
-        const match = line.match(/alias\s+claude=["']?([^"'\s]+)/)
+        const match = line.match(/alias\s+(?:claude|botvalia)=["']?([^"'\s]+)/)
         if (match && match[1]) {
           return match[1]
         }
@@ -135,7 +140,7 @@ export async function findClaudeAlias(
 }
 
 /**
- * Check if a claude alias exists and points to a valid executable
+ * Check if a managed CLI alias exists and points to a valid executable
  * Returns the alias target if valid, null otherwise
  * @param options Optional overrides for testing (env, homedir)
  */

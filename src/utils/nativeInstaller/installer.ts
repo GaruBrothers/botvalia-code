@@ -109,7 +109,7 @@ export function getPlatform(): string {
 }
 
 export function getBinaryName(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
+  return platform.startsWith('win32') ? 'botvalia.exe' : 'botvalia'
 }
 
 function getBaseDirectories() {
@@ -856,7 +856,7 @@ export async function checkInstall(
     // On Windows it's a copied executable, not a symlink
     if (!(await isPossibleClaudeBinary(dirs.executable))) {
       messages.push({
-        message: `installMethod is native, but claude command is missing or invalid at ${dirs.executable}`,
+        message: `installMethod is native, but botvalia command is missing or invalid at ${dirs.executable}`,
         userActionRequired: true,
         type: 'error',
       })
@@ -875,7 +875,7 @@ export async function checkInstall(
     } catch (e) {
       if (isENOENT(e)) {
         messages.push({
-          message: `installMethod is native, but claude command not found at ${dirs.executable}`,
+          message: `installMethod is native, but botvalia command not found at ${dirs.executable}`,
           userActionRequired: true,
           type: 'error',
         })
@@ -1195,7 +1195,7 @@ export async function cleanupOldVersions(): Promise<void> {
       const files = await readdir(executableDir)
       let cleanedCount = 0
       for (const file of files) {
-        if (!/^claude\.exe\.old\.\d+$/.test(file)) continue
+        if (!/^(?:claude|botvalia)\.exe\.old\.\d+$/.test(file)) continue
         try {
           await unlink(join(executableDir, file))
           cleanedCount++
@@ -1458,7 +1458,7 @@ async function isNpmSymlink(executablePath: string): Promise<boolean> {
 }
 
 /**
- * Remove the claude symlink from the executable directory
+ * Remove the BotValia symlink from the executable directory
  * This is used when switching away from native installation
  * Will only remove if it's a native binary symlink, not npm-managed JS files
  */
@@ -1476,17 +1476,17 @@ export async function removeInstalledSymlink(): Promise<void> {
 
     // It's a native binary symlink, safe to remove
     await unlink(dirs.executable)
-    logForDebugging(`Removed claude symlink at ${dirs.executable}`)
+    logForDebugging(`Removed botvalia symlink at ${dirs.executable}`)
   } catch (error) {
     if (isENOENT(error)) {
       return
     }
-    logError(new Error(`Failed to remove claude symlink: ${error}`))
+    logError(new Error(`Failed to remove botvalia symlink: ${error}`))
   }
 }
 
 /**
- * Clean up old claude aliases from shell configuration files
+ * Clean up legacy CLI aliases from shell configuration files
  * Only handles alias removal, not PATH setup
  */
 export async function cleanupShellAliases(): Promise<SetupMessage[]> {
@@ -1503,11 +1503,11 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
         messages.push({
-          message: `Removed claude alias from ${configFile}. Run: unalias claude`,
+          message: `Removed conflicting CLI alias from ${configFile}. Run: unalias botvalia or unalias claude`,
           userActionRequired: true,
           type: 'alias',
         })
-        logForDebugging(`Cleaned up claude alias from ${shellType} config`)
+        logForDebugging(`Cleaned up managed CLI alias from ${shellType} config`)
       }
     } catch (error) {
       logError(error)
@@ -1558,27 +1558,27 @@ async function manualRemoveNpmPackage(
 
     if (getPlatform().startsWith('win32')) {
       // Windows - only remove executables, not the package directory
-      const binCmd = join(globalPrefix, 'claude.cmd')
-      const binPs1 = join(globalPrefix, 'claude.ps1')
-      const binExe = join(globalPrefix, 'claude')
-
-      if (await tryRemove(binCmd, 'bin script')) {
-        manuallyRemoved = true
-      }
-
-      if (await tryRemove(binPs1, 'PowerShell script')) {
-        manuallyRemoved = true
-      }
-
-      if (await tryRemove(binExe, 'bin executable')) {
-        manuallyRemoved = true
+      for (const filePath of [
+        join(globalPrefix, 'botvalia.cmd'),
+        join(globalPrefix, 'botvalia.ps1'),
+        join(globalPrefix, 'botvalia'),
+        join(globalPrefix, 'claude.cmd'),
+        join(globalPrefix, 'claude.ps1'),
+        join(globalPrefix, 'claude'),
+      ]) {
+        if (await tryRemove(filePath, 'bin executable')) {
+          manuallyRemoved = true
+        }
       }
     } else {
       // Unix/Mac - only remove symlink, not the package directory
-      const binSymlink = join(globalPrefix, 'bin', 'claude')
-
-      if (await tryRemove(binSymlink, 'bin symlink')) {
-        manuallyRemoved = true
+      for (const filePath of [
+        join(globalPrefix, 'bin', 'botvalia'),
+        join(globalPrefix, 'bin', 'claude'),
+      ]) {
+        if (await tryRemove(filePath, 'bin symlink')) {
+          manuallyRemoved = true
+        }
       }
     }
 

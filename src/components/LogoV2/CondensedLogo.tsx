@@ -49,6 +49,37 @@ const CODE_BANNER = [
   ' ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝',
 ] as const
 
+function MetaChip({
+  color = 'professionalBlue',
+  children,
+}: {
+  color?: string
+  children: ReactNode
+}): ReactNode {
+  return (
+    <Box backgroundColor="messageActionsBackground" paddingX={1}>
+      <Text color={color}>{children}</Text>
+    </Box>
+  )
+}
+
+function MetaLine({
+  label,
+  value,
+  color = 'suggestion',
+}: {
+  label: string
+  value: string
+  color?: string
+}): ReactNode {
+  return (
+    <Text>
+      <Text color={color}>{label}</Text>
+      <Text dimColor> {value}</Text>
+    </Text>
+  )
+}
+
 export function CondensedLogo(): ReactNode {
   const { columns } = useTerminalSize()
   const agent = useAppState(s => s.agent)
@@ -112,11 +143,14 @@ export function CondensedLogo(): ReactNode {
             <Box flexDirection="column">
               {BOTVALIA_BANNER.map((line, index) => (
                 <Text key={index}>
-                  <Text bold color="white">
+                  <Text bold color="claude">
                     {line}
                   </Text>
-                  <Text color="professionalBlue">  {CODE_BANNER[index].slice(0, 18)}</Text>
-                  <Text color="magenta">{CODE_BANNER[index].slice(18)}</Text>
+                  <Text color="professionalBlue">
+                    {'  '}
+                    {CODE_BANNER[index].slice(0, 18)}
+                  </Text>
+                  <Text color="suggestion">{CODE_BANNER[index].slice(18)}</Text>
                 </Text>
               ))}
             </Box>
@@ -126,28 +160,31 @@ export function CondensedLogo(): ReactNode {
                 BotValia
               </Text>{' '}
               <Text bold color="professionalBlue">
-                Co
-              </Text>
-              <Text bold color="magenta">
-                de
+                Code
               </Text>
             </Text>
           )}
 
-          <Text color="cyan">v{truncatedVersion}</Text>
+          <Box marginTop={1} flexDirection="row" gap={1}>
+            <MetaChip color="professionalBlue">v{truncatedVersion}</MetaChip>
+            <MetaChip color="fastMode">free-first</MetaChip>
+          </Box>
 
           {shouldSplit ? (
-            <>
-              <Text dimColor>{truncatedModel}</Text>
-              <Text dimColor>{truncatedBilling}</Text>
-            </>
+            <Box marginTop={1} flexDirection="column">
+              <MetaLine label="model" value={truncatedModel} />
+              <MetaLine label="billing" value={truncatedBilling} color="fastMode" />
+            </Box>
           ) : (
-            <Text dimColor>
-              {truncatedModel} · {truncatedBilling}
-            </Text>
+            <Box marginTop={1}>
+              <MetaLine
+                label="model"
+                value={`${truncatedModel} · ${truncatedBilling}`}
+              />
+            </Box>
           )}
 
-          <Text dimColor>{pathLine}</Text>
+          <MetaLine label="cwd" value={pathLine} color="subtle" />
 
           {showGuestPassesUpsell && <GuestPassesUpsell />}
 

@@ -1,8 +1,5 @@
 import type { LocalCommandCall } from '../../types/command.js'
-import { openBrowser } from '../../utils/browser.js'
 import {
-  ensureRuntimeInspectorServer,
-  getRuntimeInspectorServerStatus,
   stopRuntimeInspectorServer,
 } from '../../runtime/runtimeInspectorServer.js'
 import { getGlobalRuntimeService } from '../../runtime/runtimeService.js'
@@ -16,8 +13,8 @@ const HELP_TEXT = [
   '/runtime inicia o muestra el bridge local para BotValia Desktop.',
   '/runtime start [puerto] inicia el server WebSocket local.',
   '/runtime status muestra el estado actual.',
-  '/runtime ui [puerto] inicia el inspector visual local.',
-  '/runtime open inicia el inspector visual local y lo abre en el navegador.',
+  '/runtime ui informa que la UI web fue retirada de este repo.',
+  '/runtime open informa que la UI web fue retirada de este repo.',
   '/runtime stop apaga el server local.',
   '/runtime help muestra esta ayuda.',
 ].join('\n')
@@ -45,7 +42,6 @@ function getSessionCount(): number {
 
 function formatRuntimeStatus(): string {
   const runtimeStatus = getRuntimeServerStatus()
-  const inspectorStatus = getRuntimeInspectorServerStatus()
   const lines: string[] = []
 
   if (runtimeStatus.status === 'running') {
@@ -62,15 +58,7 @@ function formatRuntimeStatus(): string {
     lines.push('Bridge runtime apagado.')
   }
 
-  if (inspectorStatus.status === 'running') {
-    lines.push(`Inspector UI: ${inspectorStatus.server.url}`)
-  } else if (inspectorStatus.status === 'starting') {
-    lines.push('Inspector UI iniciando.')
-  } else if (inspectorStatus.status === 'failed') {
-    lines.push(`Inspector UI con error: ${inspectorStatus.error.message}`)
-  } else {
-    lines.push('Inspector UI apagado.')
-  }
+  lines.push('UI web del runtime: retirada de este repo.')
 
   return lines.join('\n')
 }
@@ -116,51 +104,35 @@ export const call: LocalCommandCall = async args => {
     }
 
     if (normalizedSubcommand === 'ui') {
-      const requestedPort = parsePort(portArg)
-      await ensureRuntimeServer()
-      const inspector = await ensureRuntimeInspectorServer({
-        port: requestedPort,
-      })
-
       return {
         type: 'text',
         value: [
-          'Inspector visual activo.',
-          `URL inspector: ${inspector.url}`,
+          'La UI web del runtime fue retirada de este repo.',
+          'El bridge runtime sigue disponible por WebSocket.',
           formatRuntimeStatus(),
         ].join('\n'),
       }
     }
 
     if (normalizedSubcommand === 'open') {
-      await ensureRuntimeServer()
-      const inspector = await ensureRuntimeInspectorServer()
-      const opened = await openBrowser(inspector.url)
-
       return {
         type: 'text',
-        value: opened
-          ? `Inspector visual abierto en ${inspector.url}`
-          : `Inspector visual listo en ${inspector.url}\nNo pude abrir el navegador automáticamente.`,
+        value: [
+          'La UI web del runtime fue retirada de este repo.',
+          'No se abrirá navegador porque ya no existe inspector embebido aquí.',
+          'Usa /runtime status para ver el bridge activo.',
+        ].join('\n'),
       }
     }
 
     if (normalizedSubcommand === 'stop') {
-      const inspectorStopped = await stopRuntimeInspectorServer()
+      await stopRuntimeInspectorServer()
       const runtimeStopped = await stopRuntimeServer()
       return {
         type: 'text',
-        value:
-          inspectorStopped || runtimeStopped
-            ? [
-                inspectorStopped
-                  ? 'Inspector UI detenido.'
-                  : 'Inspector UI ya estaba apagado.',
-                runtimeStopped
-                  ? 'Bridge runtime detenido.'
-                  : 'Bridge runtime ya estaba apagado.',
-              ].join('\n')
-            : 'El bridge runtime y el inspector ya estaban apagados.',
+        value: runtimeStopped
+          ? 'Bridge runtime detenido.'
+          : 'El bridge runtime ya estaba apagado.',
       }
     }
 
