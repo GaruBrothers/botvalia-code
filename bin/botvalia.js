@@ -28,6 +28,11 @@ if (isVersionOnly) {
 }
 
 const child = spawn('powershell', args, {
+  env: {
+    ...process.env,
+    BOTVALIA_AUTO_QUIET: '1',
+    BOTVALIA_FORCE_CONDENSED_LOGO: '1',
+  },
   stdio: 'inherit',
 })
 
