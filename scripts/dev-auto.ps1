@@ -1139,6 +1139,14 @@ $env:CLAUDE_CODE_MAX_OUTPUT_TOKENS = "$MaxOutputTokens"
 $env:MAX_THINKING_TOKENS = "$MaxThinkingTokens"
 $env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"
 
+if ([string]::IsNullOrWhiteSpace($env:CLAUDE_CODE_NO_FLICKER)) {
+  $env:CLAUDE_CODE_NO_FLICKER = "1"
+}
+
+if ([string]::IsNullOrWhiteSpace($env:BOTVALIA_FORCE_CONDENSED_LOGO)) {
+  $env:BOTVALIA_FORCE_CONDENSED_LOGO = "1"
+}
+
 if (-not $quietAutoLogs) {
   Write-Host "[botvalia auto] PRESET=$Preset"
   Write-Host "[botvalia auto] MODE=$effectiveMode"

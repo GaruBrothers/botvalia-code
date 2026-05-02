@@ -33,6 +33,12 @@ type Props = {
   scrollable: ReactNode;
   /** Content pinned to the bottom (spinner, prompt, permissions) */
   bottom: ReactNode;
+  /** When true, render scrollable + bottom together as a centered hero. */
+  centered?: boolean;
+  /** Optional width hint for centered hero content. */
+  centeredWidth?: number;
+  /** Optional static right sidebar for wide fullscreen layouts. */
+  rightSidebar?: ReactNode;
   /** Content rendered inside the ScrollBox after messages — user can scroll
    *  up to see context while it's showing (used by PermissionRequest). */
   overlay?: ReactNode;
@@ -272,6 +278,9 @@ export function FullscreenLayout(t0) {
   const {
     scrollable,
     bottom,
+    centered: t0_0,
+    centeredWidth,
+    rightSidebar,
     overlay,
     bottomFloat,
     modal,
@@ -283,6 +292,7 @@ export function FullscreenLayout(t0) {
     newMessageCount: t3,
     onPillClick
   } = t0;
+  const centered = t0_0 === undefined ? false : t0_0;
   const hidePill = t1 === undefined ? false : t1;
   const hideSticky = t2 === undefined ? false : t2;
   const newMessageCount = t3 === undefined ? 0 : t3;
@@ -432,11 +442,25 @@ export function FullscreenLayout(t0) {
     } else {
       t18 = $[37];
     }
+    if (centered) {
+      return <PromptOverlayProvider>
+          <Box flexGrow={1} justifyContent="center" alignItems="center" overflow="hidden" paddingX={2}>
+            <Box flexDirection="column" width={centeredWidth ?? Math.max(60, columns - 8)} overflow="hidden">
+              <Box flexDirection="column" width="100%">
+                {scrollable}
+              </Box>
+              {t17}
+            </Box>
+          </Box>
+          {t18}
+        </PromptOverlayProvider>;
+    }
+    const mainColumn = <Box flexGrow={1} flexDirection="column" overflow="hidden">{t14}{t17}</Box>;
     let t19;
-    if ($[38] !== t14 || $[39] !== t17 || $[40] !== t18) {
-      t19 = <PromptOverlayProvider>{t14}{t17}{t18}</PromptOverlayProvider>;
-      $[38] = t14;
-      $[39] = t17;
+    if ($[38] !== mainColumn || $[39] !== rightSidebar || $[40] !== t18) {
+      t19 = <PromptOverlayProvider><Box flexGrow={1} flexDirection="row" overflow="hidden">{mainColumn}{rightSidebar}</Box>{t18}</PromptOverlayProvider>;
+      $[38] = mainColumn;
+      $[39] = rightSidebar;
       $[40] = t18;
       $[41] = t19;
     } else {

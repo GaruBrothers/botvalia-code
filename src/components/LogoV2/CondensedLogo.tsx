@@ -135,12 +135,15 @@ export function CondensedLogo(): ReactNode {
 
   return (
     <OffscreenFreeze>
-      <Box flexDirection="row" gap={3} alignItems="flex-start">
-        {isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />}
+      <Box flexDirection="column" alignItems="center">
+        <Box alignItems="center" flexDirection="column" marginBottom={1}>
+          {isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />}
+          <Text color="professionalBlue">▁▁▁▁▁</Text>
+        </Box>
 
-        <Box flexDirection="column">
+        <Box flexDirection="column" alignItems="center">
           {showLargeWordmark ? (
-            <Box flexDirection="column">
+            <Box flexDirection="column" alignItems="center">
               {BOTVALIA_BANNER.map((line, index) => (
                 <Text key={index}>
                   <Text bold color="claude">
@@ -171,7 +174,7 @@ export function CondensedLogo(): ReactNode {
           </Box>
 
           {shouldSplit ? (
-            <Box marginTop={1} flexDirection="column">
+            <Box marginTop={1} flexDirection="column" alignItems="center">
               <MetaLine label="model" value={truncatedModel} />
               <MetaLine label="billing" value={truncatedBilling} color="fastMode" />
             </Box>

@@ -17,6 +17,7 @@ import ThemedText from './design-system/ThemedText.js';
 type Props = {
   tasks: Task[];
   isStandalone?: boolean;
+  columnsOverride?: number;
 };
 const RECENT_COMPLETED_TTL_MS = 30_000;
 function byIdAsc(a: Task, b: Task): number {
@@ -29,15 +30,17 @@ function byIdAsc(a: Task, b: Task): number {
 }
 export function TaskListV2({
   tasks,
-  isStandalone = false
+  isStandalone = false,
+  columnsOverride
 }: Props): React.ReactNode {
   const teamContext = useAppState(s => s.teamContext);
   const appStateTasks = useAppState(s_0 => s_0.tasks);
   const [, forceUpdate] = React.useState(0);
   const {
     rows,
-    columns
+    columns: terminalColumns
   } = useTerminalSize();
+  const columns = columnsOverride ?? terminalColumns;
 
   // Track when each task was last observed transitioning to completed
   const completionTimestampsRef = React.useRef(new Map<string, number>());

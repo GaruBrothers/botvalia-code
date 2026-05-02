@@ -153,6 +153,7 @@ import { useMergedCommands } from '../hooks/useMergedCommands.js';
 import { useSkillsChange } from '../hooks/useSkillsChange.js';
 import { useManagePlugins } from '../hooks/useManagePlugins.js';
 import { Messages } from '../components/Messages.js';
+import { TaskSidebar } from '../components/TaskSidebar.js';
 import { TaskListV2 } from '../components/TaskListV2.js';
 import { TeammateViewHeader } from '../components/TeammateViewHeader.js';
 import { useTasksV2WithCollapseEffect } from '../hooks/useTasksV2.js';
@@ -1251,6 +1252,12 @@ export function REPL({
   const setMessages = useCallback((action: React.SetStateAction<MessageType[]>) => {
     const prev = messagesRef.current;
     const next = typeof action === 'function' ? action(messagesRef.current) : action;
+    const added =
+      next.length > prev.length
+        ? prev.length === 0 || next[0] === prev[0]
+          ? next.slice(-(next.length - prev.length))
+          : next.slice(0, next.length - prev.length)
+        : [];
     messagesRef.current = next;
     if (next.length < userInputBaselineRef.current) {
       // Shrank (compact/rewind/clear) — clamp so placeholderText's length
@@ -1263,8 +1270,6 @@ export function REPL({
       // baseline so the placeholder stays visible. Once the user message
       // lands, stop tracking — later additions (assistant stream) should
       // not re-show the placeholder.
-      const delta = next.length - prev.length;
-      const added = prev.length === 0 || next[0] === prev[0] ? next.slice(-delta) : next.slice(0, delta);
       if (added.some(isHumanTurn)) {
         userMessagePendingRef.current = false;
       } else {
@@ -1272,6 +1277,16 @@ export function REPL({
       }
     }
     rawSetMessages(next);
+    for (const message of added) {
+      if (
+        message.type === 'assistant' ||
+        message.type === 'user' ||
+        message.type === 'system' ||
+        message.type === 'attachment'
+      ) {
+        replSessionRuntime.emitMessageCompleted(message);
+      }
+    }
     replSessionRuntime.refreshSnapshot();
   }, []);
   const [replSessionRuntime] = useState(() => new SessionRuntime({
@@ -4691,7 +4706,52 @@ export function REPL({
   // /config, /theme, /diff, ...) both go here now.
   const toolJsxCentered = isFullscreenEnvEnabled() && toolJSX?.isLocalJSXCommand === true;
   const centeredModal: React.ReactNode = toolJsxCentered ? toolJSX!.jsx : null;
-
+  const hasActiveTaskSidebarWork = !!tasksV2?.some(task => task.status !== 'completed');
+  const hasVisiblePromptConversation = displayedMessages.some(message => {
+    if (message.type === 'assistant') {
+      return true;
+    }
+    if (message.type === 'user') {
+      return !message.isMeta;
+    }
+    if (message.type === 'attachment') {
+      const attachment = message.attachment;
+      return attachment?.type === 'queued_command' && attachment.commandMode === 'prompt' && !attachment.isMeta && attachment.origin === undefined;
+    }
+    return false;
+  });
+  const showTaskSidebar = isFullscreenEnvEnabled() && screen === 'prompt' && !viewedAgentTask && !focusedInputDialog && !toolJSX?.isLocalJSXCommand && !!tasksV2?.length && transcriptCols >= 140 && (showExpandedTodos || hasActiveTaskSidebarWork);
+  const canShowWelcomeLogo = screen === 'prompt' && !hideBanner && !viewedAgentTask && !focusedInputDialog && !toolJSX && centeredModal == null && toolPermissionOverlay == null && !hasVisiblePromptConversation && !placeholderText && !showSpinner;
+  const showWelcomeHero = isFullscreenEnvEnabled() && canShowWelcomeLogo;
+  const landingWidth = Math.max(48, Math.min(transcriptCols - 8, 108));
+  const taskSidebar = showTaskSidebar ? <TaskSidebar tasks={tasksV2!} /> : null;
+  const promptMessagesView = <Messages messages={displayedMessages} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={isLoading} streamingText={isLoading && !viewedAgentTask ? visibleStreamingText : null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} unseenDivider={viewedAgentTask ? undefined : unseenDivider} scrollRef={isFullscreenEnvEnabled() ? scrollRef : undefined} trackStickyPrompt={isFullscreenEnvEnabled() ? true : undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner || !canShowWelcomeLogo} />;
+  const welcomeMessages = <Messages messages={[]} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={false} streamingText={null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} unseenDivider={undefined} scrollRef={undefined} trackStickyPrompt={undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner} />;
+  const scrollableContent = showWelcomeHero ? <Box flexDirection="column" width="100%" alignItems="center">
+      {welcomeMessages}
+    </Box> : <>
+      <TeammateViewHeader />
+      {promptMessagesView}
+      <AwsAuthStatusBox />
+      {/* Hide the processing placeholder while a modal is showing —
+          it would sit at the last visible transcript row right above
+          the ▔ divider, showing "❯ /config" as redundant clutter
+          (the modal IS the /config UI). Outside modals it stays so
+          the user sees their input echoed while BotValia processes. */}
+      {!disabled && placeholderText && !centeredModal && <UserTextMessage param={{
+        text: placeholderText,
+        type: 'text'
+      }} addMargin={true} verbose={verbose} />}
+      {toolJSX && !(toolJSX.isLocalJSXCommand && toolJSX.isImmediate) && !toolJsxCentered && <Box flexDirection="column" width="100%">
+            {toolJSX.jsx}
+          </Box>}
+      {process.env.USER_TYPE === 'ant' && <TungstenLiveMonitor />}
+      {feature('WEB_BROWSER_TOOL') ? WebBrowserPanelModule && <WebBrowserPanelModule.WebBrowserPanel /> : null}
+      <Box flexGrow={1} />
+      {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} apiMetricsRef={apiMetricsRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}
+      {!showSpinner && !isLoading && !userInputOnProcessing && !hasRunningTeammates && isBriefOnly && !viewedAgentTask && <BriefIdleStatus />}
+      {isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
+    </>;
   // <AlternateScreen> at the root: everything below is inside its
   // <Box height={rows}>. Handlers/contexts are zero-height so ScrollBox's
   // flexGrow in FullscreenLayout resolves against this Box. The transcript
@@ -4714,32 +4774,10 @@ export function REPL({
       {feature('MESSAGE_ACTIONS') && isFullscreenEnvEnabled() && !disableMessageActions ? <MessageActionsKeybindings handlers={messageActionHandlers} isActive={cursor !== null} /> : null}
       <CancelRequestHandler {...cancelRequestProps} />
       <MCPConnectionManager key={remountKey} dynamicMcpConfig={dynamicMcpConfig} isStrictMcpConfig={strictMcpConfig}>
-        <FullscreenLayout scrollRef={scrollRef} overlay={toolPermissionOverlay} bottomFloat={feature('BUDDY') && companionVisible && !companionNarrow ? <CompanionFloatingBubble /> : undefined} modal={centeredModal} modalScrollRef={modalScrollRef} dividerYRef={dividerYRef} hidePill={!!viewedAgentTask} hideSticky={!!viewedTeammateTask} newMessageCount={unseenDivider?.count ?? 0} onPillClick={() => {
+        <FullscreenLayout scrollRef={scrollRef} overlay={toolPermissionOverlay} bottomFloat={feature('BUDDY') && companionVisible && !companionNarrow ? <CompanionFloatingBubble /> : undefined} modal={centeredModal} modalScrollRef={modalScrollRef} dividerYRef={dividerYRef} hidePill={!!viewedAgentTask} hideSticky={!!viewedTeammateTask} newMessageCount={unseenDivider?.count ?? 0} centered={showWelcomeHero} centeredWidth={landingWidth} rightSidebar={taskSidebar} onPillClick={() => {
         setCursor(null);
         jumpToNew(scrollRef.current);
-      }} scrollable={<>
-              <TeammateViewHeader />
-              <Messages messages={displayedMessages} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={isLoading} streamingText={isLoading && !viewedAgentTask ? visibleStreamingText : null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} unseenDivider={viewedAgentTask ? undefined : unseenDivider} scrollRef={isFullscreenEnvEnabled() ? scrollRef : undefined} trackStickyPrompt={isFullscreenEnvEnabled() ? true : undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner} />
-              <AwsAuthStatusBox />
-              {/* Hide the processing placeholder while a modal is showing —
-                  it would sit at the last visible transcript row right above
-                  the ▔ divider, showing "❯ /config" as redundant clutter
-                  (the modal IS the /config UI). Outside modals it stays so
-                  the user sees their input echoed while BotValia processes. */}
-              {!disabled && placeholderText && !centeredModal && <UserTextMessage param={{
-          text: placeholderText,
-          type: 'text'
-        }} addMargin={true} verbose={verbose} />}
-              {toolJSX && !(toolJSX.isLocalJSXCommand && toolJSX.isImmediate) && !toolJsxCentered && <Box flexDirection="column" width="100%">
-                    {toolJSX.jsx}
-                  </Box>}
-              {process.env.USER_TYPE === 'ant' && <TungstenLiveMonitor />}
-              {feature('WEB_BROWSER_TOOL') ? WebBrowserPanelModule && <WebBrowserPanelModule.WebBrowserPanel /> : null}
-              <Box flexGrow={1} />
-              {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} apiMetricsRef={apiMetricsRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}
-              {!showSpinner && !isLoading && !userInputOnProcessing && !hasRunningTeammates && isBriefOnly && !viewedAgentTask && <BriefIdleStatus />}
-              {isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
-            </>} bottom={<Box flexDirection={feature('BUDDY') && companionNarrow ? 'column' : 'row'} width="100%" alignItems={feature('BUDDY') && companionNarrow ? undefined : 'flex-end'}>
+      }} scrollable={scrollableContent} bottom={<Box flexDirection={feature('BUDDY') && companionNarrow ? 'column' : 'row'} width="100%" alignItems={feature('BUDDY') && companionNarrow ? undefined : 'flex-end'}>
               {feature('BUDDY') && companionNarrow && isFullscreenEnvEnabled() && companionVisible ? <CompanionSprite /> : null}
               <Box flexDirection="column" flexGrow={1}>
                 {permissionStickyFooter}
@@ -4755,7 +4793,7 @@ export function REPL({
                 {toolJSX?.isLocalJSXCommand && toolJSX.isImmediate && !toolJsxCentered && <Box flexDirection="column" width="100%">
                       {toolJSX.jsx}
                     </Box>}
-                {!showSpinner && !toolJSX?.isLocalJSXCommand && showExpandedTodos && tasksV2 && tasksV2.length > 0 && <Box width="100%" flexDirection="column">
+                {!showTaskSidebar && !showSpinner && !toolJSX?.isLocalJSXCommand && showExpandedTodos && tasksV2 && tasksV2.length > 0 && <Box width="100%" flexDirection="column">
                       <TaskListV2 tasks={tasksV2} isStandalone={true} />
                     </Box>}
                 {focusedInputDialog === 'sandbox-permission' && <SandboxPermissionRequest key={sandboxPermissionRequestQueue[0]!.hostPattern.host} hostPattern={sandboxPermissionRequestQueue[0]!.hostPattern} onUserResponse={(response: {

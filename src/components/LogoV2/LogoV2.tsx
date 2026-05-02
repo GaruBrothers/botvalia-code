@@ -94,6 +94,8 @@ export function LogoV2() {
   const {
     hasReleaseNotes
   } = checkForReleaseNotesSync(config.lastReleaseNotesSeen);
+  const forceCondensedLogo = isEnvTruthy(process.env.BOTVALIA_FORCE_CONDENSED_LOGO);
+  const forceFullLogo = isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO);
   let t2;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = () => {
@@ -166,8 +168,6 @@ export function LogoV2() {
   } = getLogoDisplayData();
   const agentName = agent ?? agentNameFromSettings;
   const effortSuffix = getEffortSuffix(model, effortValue);
-  const forceCondensedLogo = isEnvTruthy(process.env.BOTVALIA_FORCE_CONDENSED_LOGO);
-  const forceFullLogo = isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO);
   const t9 = fullModelDisplayName + effortSuffix;
   let t10;
   if ($[13] !== t9) {
