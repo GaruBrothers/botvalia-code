@@ -177,9 +177,41 @@ Archivos a tocar:
 
 - La UI nueva ya está trayendo el diseño real de `BotValia-CodeUI`; lo pendiente ahora es mostly backend parity.
 - Las funciones que hoy no existen en protocolo quedan visibles como UX premium, pero deben reportarse como pendientes y no mentir soporte.
+- El CLI ya soporta mensajería directa con `@nombre` para teammates activos y agentes nombrados en ejecución, incluyendo varias líneas `@agente tarea` en un solo envío.
 - El orden recomendado para cerrar gaps es:
   1. lifecycle de sesión
   2. modelo/settings
   3. swarm rico
   4. transcript estructurado
   5. historial de eventos
+
+## Fase 6
+
+Objetivo: experiencia completa de `@agentes` personalizados desde el prompt del usuario.
+
+Ya existe hoy:
+- `@nombre mensaje` para teammates activos
+- `@nombre mensaje` para agentes nombrados que sigan corriendo
+- varias líneas `@agente tarea` en un solo prompt, despachadas en paralelo
+- consolidación posterior por el agente principal usando `AgentTool` + `SendMessage`
+
+Pendientes backend / orchestration:
+- auto-spawn de agentes personalizados al escribir `@nombre` si todavía no están activos
+- reanudar agentes nombrados detenidos desde el shortcut `@nombre mensaje`
+- sintaxis oficial para fan-out estructurado en una sola instrucción del usuario
+  - ejemplo: `@researcher ...`
+  - ejemplo: `@reviewer ...`
+  - ejemplo: `@commits ...`
+- consolidación asistida por producto para que el líder sintetice resultados de varios agentes a petición del usuario
+- feedback más rico de estado por agente durante ese fan-out
+
+Impacto UX actual:
+- si el agente ya está vivo y nombrado, el shortcut directo funciona
+- si no existe o ya terminó, el usuario todavía necesita crear/lanzar ese agente primero
+- el fan-out multiagente ya funciona mejor en CLI, pero no es todavía una UX “mágica” de spawn automático
+
+Archivos a tocar:
+- [src/components/PromptInput/PromptInput.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/components/PromptInput/PromptInput.tsx)
+- [src/utils/directMemberMessage.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/directMemberMessage.ts)
+- [src/tools/AgentTool/AgentTool.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/tools/AgentTool/AgentTool.tsx)
+- [src/tools/SendMessageTool/SendMessageTool.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/tools/SendMessageTool/SendMessageTool.ts)

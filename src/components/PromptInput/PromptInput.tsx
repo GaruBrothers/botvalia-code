@@ -58,7 +58,7 @@ import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { Cursor } from '../../utils/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config.js';
 import { logForDebugging } from '../../utils/debug.js';
-import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
+import { getDirectMessageFailureText, parseDirectMemberMessage, parseDirectMemberMessages, sendDirectMemberMessage, sendDirectMemberMessages } from '../../utils/directMemberMessage.js';
 import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/env.js';
 import { errorMessage } from '../../utils/errors.js';
@@ -1044,15 +1044,43 @@ function PromptInput({
       }
     }
 
-    // Handle @name direct message
+    // Handle direct @name messages before they hit the main model.
     if (isAgentSwarmsEnabled()) {
+      const directMessages = parseDirectMemberMessages(inputParam);
+      if (directMessages && directMessages.length > 1) {
+        const result = await sendDirectMemberMessages(directMessages, store.getState(), writeToMailbox, setAppState);
+        if (result.success) {
+          const recipientList = result.deliveries.map(delivery => `@${delivery.recipientName}`).join(', ');
+          addNotification({
+            key: 'direct-message-batch-sent',
+            text: `Sent ${result.deliveries.length} tasks: ${recipientList}`,
+            priority: 'immediate',
+            timeoutMs: 4000
+          });
+          trackAndSetInput('');
+          setCursorOffset(0);
+          clearBuffer();
+          resetHistory();
+          return;
+        }
+        addNotification({
+          key: 'direct-message-batch-failed',
+          text: getDirectMessageFailureText(result, {
+            isBatch: true
+          }),
+          priority: 'immediate',
+          timeoutMs: 4000
+        });
+        return;
+      }
+
       const directMessage = parseDirectMemberMessage(inputParam);
       if (directMessage) {
-        const result = await sendDirectMemberMessage(directMessage.recipientName, directMessage.message, teamContext, writeToMailbox);
+        const result = await sendDirectMemberMessage(directMessage.recipientName, directMessage.message, store.getState(), writeToMailbox, setAppState);
         if (result.success) {
           addNotification({
             key: 'direct-message-sent',
-            text: `Sent to @${result.recipientName}`,
+            text: result.delivery === 'named_agent' ? `Queued for @${result.recipientName}` : `Sent to @${result.recipientName}`,
             priority: 'immediate',
             timeoutMs: 3000
           });
@@ -1060,6 +1088,14 @@ function PromptInput({
           setCursorOffset(0);
           clearBuffer();
           resetHistory();
+          return;
+        } else if ('error' in result && result.error === 'agent_unavailable') {
+          addNotification({
+            key: 'direct-message-agent-unavailable',
+            text: getDirectMessageFailureText(result),
+            priority: 'immediate',
+            timeoutMs: 4000
+          });
           return;
         } else if ('error' in result && result.error === 'no_team_context') {
           // No team context - fall through to normal prompt submission
