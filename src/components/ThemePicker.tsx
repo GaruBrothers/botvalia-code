@@ -114,6 +114,9 @@ export function ThemePicker(t0) {
       label: "Auto (match terminal)",
       value: "auto" as const
     }] : []), {
+      label: "Premium mode",
+      value: "premium"
+    }, {
       label: "Dark mode",
       value: "dark"
     }, {

@@ -181,6 +181,7 @@ type Theme = {
 
 function defaultSyntaxThemeName(themeName: string): string {
   if (themeName.includes('ansi')) return 'ansi'
+  if (themeName === 'premium') return 'Monokai Extended'
   if (themeName.includes('dark')) return 'Monokai Extended'
   return 'GitHub'
 }
@@ -280,7 +281,7 @@ const ANSI_SCOPES: Record<string, Color> = {
 }
 
 function buildTheme(themeName: string, mode: ColorMode): Theme {
-  const isDark = themeName.includes('dark')
+  const isDark = themeName === 'premium' || themeName.includes('dark')
   const isAnsi = themeName.includes('ansi')
   const isDaltonized = themeName.includes('daltonized')
   const tc = mode === 'truecolor'

@@ -1835,6 +1835,7 @@ function teammateModelDisplayString(value: string | null | undefined): string {
 }
 const THEME_LABELS: Record<string, string> = {
   auto: 'Auto (match terminal)',
+  premium: 'Premium mode',
   dark: 'Dark mode',
   light: 'Light mode',
   'dark-daltonized': 'Dark mode (colorblind-friendly)',

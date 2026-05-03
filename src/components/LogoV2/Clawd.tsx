@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Text } from '../../ink.js'
+import { Box, Text, useTheme } from '../../ink.js'
 
 export type ClawdPose =
   | 'default'
@@ -121,11 +121,32 @@ const POSES: Record<ClawdPose, PoseFrame> = {
   ],
 }
 
+function getSegmentColor(color: string | undefined, isPremium: boolean) {
+  if (!color || !isPremium) {
+    return color
+  }
+
+  switch (color) {
+    case 'professionalBlue':
+      return 'promptBorder'
+    case 'cyan':
+      return 'professionalBlue'
+    case 'magenta':
+      return 'claude'
+    case 'white':
+      return 'text'
+    default:
+      return color
+  }
+}
+
 export function Clawd({
   pose = 'default',
 }: {
   pose?: ClawdPose
 } = {}): React.ReactNode {
+  const [themeName] = useTheme()
+  const isPremium = themeName === 'premium'
   const frame = POSES[pose] ?? POSES.default
 
   return (
@@ -133,7 +154,10 @@ export function Clawd({
       {frame.map((line, lineIndex) => (
         <Box key={lineIndex} flexDirection="row">
           {line.map((segment, segmentIndex) => (
-            <Text key={`${lineIndex}-${segmentIndex}`} color={segment.color}>
+            <Text
+              key={`${lineIndex}-${segmentIndex}`}
+              color={getSegmentColor(segment.color, isPremium)}
+            >
               {segment.text}
             </Text>
           ))}

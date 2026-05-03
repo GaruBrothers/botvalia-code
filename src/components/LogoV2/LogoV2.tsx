@@ -250,8 +250,10 @@ export function LogoV2() {
   }
   const layoutMode = getLayoutMode(columns);
   const userTheme = resolveThemeSetting(getGlobalConfig().theme);
-  const borderTitle = ` ${color("professionalBlue", userTheme)("BotValia Code")} ${color("inactive", userTheme)(`v${version}`)} `;
-  const compactBorderTitle = color("professionalBlue", userTheme)(" BotValia Code ");
+  const isPremiumTheme = userTheme === 'premium';
+  const borderTitle = isPremiumTheme ? ` ${color("text", userTheme)("BotValia")} ${color("claude", userTheme)("Premium")} ${color("inactive", userTheme)(`v${version}`)} ` : ` ${color("professionalBlue", userTheme)("BotValia Code")} ${color("inactive", userTheme)(`v${version}`)} `;
+  const compactBorderTitle = isPremiumTheme ? `${color("text", userTheme)(" BotValia ")}${color("claude", userTheme)(" Premium ")}` : color("professionalBlue", userTheme)(" BotValia Code ");
+  const borderColor = isPremiumTheme ? "promptBorder" : "professionalBlue";
   if (layoutMode === "compact") {
     let welcomeMessage = formatWelcomeMessage(username);
     if (stringWidth(welcomeMessage) > columns - 4) {
@@ -328,7 +330,7 @@ export function LogoV2() {
       t18 = $[42];
       t19 = $[43];
     }
-    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="professionalBlue" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true}>{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{billingType}</Text><Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
+    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor={borderColor} borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true}>{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{billingType}</Text><Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
   }
   const welcomeMessage_0 = formatWelcomeMessage(username);
   const modelLine = !process.env.IS_DEMO && config.oauthAccount?.organizationName ? `${modelDisplayName} · ${billingType} · ${config.oauthAccount.organizationName}` : `${modelDisplayName} · ${billingType}`;
@@ -344,7 +346,7 @@ export function LogoV2() {
   const T1 = Box;
   const t11 = "column";
   const t12 = "round";
-  const t13 = "professionalBlue";
+  const t13 = borderColor;
   let t14;
   if ($[44] !== borderTitle) {
     t14 = {

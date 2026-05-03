@@ -43,18 +43,54 @@ const FREE_ONLY_MODEL_HEADER_TEXT =
   'Free-only mode: choose Auto (All), Auto (OpenRouter), Auto (Ollama), or Manual. Manual opens a second list of fixed models.'
 
 const FREE_ONLY_MODEL_HELP_TEXT = [
-  'Run /model to open the mode selector, or /model [mode] to set it directly.',
-  'Top-level options: Auto (All), Auto (OpenRouter), Auto (Ollama), Manual.',
-  'Manual opens a second list with exact fixed models ordered by tier.',
-  'Auto (All): hybrid free routing with OpenRouter and Ollama. Each lane has one primary model plus multiple fallbacks.',
-  'Auto (OpenRouter): free OpenRouter routing with multiple same-provider fallbacks per tier.',
-  'Auto (Ollama): local Ollama routing with multiple same-provider fallbacks per tier.',
-  'openrouter/free is an OpenRouter router, not a fixed manual model. BotValia uses it inside the automatic OpenRouter fast lane.',
-  'Direct examples: /model auto-all, /model auto-openrouter, /model auto-ollama, /model manual, /model openrouter::qwen/qwen3.6-plus:free, /model ollama::qwen3-coder',
+  'Uso: /model [auto-all|auto-openrouter|auto-ollama|manual|RUTA]',
+  '',
+  'Modos:',
+  '- auto-all         Routing híbrido free con OpenRouter + Ollama',
+  '- auto-openrouter  Routing free solo con OpenRouter',
+  '- auto-ollama      Routing local solo con Ollama',
+  '- manual           Abre el selector de modelos fijos',
+  '',
+  'Rutas directas:',
+  '- /model openrouter::qwen/qwen3.6-plus:free',
+  '- /model ollama::qwen3-coder',
+  '- openrouter/free es un router automático, no un modelo manual fijo',
+  '',
+  'Ranking dinámico:',
+  '- /model audit   Pendiente; comparará la cola actual con rankings públicos',
+  '- /model update  Pendiente; reordenará próximos turnos sin mover el turno activo',
+  '- Fuentes previstas: OpenRouter, Aider, Artificial Analysis',
+  '',
+  'Estado actual:',
+  '- la cola base vive en scripts/dev-auto.ps1',
+  '- el routing en caliente vive en providerRouting.ts',
+  '- el plan completo está en ROADMAP.md (Fase 7)',
 ].join('\n')
 
 const FREE_ONLY_MODEL_DIRECT_HINT =
   'Tip: use /model auto-all, /model auto-openrouter, /model auto-ollama, /model manual, /model openrouter::MODEL, or /model ollama::MODEL.'
+
+const MODEL_AUDIT_PREVIEW_TEXT = [
+  'La auditoría dinámica de modelos todavía no está implementada como comando de producto.',
+  '',
+  'Flujo previsto:',
+  '1. /model audit',
+  '   Compara la cola actual fast / complex / code contra señales públicas.',
+  '2. /model update',
+  '   Reordena próximos turnos sin mover el modelo que ya está respondiendo.',
+  '',
+  'Fuentes previstas:',
+  '- OpenRouter rankings',
+  '- OpenRouter programming collection',
+  '- OpenRouter free models collection',
+  '- Aider leaderboard',
+  '- Artificial Analysis',
+  '',
+  'Estado actual:',
+  '- el orden base vive en scripts/dev-auto.ps1',
+  '- el routing en caliente vive en src/utils/model/providerRouting.ts',
+  '- el detalle del plan quedó documentado en ROADMAP.md (Fase 7)',
+].join('\n')
 
 function isFreeOnlyModeEnabled(): boolean {
   return process.env.BOTVALIA_FREE_ONLY_MODE === '1'
@@ -401,6 +437,7 @@ function ShowModelAndClose({
 
 export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   args = args?.trim() || ''
+  const normalizedArgs = args.toLowerCase()
 
   if (COMMON_INFO_ARGS.includes(args)) {
     logEvent('tengu_model_command_inline_help', {
@@ -411,6 +448,16 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 
   if (COMMON_HELP_ARGS.includes(args)) {
     onDone(FREE_ONLY_MODEL_HELP_TEXT, { display: 'system' })
+    return
+  }
+
+  if (
+    normalizedArgs === 'audit' ||
+    normalizedArgs === 'update' ||
+    normalizedArgs.startsWith('audit ') ||
+    normalizedArgs.startsWith('update ')
+  ) {
+    onDone(MODEL_AUDIT_PREVIEW_TEXT, { display: 'system' })
     return
   }
 

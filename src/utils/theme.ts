@@ -90,6 +90,7 @@ export type Theme = {
 
 export const THEME_NAMES = [
   'dark',
+  'premium',
   'light',
   'light-daltonized',
   'dark-daltonized',
@@ -515,6 +516,60 @@ const darkTheme: Theme = {
 }
 
 /**
+ * Premium dark theme tuned for dense coding-agent shells.
+ * Emphasizes graphite surfaces, steel-blue structure, and warm copper accents.
+ */
+const premiumTheme: Theme = {
+  ...darkTheme,
+  autoAccept: 'rgb(215,174,255)',
+  bashBorder: 'rgb(176,132,84)',
+  claude: 'rgb(242,186,110)',
+  claudeShimmer: 'rgb(255,222,165)',
+  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(143,186,255)',
+  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(188,215,255)',
+  permission: 'rgb(255,196,112)',
+  permissionShimmer: 'rgb(255,225,170)',
+  planMode: 'rgb(151,160,132)',
+  ide: 'rgb(122,164,232)',
+  promptBorder: 'rgb(184,142,90)',
+  promptBorderShimmer: 'rgb(225,188,136)',
+  text: 'rgb(244,240,232)',
+  inverseText: 'rgb(17,20,24)',
+  inactive: 'rgb(174,166,154)',
+  inactiveShimmer: 'rgb(214,207,194)',
+  subtle: 'rgb(71,55,43)',
+  suggestion: 'rgb(255,196,112)',
+  remember: 'rgb(255,196,112)',
+  background: 'rgb(214,195,148)',
+  success: 'rgb(126,204,157)',
+  error: 'rgb(245,126,132)',
+  warning: 'rgb(255,196,112)',
+  merged: 'rgb(215,174,255)',
+  warningShimmer: 'rgb(255,226,172)',
+  diffAdded: 'rgb(26,71,53)',
+  diffRemoved: 'rgb(96,37,47)',
+  diffAddedDimmed: 'rgb(47,64,53)',
+  diffRemovedDimmed: 'rgb(81,58,61)',
+  diffAddedWord: 'rgb(86,190,140)',
+  diffRemovedWord: 'rgb(224,110,114)',
+  professionalBlue: 'rgb(214,195,148)',
+  clawd_body: 'rgb(235,214,168)',
+  clawd_background: 'rgb(24,20,17)',
+  userMessageBackground: 'rgb(37,29,24)',
+  userMessageBackgroundHover: 'rgb(47,37,31)',
+  messageActionsBackground: 'rgb(67,49,35)',
+  selectionBg: 'rgb(88,63,34)',
+  bashMessageBackgroundColor: 'rgb(29,24,21)',
+  memoryBackgroundColor: 'rgb(24,20,18)',
+  rate_limit_fill: 'rgb(255,196,112)',
+  rate_limit_empty: 'rgb(79,61,47)',
+  fastMode: 'rgb(255,171,77)',
+  fastModeShimmer: 'rgb(255,212,148)',
+  briefLabelYou: 'rgb(143,186,255)',
+  briefLabelClaude: 'rgb(242,186,110)',
+}
+
+/**
  * Dark daltonized theme (color-blind friendly) using explicit RGB values
  * to avoid inconsistencies from users' custom terminal ANSI color definitions
  */
@@ -597,6 +652,8 @@ const darkDaltonizedTheme: Theme = {
 
 export function getTheme(themeName: ThemeName): Theme {
   switch (themeName) {
+    case 'premium':
+      return premiumTheme
     case 'light':
       return lightTheme
     case 'light-ansi':
