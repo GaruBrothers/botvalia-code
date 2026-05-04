@@ -1,6 +1,7 @@
 import { realpath } from 'fs/promises'
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
+import { homedir } from 'os'
 import {
   basename,
   dirname,
@@ -72,20 +73,80 @@ export type LoadedFrom =
   | 'bundled'
   | 'mcp'
 
+const PRIMARY_BOTVALIA_CONFIG_DIR = '.botvalia'
+const LEGACY_CLAUDE_CONFIG_DIR = '.claude'
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.filter(Boolean))]
+}
+
+export function getLegacySkillsPaths(
+  source: SettingSource | 'plugin',
+  dir: 'skills' | 'commands',
+): string[] {
+  if (dir !== 'skills') {
+    return []
+  }
+
+  switch (source) {
+    case 'policySettings':
+      return [join(getManagedFilePath(), LEGACY_CLAUDE_CONFIG_DIR, dir)]
+    case 'userSettings':
+      return [join(getClaudeConfigHomeDir(), dir)]
+    case 'projectSettings':
+      return [`${LEGACY_CLAUDE_CONFIG_DIR}/${dir}`]
+    default:
+      return []
+  }
+}
+
+export function getAllSkillsPaths(
+  source: SettingSource | 'plugin',
+  dir: 'skills' | 'commands',
+): string[] {
+  return uniquePaths([
+    getSkillsPath(source, dir),
+    ...getLegacySkillsPaths(source, dir),
+  ])
+}
+
+export function getAdditionalDirectorySkillPaths(dir: string): string[] {
+  return uniquePaths([
+    join(dir, PRIMARY_BOTVALIA_CONFIG_DIR, 'skills'),
+    join(dir, LEGACY_CLAUDE_CONFIG_DIR, 'skills'),
+  ])
+}
+
 /**
- * Returns a claude config directory path for a given source.
+ * Returns the primary BotValia config directory path for a given source.
+ * Legacy .claude skill directories are loaded separately for compatibility.
  */
 export function getSkillsPath(
   source: SettingSource | 'plugin',
   dir: 'skills' | 'commands',
 ): string {
+  if (dir === 'skills') {
+    switch (source) {
+      case 'policySettings':
+        return join(getManagedFilePath(), PRIMARY_BOTVALIA_CONFIG_DIR, dir)
+      case 'userSettings':
+        return join(homedir(), PRIMARY_BOTVALIA_CONFIG_DIR, dir)
+      case 'projectSettings':
+        return `${PRIMARY_BOTVALIA_CONFIG_DIR}/${dir}`
+      case 'plugin':
+        return 'plugin'
+      default:
+        return ''
+    }
+  }
+
   switch (source) {
     case 'policySettings':
-      return join(getManagedFilePath(), '.claude', dir)
+      return join(getManagedFilePath(), LEGACY_CLAUDE_CONFIG_DIR, dir)
     case 'userSettings':
       return join(getClaudeConfigHomeDir(), dir)
     case 'projectSettings':
-      return `.claude/${dir}`
+      return `${LEGACY_CLAUDE_CONFIG_DIR}/${dir}`
     case 'plugin':
       return 'plugin'
     default:
@@ -637,12 +698,12 @@ async function loadSkillsFromCommandsDir(
  */
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
-    const userSkillsDir = join(getClaudeConfigHomeDir(), 'skills')
-    const managedSkillsDir = join(getManagedFilePath(), '.claude', 'skills')
+    const userSkillsDirs = getAllSkillsPaths('userSettings', 'skills')
+    const managedSkillsDirs = getAllSkillsPaths('policySettings', 'skills')
     const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
 
     logForDebugging(
-      `Loading skills from: managed=${managedSkillsDir}, user=${userSkillsDir}, project=[${projectSkillsDirs.join(', ')}]`,
+      `Loading skills from: managed=[${managedSkillsDirs.join(', ')}], user=[${userSkillsDirs.join(', ')}], project=[${projectSkillsDirs.join(', ')}]`,
     )
 
     // Load from additional directories (--add-dir)
@@ -664,14 +725,15 @@ export const getSkillDirCommands = memoize(
       }
       const additionalSkillsNested = await Promise.all(
         additionalDirs.map(dir =>
-          loadSkillsFromSkillsDir(
-            join(dir, '.claude', 'skills'),
-            'projectSettings',
+          Promise.all(
+            getAdditionalDirectorySkillPaths(dir).map(skillDir =>
+              loadSkillsFromSkillsDir(skillDir, 'projectSettings'),
+            ),
           ),
         ),
       )
       // No dedup needed — explicit dirs, user controls uniqueness.
-      return additionalSkillsNested.flat().map(s => s.skill)
+      return additionalSkillsNested.flat(2).map(s => s.skill)
     }
 
     // Load from /skills/ directories, additional dirs, and legacy /commands/ in parallel
@@ -685,9 +747,17 @@ export const getSkillDirCommands = memoize(
     ] = await Promise.all([
       isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_POLICY_SKILLS)
         ? Promise.resolve([])
-        : loadSkillsFromSkillsDir(managedSkillsDir, 'policySettings'),
+        : Promise.all(
+            managedSkillsDirs.map(skillDir =>
+              loadSkillsFromSkillsDir(skillDir, 'policySettings'),
+            ),
+          ).then(_ => _.flat()),
       isSettingSourceEnabled('userSettings') && !skillsLocked
-        ? loadSkillsFromSkillsDir(userSkillsDir, 'userSettings')
+        ? Promise.all(
+            userSkillsDirs.map(skillDir =>
+              loadSkillsFromSkillsDir(skillDir, 'userSettings'),
+            ),
+          ).then(_ => _.flat())
         : Promise.resolve([]),
       projectSettingsEnabled
         ? Promise.all(
@@ -699,12 +769,13 @@ export const getSkillDirCommands = memoize(
       projectSettingsEnabled
         ? Promise.all(
             additionalDirs.map(dir =>
-              loadSkillsFromSkillsDir(
-                join(dir, '.claude', 'skills'),
-                'projectSettings',
+              Promise.all(
+                getAdditionalDirectorySkillPaths(dir).map(skillDir =>
+                  loadSkillsFromSkillsDir(skillDir, 'projectSettings'),
+                ),
               ),
             ),
-          )
+          ).then(_ => _.map(entry => entry.flat()))
         : Promise.resolve([]),
       // Legacy commands-as-skills goes through markdownConfigLoader with
       // subdir='commands', which our agents-only guard there skips. Block
@@ -874,30 +945,30 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      const skillDir = join(currentDir, '.claude', 'skills')
-
-      // Skip if we've already checked this path (hit or miss) — avoids
-      // repeating the same failed stat on every Read/Write/Edit call when
-      // the directory doesn't exist (the common case).
-      if (!dynamicSkillDirs.has(skillDir)) {
-        dynamicSkillDirs.add(skillDir)
-        try {
-          await fs.stat(skillDir)
-          // Skills dir exists. Before loading, check if the containing dir
-          // is gitignored — blocks e.g. node_modules/pkg/.claude/skills from
-          // loading silently. `git check-ignore` handles nested .gitignore,
-          // .git/info/exclude, and global gitignore. Fails open outside a
-          // git repo (exit 128 → false); the invocation-time trust dialog
-          // is the actual security boundary.
-          if (await isPathGitignored(currentDir, resolvedCwd)) {
-            logForDebugging(
-              `[skills] Skipped gitignored skills dir: ${skillDir}`,
-            )
-            continue
+      for (const skillDir of getAdditionalDirectorySkillPaths(currentDir)) {
+        // Skip if we've already checked this path (hit or miss) — avoids
+        // repeating the same failed stat on every Read/Write/Edit call when
+        // the directory doesn't exist (the common case).
+        if (!dynamicSkillDirs.has(skillDir)) {
+          dynamicSkillDirs.add(skillDir)
+          try {
+            await fs.stat(skillDir)
+            // Skills dir exists. Before loading, check if the containing dir
+            // is gitignored — blocks e.g. node_modules/pkg/.botvalia/skills from
+            // loading silently. `git check-ignore` handles nested .gitignore,
+            // .git/info/exclude, and global gitignore. Fails open outside a
+            // git repo (exit 128 → false); the invocation-time trust dialog
+            // is the actual security boundary.
+            if (await isPathGitignored(currentDir, resolvedCwd)) {
+              logForDebugging(
+                `[skills] Skipped gitignored skills dir: ${skillDir}`,
+              )
+              continue
+            }
+            newDirs.push(skillDir)
+          } catch {
+            // Directory doesn't exist — already recorded above, continue
           }
-          newDirs.push(skillDir)
-        } catch {
-          // Directory doesn't exist — already recorded above, continue
         }
       }
 

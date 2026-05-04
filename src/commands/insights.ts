@@ -1486,7 +1486,7 @@ Include 3 friction categories with 2 examples each.`,
    - Good for: database queries, Slack integration, GitHub issue lookup, connecting to internal APIs
 
 2. **Custom Skills**: Reusable prompts you define as markdown files that run with a single /command.
-   - How to use: Create \`.agents/skills/commit/SKILL.md\` with instructions, or use the legacy-compatible \`.claude/skills/commit/SKILL.md\`. Then type \`/commit\` to run it.
+   - How to use: Create \`.agents/skills/commit/SKILL.md\` with instructions, or place a project skill at \`.botvalia/skills/commit/SKILL.md\`. Then type \`/commit\` to run it.
    - Good for: repetitive workflows - /commit, /review, /test, /deploy, /pr, or complex multi-step workflows
 
 3. **Hooks**: Shell commands that auto-run at specific lifecycle events.

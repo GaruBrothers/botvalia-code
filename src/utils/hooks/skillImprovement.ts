@@ -194,17 +194,35 @@ export async function applySkillImprovement(
   const { join } = await import('path')
   const fs = await import('fs/promises')
 
-  // Skills live at .claude/skills/<name>/SKILL.md relative to CWD
-  const filePath = join(getCwd(), '.claude', 'skills', skillName, 'SKILL.md')
+  const primaryFilePath = join(
+    getCwd(),
+    '.botvalia',
+    'skills',
+    skillName,
+    'SKILL.md',
+  )
+  const legacyFilePath = join(
+    getCwd(),
+    '.claude',
+    'skills',
+    skillName,
+    'SKILL.md',
+  )
+  let filePath = primaryFilePath
 
   let currentContent: string
   try {
     currentContent = await fs.readFile(filePath, 'utf-8')
   } catch {
-    logError(
-      new Error(`Failed to read skill file for improvement: ${filePath}`),
-    )
-    return
+    try {
+      currentContent = await fs.readFile(legacyFilePath, 'utf-8')
+      filePath = legacyFilePath
+    } catch {
+      logError(
+        new Error(`Failed to read skill file for improvement: ${filePath}`),
+      )
+      return
+    }
   }
 
   const updateList = updates.map(u => `- ${u.section}: ${u.change}`).join('\n')

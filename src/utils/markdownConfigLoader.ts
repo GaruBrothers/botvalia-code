@@ -45,6 +45,20 @@ export type MarkdownFile = {
   source: SettingSource
 }
 
+function getConfigSubdirCandidates(
+  rootDir: string,
+  subdir: ClaudeConfigDirectory,
+): string[] {
+  if (subdir === 'skills') {
+    return [
+      join(rootDir, '.botvalia', subdir),
+      join(rootDir, '.claude', subdir),
+    ]
+  }
+
+  return [join(rootDir, '.claude', subdir)]
+}
+
 /**
  * Extracts a description from markdown content
  * Uses the first non-empty line as the description, or falls back to a default
@@ -250,18 +264,19 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    const claudeSubdir = join(current, '.claude', subdir)
-    // Filter to existing dirs. This is a perf filter (avoids spawning
-    // ripgrep on non-existent dirs downstream) and the worktree fallback
-    // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
-    // handling instead of existsSync — re-throws unexpected errors rather
-    // than silently swallowing them. Downstream loadMarkdownFiles handles
-    // the TOCTOU window (dir disappearing before read) gracefully.
-    try {
-      statSync(claudeSubdir)
-      dirs.push(claudeSubdir)
-    } catch (e: unknown) {
-      if (!isFsInaccessible(e)) throw e
+    for (const configSubdir of getConfigSubdirCandidates(current, subdir)) {
+      // Filter to existing dirs. This is a perf filter (avoids spawning
+      // ripgrep on non-existent dirs downstream) and the worktree fallback
+      // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
+      // handling instead of existsSync — re-throws unexpected errors rather
+      // than silently swallowing them. Downstream loadMarkdownFiles handles
+      // the TOCTOU window (dir disappearing before read) gracefully.
+      try {
+        statSync(configSubdir)
+        dirs.push(configSubdir)
+      } catch (e: unknown) {
+        if (!isFsInaccessible(e)) throw e
+      }
     }
 
     // Stop after processing the git root directory - this prevents commands from parent

@@ -11,7 +11,9 @@ import {
 } from '../../services/analytics/index.js'
 import {
   clearSkillCaches,
+  getAdditionalDirectorySkillPaths,
   getSkillsPath,
+  getAllSkillsPaths,
   onDynamicSkillsLoaded,
 } from '../../skills/loadSkillsDir.js'
 import { resetSentSkillNames } from '../attachments.js'
@@ -172,9 +174,8 @@ async function getWatchablePaths(): Promise<string[]> {
   const fs = getFsImplementation()
   const paths: string[] = []
 
-  // User skills directory (~/.claude/skills)
-  const userSkillsPath = getSkillsPath('userSettings', 'skills')
-  if (userSkillsPath) {
+  // User skills directories (~/.botvalia/skills primary, legacy fallback)
+  for (const userSkillsPath of getAllSkillsPaths('userSettings', 'skills')) {
     try {
       await fs.stat(userSkillsPath)
       paths.push(userSkillsPath)
@@ -194,9 +195,11 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // Project skills directory (.claude/skills)
-  const projectSkillsPath = getSkillsPath('projectSettings', 'skills')
-  if (projectSkillsPath) {
+  // Project skills directories (.botvalia/skills primary, legacy fallback)
+  for (const projectSkillsPath of getAllSkillsPaths(
+    'projectSettings',
+    'skills',
+  )) {
     try {
       // For project settings, resolve to absolute path
       const absolutePath = platformPath.resolve(projectSkillsPath)
@@ -222,12 +225,13 @@ async function getWatchablePaths(): Promise<string[]> {
 
   // Additional directories (--add-dir) skills
   for (const dir of getAdditionalDirectoriesForClaudeMd()) {
-    const additionalSkillsPath = platformPath.join(dir, '.claude', 'skills')
-    try {
-      await fs.stat(additionalSkillsPath)
-      paths.push(additionalSkillsPath)
-    } catch {
-      // Path doesn't exist, skip it
+    for (const additionalSkillsPath of getAdditionalDirectorySkillPaths(dir)) {
+      try {
+        await fs.stat(additionalSkillsPath)
+        paths.push(additionalSkillsPath)
+      } catch {
+        // Path doesn't exist, skip it
+      }
     }
   }
 

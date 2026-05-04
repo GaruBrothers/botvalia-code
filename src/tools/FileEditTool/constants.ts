@@ -1,6 +1,12 @@
 // In its own file to avoid circular dependencies
 export const FILE_EDIT_TOOL_NAME = 'Edit'
 
+// Permission pattern for granting session-level access to the project's .botvalia/ folder
+export const BOTVALIA_FOLDER_PERMISSION_PATTERN = '/.botvalia/**'
+
+// Permission pattern for granting session-level access to the global ~/.botvalia/ folder
+export const GLOBAL_BOTVALIA_FOLDER_PERMISSION_PATTERN = '~/.botvalia/**'
+
 // Permission pattern for granting session-level access to the project's .claude/ folder
 export const CLAUDE_FOLDER_PERMISSION_PATTERN = '/.claude/**'
 

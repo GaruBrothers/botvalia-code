@@ -5,44 +5,56 @@ import { getOriginalCwd } from '../../../bootstrap/state.js';
 import { Text } from '../../../ink.js';
 import { getShortcutDisplay } from '../../../keybindings/shortcutFormat.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
+import {
+  BOTVALIA_FOLDER_PERMISSION_PATTERN,
+  CLAUDE_FOLDER_PERMISSION_PATTERN,
+  GLOBAL_BOTVALIA_FOLDER_PERMISSION_PATTERN,
+  GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN
+} from '../../../tools/FileEditTool/constants.js';
+import { getClaudeConfigHomeDir } from '../../../utils/envUtils.js';
 import { expandPath, getDirectoryForPath } from '../../../utils/path.js';
 import { normalizeCaseForComparison, pathInAllowedWorkingPath } from '../../../utils/permissions/filesystem.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
-/**
- * Check if a path is within the project's .claude/ folder.
- * This is used to determine whether to show the special ".claude folder" permission option.
- */
-export function isInClaudeFolder(filePath: string): boolean {
+
+function resolveConfigFolderPattern(
+  filePath: string,
+  candidates: Array<{ path: string; pattern: string }>,
+): string | null {
   const absolutePath = expandPath(filePath);
-  const claudeFolderPath = expandPath(`${getOriginalCwd()}/.claude`);
-
-  // Check if the path is within the project's .claude folder
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedClaudeFolderPath = normalizeCaseForComparison(claudeFolderPath);
-
-  // Path must start with the .claude folder path (and be inside it, not just the folder itself)
-  return normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + sep.toLowerCase()) ||
-  // Also match case where sep is / on posix systems
-  normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + '/');
+  for (const candidate of candidates) {
+    const normalizedCandidatePath = normalizeCaseForComparison(candidate.path);
+    if (normalizedAbsolutePath.startsWith(normalizedCandidatePath + sep.toLowerCase()) || normalizedAbsolutePath.startsWith(normalizedCandidatePath + '/')) {
+      return candidate.pattern;
+    }
+  }
+  return null;
 }
 
-/**
- * Check if a path is within the global ~/.claude/ folder.
- * This is used to determine whether to show the special ".claude folder" permission option
- * for files in the user's home directory.
- */
-export function isInGlobalClaudeFolder(filePath: string): boolean {
-  const absolutePath = expandPath(filePath);
-  const globalClaudeFolderPath = join(homedir(), '.claude');
-  const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedGlobalClaudeFolderPath = normalizeCaseForComparison(globalClaudeFolderPath);
-  return normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + sep.toLowerCase()) || normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + '/');
+function getProjectConfigFolderPattern(filePath: string): string | null {
+  return resolveConfigFolderPattern(filePath, [{
+    path: expandPath(`${getOriginalCwd()}/.botvalia`),
+    pattern: BOTVALIA_FOLDER_PERMISSION_PATTERN
+  }, {
+    path: expandPath(`${getOriginalCwd()}/.claude`),
+    pattern: CLAUDE_FOLDER_PERMISSION_PATTERN
+  }]);
+}
+
+function getGlobalConfigFolderPattern(filePath: string): string | null {
+  return resolveConfigFolderPattern(filePath, [{
+    path: join(homedir(), '.botvalia'),
+    pattern: GLOBAL_BOTVALIA_FOLDER_PERMISSION_PATTERN
+  }, {
+    path: getClaudeConfigHomeDir(),
+    pattern: GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN
+  }]);
 }
 export type PermissionOption = {
   type: 'accept-once';
 } | {
   type: 'accept-session';
-  scope?: 'claude-folder' | 'global-claude-folder';
+  pattern?: string;
 } | {
   type: 'reject';
 };
@@ -94,21 +106,22 @@ export function getFilePermissionOptions({
   }
   const inAllowedPath = pathInAllowedWorkingPath(filePath, toolPermissionContext);
 
-  // Check if this is a .claude/ folder path (project or global)
-  const inClaudeFolder = isInClaudeFolder(filePath);
-  const inGlobalClaudeFolder = isInGlobalClaudeFolder(filePath);
+  // Check if this is a BotValia config folder path (primary or legacy)
+  const projectConfigFolderPattern = getProjectConfigFolderPattern(filePath);
+  const globalConfigFolderPattern = getGlobalConfigFolderPattern(filePath);
+  const configFolderPattern = globalConfigFolderPattern || projectConfigFolderPattern;
 
-  // Option 2: For .claude/ folder, show special option instead of generic session option
+  // Option 2: For BotValia config folders, show a special option instead of the generic session option
   // Note: Session-level options are always shown since they only affect in-memory state,
   // not persisted settings. The allowManagedPermissionRulesOnly setting only restricts
   // persisted permission rules.
-  if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
+  if (configFolderPattern && operationType !== 'read') {
     options.push({
       label: 'Yes, and allow BotValia to edit its own settings for this session',
       value: 'yes-claude-folder',
       option: {
         type: 'accept-session',
-        scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder'
+        pattern: configFolderPattern
       }
     });
   } else {

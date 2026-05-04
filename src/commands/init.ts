@@ -51,7 +51,7 @@ Detect:
 - Project structure (monorepo with workspaces, multi-module, or single project)
 - Code style rules that differ from language defaults
 - Non-obvious gotchas, required env vars, or workflow quirks
-- Existing legacy compatibility directories like .claude/skills/ and .claude/rules/
+- Existing compatibility directories like .botvalia/skills/, .botvalia/rules/, or legacy .claude paths
 - Formatter configuration (prettier, biome, ruff, black, gofmt, rustfmt, or a unified format script like \`npm run format\` / \`make fmt\`)
 - Git worktree usage: run \`git worktree list\` to check if this repo has multiple worktrees (only relevant if the user wants a personal CLAUDE.local.md)
 
@@ -166,9 +166,9 @@ Skills add capabilities BotValia can use on demand without bloating every sessio
 
 For each suggested skill, provide: name, one-line purpose, and why it fits this repo.
 
-If \`.claude/skills/\` already exists with skills, review them first. This is the current legacy-compatible project skills path. Do not overwrite existing skills — only propose new ones that complement what is already there.
+If \`.botvalia/skills/\` already exists with skills, review them first. Do not overwrite existing skills — only propose new ones that complement what is already there.
 
-Create each skill at the legacy-compatible project skills path \`.claude/skills/<skill-name>/SKILL.md\`:
+Create each skill at the project skills path \`.botvalia/skills/<skill-name>/SKILL.md\`:
 
 \`\`\`yaml
 ---

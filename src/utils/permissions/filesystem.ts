@@ -7,8 +7,10 @@ import { join, normalize, posix, sep } from 'path'
 import { hasAutoMemPathOverride, isAutoMemPath } from 'src/memdir/paths.js'
 import { isAgentMemoryPath } from 'src/tools/AgentTool/agentMemory.js'
 import {
+  BOTVALIA_FOLDER_PERMISSION_PATTERN,
   CLAUDE_FOLDER_PERMISSION_PATTERN,
   FILE_EDIT_TOOL_NAME,
+  GLOBAL_BOTVALIA_FOLDER_PERMISSION_PATTERN,
   GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
 } from 'src/tools/FileEditTool/constants.js'
 import type { z } from 'zod/v4'
@@ -75,6 +77,7 @@ export const DANGEROUS_DIRECTORIES = [
   '.git',
   '.vscode',
   '.idea',
+  '.botvalia',
   '.claude',
 ] as const
 
@@ -92,11 +95,12 @@ export function normalizeCaseForComparison(path: string): string {
 }
 
 /**
- * If filePath is inside a .claude/skills/{name}/ directory (project or global),
+ * If filePath is inside a BotValia skills directory (primary or legacy),
  * return the skill name and a session-allow pattern scoped to just that skill.
  * Used to offer a narrower "allow edits to this skill only" option in the
  * permission dialog and SDK suggestions, so iterating on one skill doesn't
- * require granting session access to all of .claude/ (settings.json, hooks/, etc.).
+ * require granting session access to all of the config folder (settings.json,
+ * hooks/, etc.).
  */
 export function getClaudeSkillScope(
   filePath: string,
@@ -106,11 +110,19 @@ export function getClaudeSkillScope(
 
   const bases = [
     {
+      dir: expandPath(join(getOriginalCwd(), '.botvalia', 'skills')),
+      prefix: '/.botvalia/skills/',
+    },
+    {
       dir: expandPath(join(getOriginalCwd(), '.claude', 'skills')),
       prefix: '/.claude/skills/',
     },
     {
-      dir: expandPath(join(homedir(), '.claude', 'skills')),
+      dir: expandPath(join(homedir(), '.botvalia', 'skills')),
+      prefix: '~/.botvalia/skills/',
+    },
+    {
+      dir: expandPath(join(getClaudeConfigHomeDir(), 'skills')),
       prefix: '~/.claude/skills/',
     },
   ]
@@ -145,7 +157,8 @@ export function getClaudeSkillScope(
         // Reject glob metacharacters. skillName is interpolated into a
         // gitignore pattern consumed by ignore().add() in matchingRuleForInput
         // at step 1.6. A directory literally named '*' (valid on POSIX) would
-        // produce '/.claude/skills/*/**' which matches ALL skills. Return null
+        // produce '/.botvalia/skills/*/**' or '/.claude/skills/*/**', which
+        // would match ALL skills. Return null
         // to fall through to generateSuggestions() instead.
         if (/[*?[\]]/.test(skillName)) return null
         return { skillName, pattern: prefix + skillName + '/**' }
@@ -208,10 +221,12 @@ export function isClaudeSettingsPath(filePath: string): boolean {
 
   // Use platform separator so endsWith checks work on both Unix (/) and Windows (\)
   if (
+    normalizedPath.endsWith(`${sep}.botvalia${sep}settings.json`) ||
+    normalizedPath.endsWith(`${sep}.botvalia${sep}settings.local.json`) ||
     normalizedPath.endsWith(`${sep}.claude${sep}settings.json`) ||
     normalizedPath.endsWith(`${sep}.claude${sep}settings.local.json`)
   ) {
-    // Include .claude/settings.json even for other projects
+    // Include config settings files even for other projects
     return true
   }
   // Check for current project's settings files (including managed settings and CLI args)
@@ -227,14 +242,16 @@ function isClaudeConfigFilePath(filePath: string): boolean {
     return true
   }
 
-  // Check if file is within .claude/commands or .claude/agents directories
+  // Check if file is within BotValia config directories
   // using proper path segment validation (not string matching with includes())
   // pathInWorkingPath now handles case-insensitive comparison to prevent bypasses
+  const botvaliaSkillsDir = join(getOriginalCwd(), '.botvalia', 'skills')
   const commandsDir = join(getOriginalCwd(), '.claude', 'commands')
   const agentsDir = join(getOriginalCwd(), '.claude', 'agents')
   const skillsDir = join(getOriginalCwd(), '.claude', 'skills')
 
   return (
+    pathInWorkingPath(filePath, botvaliaSkillsDir) ||
     pathInWorkingPath(filePath, commandsDir) ||
     pathInWorkingPath(filePath, agentsDir) ||
     pathInWorkingPath(filePath, skillsDir)
@@ -1252,10 +1269,10 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   // 1.6. Check for .claude/** allow rules BEFORE safety checks
   // This allows session-level permissions to bypass the safety blocks for .claude/
   // We only allow this for session-level rules to prevent users from accidentally
-  // permanently granting broad access to their .claude/ folder.
+  // permanently granting broad access to their config folder.
   //
   // matchingRuleForInput returns the first match across all sources. If the user
-  // also has a broader Edit(.claude) rule in userSettings (e.g. from sandbox
+  // also has a broader Edit(.botvalia) or Edit(.claude) rule in userSettings (e.g. from sandbox
   // write-allow conversion), that rule would be found first and its source check
   // below would fail. Scope the search to session-only rules so the dialog's
   // "allow BotValia to edit its own settings for this session" option actually works.
@@ -1271,20 +1288,24 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     'allow',
   )
   if (claudeFolderAllowRule) {
-    // Check if this rule is scoped under .claude/ (project or global).
-    // Accepts both the broad patterns ('/.claude/**', '~/.claude/**') and
-    // narrowed ones like '/.claude/skills/my-skill/**' so users can grant
+    // Check if this rule is scoped under .botvalia/ or .claude/ (project or global).
+    // Accepts both the broad patterns ('/.botvalia/**', '~/.botvalia/**',
+    // '/.claude/**', '~/.claude/**') and narrowed ones like
+    // '/.botvalia/skills/my-skill/**' so users can grant
     // session access to a single skill without also exposing settings.json
     // or hooks/. The rule already matched the path via matchingRuleForInput;
     // this is an additional scope check. Reject '..' to prevent a rule like
-    // '/.claude/../**' from leaking this bypass outside .claude/.
+    // '/.botvalia/../**' from leaking this bypass outside the config dir.
     const ruleContent = claudeFolderAllowRule.ruleValue.ruleContent
+    const configFolderPrefixes = [
+      BOTVALIA_FOLDER_PERMISSION_PATTERN,
+      GLOBAL_BOTVALIA_FOLDER_PERMISSION_PATTERN,
+      CLAUDE_FOLDER_PERMISSION_PATTERN,
+      GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+    ].map(pattern => pattern.slice(0, -2))
     if (
       ruleContent &&
-      (ruleContent.startsWith(CLAUDE_FOLDER_PERMISSION_PATTERN.slice(0, -2)) ||
-        ruleContent.startsWith(
-          GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN.slice(0, -2),
-        )) &&
+      configFolderPrefixes.some(prefix => ruleContent.startsWith(prefix)) &&
       !ruleContent.includes('..') &&
       ruleContent.endsWith('/**')
     ) {
@@ -1304,7 +1325,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   // permission to edit protected files
   const safetyCheck = checkPathSafetyForAutoEdit(path, pathsToCheck)
   if (!safetyCheck.safe) {
-    // SDK suggestion: if under .claude/skills/{name}/, emit the narrowed
+    // SDK suggestion: if under a project/global skills directory, emit the narrowed
     // session-scoped addRules that step 1.6 will honor on the next call.
     // Everything else (.claude/settings.json, .git/, .vscode/, .idea/) falls
     // back to generateSuggestions — its setMode suggestion doesn't bypass
