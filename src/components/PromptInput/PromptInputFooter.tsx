@@ -87,7 +87,7 @@ function getFooterModeLabel(modelSetting: string | null | undefined): string {
     return 'Manual (Ollama)';
   }
   if (providerRoute?.kind === 'anthropic') {
-    return 'Manual (Anthropic)';
+    return 'Manual (Direct)';
   }
   return modelDisplayString(modelSetting ?? null);
 }

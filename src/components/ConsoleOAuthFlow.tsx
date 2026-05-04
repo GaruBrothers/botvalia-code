@@ -60,7 +60,7 @@ export function ConsoleOAuthFlow({
   const settings = getSettings_DEPRECATED() || {};
   const forceLoginMethod = forceLoginMethodProp ?? settings.forceLoginMethod;
   const orgUUID = settings.forceLoginOrgUUID;
-  const forcedMethodMessage = forceLoginMethod === 'claudeai' ? 'Login method pre-selected: Subscription Plan (BotValia Pro/Max)' : forceLoginMethod === 'console' ? 'Login method pre-selected: API Usage Billing (Anthropic Console)' : null;
+  const forcedMethodMessage = forceLoginMethod === 'claudeai' ? 'Login method pre-selected: Subscription Plan (BotValia Pro/Max)' : forceLoginMethod === 'console' ? 'Login method pre-selected: API Usage Billing (Provider Console)' : null;
   const terminal = useTerminalNotification();
   const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>(() => {
     if (mode === 'setup-token') {
@@ -393,7 +393,7 @@ function OAuthStatusMessage(t0) {
         let t5;
         if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
           t5 = {
-            label: <Text>Anthropic Console account ·{" "}<Text dimColor={true}>API usage billing</Text>{"\n"}</Text>,
+    label: <Text>Provider Console account ·{" "}<Text dimColor={true}>API usage billing</Text>{"\n"}</Text>,
             value: "console"
           };
           $[4] = t5;

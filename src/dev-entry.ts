@@ -28,7 +28,7 @@ const defaultMacro: MacroConfig = {
   NATIVE_PACKAGE_URL: pkg.name,
   VERSION_CHANGELOG: '',
   ISSUES_EXPLAINER:
-    'file an issue at https://github.com/anthropics/claude-code/issues',
+    'file an issue at https://github.com/GaruBrothers/botvalia-code/issues',
   FEEDBACK_CHANNEL: 'github',
 }
 
@@ -70,7 +70,7 @@ const MISSING_IMPORT_SCAN_CACHE_PATH = resolve(
 const RELATIVE_IMPORT_PATTERN =
   /(?:import|export)\s+[\s\S]*?from\s+['"](\.\.?\/[^'"]+)['"]|require\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g
 
-function ensureAnthropicSdkRuntimeFiles(): void {
+function ensureProviderSdkRuntimeFiles(): void {
   const sdkPackagePath = resolve(
     'node_modules',
     '@anthropic-ai',
@@ -102,7 +102,7 @@ function ensureAnthropicSdkRuntimeFiles(): void {
   }
 
   console.log(
-    `[botvalia repair] Missing @anthropic-ai/sdk runtime files. Repairing @anthropic-ai/sdk@${sdkVersion} with npm...`,
+    `[botvalia repair] Missing required provider SDK runtime files. Repairing local SDK package @${sdkVersion} with npm...`,
   )
 
   const repair = spawnSync(
@@ -117,7 +117,7 @@ function ensureAnthropicSdkRuntimeFiles(): void {
 
   if (repair.status !== 0 || !existsSync(sdkInternalMarkerPath)) {
     console.error(
-      '[botvalia repair] Failed to restore @anthropic-ai/sdk internal runtime files.',
+      '[botvalia repair] Failed to restore required provider SDK runtime files.',
     )
     process.exit(repair.status ?? 1)
   }
@@ -331,7 +331,7 @@ if (missingImports.length > 0) {
   process.exit(0)
 }
 
-ensureAnthropicSdkRuntimeFiles()
+ensureProviderSdkRuntimeFiles()
 
 // Route through the original CLI bootstrap so the exported `main()` is
 // actually invoked. Importing `main.tsx` directly only evaluates the module.

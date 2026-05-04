@@ -122,14 +122,14 @@ export async function authLogin({
 }): Promise<void> {
   if (useConsole && claudeai) {
     process.stderr.write(
-      'Error: --console and --claudeai cannot be used together.\n',
+      'Error: --console and --subscription cannot be used together.\n',
     )
     process.exit(1)
   }
 
   const settings = getInitialSettings()
   // forceLoginMethod is a hard constraint (enterprise setting) — matches ConsoleOAuthFlow behavior.
-  // Without it, --console selects Console; --claudeai (or no flag) selects claude.ai.
+  // Without it, --console selects the billing-console flow; subscription mode (or no flag) selects the BotValia web flow.
   const loginWithClaudeAi = settings.forceLoginMethod
     ? settings.forceLoginMethod === 'claudeai'
     : !useConsole
@@ -333,6 +333,6 @@ export async function authLogout(): Promise<void> {
     process.stderr.write('Failed to log out.\n')
     process.exit(1)
   }
-  process.stdout.write('Successfully logged out from your Anthropic account.\n')
+  process.stdout.write('Successfully logged out from your BotValia account.\n')
   process.exit(0)
 }

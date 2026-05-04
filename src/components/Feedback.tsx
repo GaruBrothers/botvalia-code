@@ -33,7 +33,7 @@ import TextInput from './TextInput.js';
 
 // This value was determined experimentally by testing the URL length limit
 const GITHUB_URL_LIMIT = 7250;
-const GITHUB_ISSUES_REPO_URL = process.env.USER_TYPE === 'ant' ? 'https://github.com/anthropics/claude-cli-internal/issues' : 'https://github.com/anthropics/claude-code/issues';
+const GITHUB_ISSUES_REPO_URL = 'https://github.com/GaruBrothers/botvalia-code/issues';
 type Props = {
   abortSignal: AbortSignal;
   messages: Message[];
@@ -72,7 +72,7 @@ type FeedbackData = {
 export function redactSensitiveInfo(text: string): string {
   let redacted = text;
 
-  // Anthropic API keys (sk-ant...) with or without quotes
+  // Compatible provider API keys (sk-ant...) with or without quotes
   // First handle the case with quotes
   redacted = redacted.replace(/"(sk-ant[^\s"']{24,})"/g, '"[REDACTED_API_KEY]"');
   // Then handle the cases without quotes - more general pattern
@@ -450,7 +450,7 @@ export function createGitHubIssueUrl(feedbackId: string, title: string, descript
 async function generateTitle(description: string, abortSignal: AbortSignal): Promise<string> {
   try {
     const response = await queryHaiku({
-      systemPrompt: asSystemPrompt(['Generate a concise, technical issue title (max 80 chars) for a public GitHub issue based on this bug report for BotValia Code.', 'BotValia Code is an agentic coding CLI based on the Anthropic API.', 'The title should:', '- Include the type of issue [Bug] or [Feature Request] as the first thing in the title', '- Be concise, specific and descriptive of the actual problem', '- Use technical terminology appropriate for a software issue', '- For error messages, extract the key error (e.g., "Missing Tool Result Block" rather than the full message)', '- Be direct and clear for developers to understand the problem', '- If you cannot determine a clear issue, use "Bug Report: [brief description]"', '- Any LLM API errors are from the Anthropic API, not from any other model provider', 'Your response will be directly used as the title of the Github issue, and as such should not contain any other commentary or explaination', 'Examples of good titles include: "[Bug] Auto-Compact triggers to soon", "[Bug] Anthropic API Error: Missing Tool Result Block", "[Bug] Error: Invalid Model Name for Opus"']),
+      systemPrompt: asSystemPrompt(['Generate a concise, technical issue title (max 80 chars) for a public GitHub issue based on this bug report for BotValia Code.', 'BotValia Code is an agentic coding CLI that can route across multiple providers.', 'The title should:', '- Include the type of issue [Bug] or [Feature Request] as the first thing in the title', '- Be concise, specific and descriptive of the actual problem', '- Use technical terminology appropriate for a software issue', '- For error messages, extract the key error (e.g., "Missing Tool Result Block" rather than the full message)', '- Be direct and clear for developers to understand the problem', '- If you cannot determine a clear issue, use "Bug Report: [brief description]"', '- If the issue is provider-related, describe it as a provider or API error without assuming one vendor unless the report makes it explicit', 'Your response will be directly used as the title of the Github issue, and as such should not contain any other commentary or explaination', 'Examples of good titles include: "[Bug] Auto-Compact triggers too soon", "[Bug] Provider API Error: Missing Tool Result Block", "[Bug] Error: Invalid Model Name for Opus"']),
       userPrompt: description,
       signal: abortSignal,
       options: {

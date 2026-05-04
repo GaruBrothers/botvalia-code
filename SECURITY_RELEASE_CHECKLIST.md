@@ -65,7 +65,7 @@ Use [NETWORK_EGRESS.md](./NETWORK_EGRESS.md) as the inventory.
 
 ### 2.2 Auth and cloud endpoints
 
-- [ ] `Needs explicit release note` if OAuth, MCP proxy, or cloud auth endpoints still target legacy Anthropic/Claude infrastructure
+- [ ] `Needs explicit release note` if OAuth, MCP proxy, or cloud auth endpoints still target legacy provider infrastructure
 - [ ] `Blocked` if those flows are silently active in an OSS-facing default experience without documentation
 
 ### 2.3 Internal-only data export

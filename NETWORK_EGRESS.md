@@ -157,7 +157,7 @@ Primary file:
 
 Current behavior:
 
-- production defaults still point at Anthropic and Claude-hosted endpoints
+- production defaults still point at legacy provider-hosted endpoints
 - staging and local variants also exist
 - MCP proxy URLs are defined here too
 - there is an allowlist for custom OAuth base URLs

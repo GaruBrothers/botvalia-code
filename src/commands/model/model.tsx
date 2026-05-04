@@ -138,7 +138,7 @@ function getModelModeSummary(model: string | null): string | undefined {
     return 'Manual Ollama route pinned to one exact local model with no auto routing or fallbacks.'
   }
 
-  return 'Manual Anthropic route pinned to one exact model with no auto routing or fallbacks.'
+  return 'Manual direct-provider route pinned to one exact model with no auto routing or fallbacks.'
 }
 
 function pushChainBlock(

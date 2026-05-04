@@ -1,17 +1,17 @@
 <!-- IA-SYSTEM-PROTECTION:BEGIN -->
 > **REGLA OBLIGATORIA PARA CUALQUIER IA**
 >
-> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+> Ningun agente de IA, incluyendo Codex, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
 >
 > Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
 <!-- IA-SYSTEM-PROTECTION:END -->
-# CLAUDE.md
+# BotValia Workspace Instructions
 
 This file provides guidance to BotValia Code when working with code in this repository.
 
 ## What This Is
 
-Reconstructed TypeScript source tree of the BotValia Code CLI, recovered from source maps of the public npm release. Some native modules are replaced with compatible shims in `shims/`. This is **not** the upstream Anthropic development repo.
+Reconstructed TypeScript source tree of the BotValia Code CLI, recovered from source maps of the public npm release. Some native modules are replaced with compatible shims in `shims/`. This is **not** the original private upstream development repo.
 
 ## Development Commands
 
@@ -44,7 +44,7 @@ There is no lint, test, or build script. Validation is manual: boot the CLI and 
 - **`src/coordinator/`** — Multi-agent coordination, conditionally loaded via `bun:bundle` feature flag `COORDINATOR_MODE`.
 - **`src/assistant/`** — KAIROS assistant mode, conditionally loaded via feature flag `KAIROS`.
 - **`src/bridge/`** — Remote bridge control for web/IDE connections.
-- **`shims/`** — Compatibility replacements for private native modules (`color-diff-napi`, `modifiers-napi`, `url-handler-napi`, and Anthropic-internal MCP packages).
+- **`shims/`** — Compatibility replacements for private native modules (`color-diff-napi`, `modifiers-napi`, `url-handler-napi`, and upstream-private MCP packages).
 - **`vendor/`** — Native binding source code (`audio-capture-src`, `image-processor-src`, `modifiers-napi-src`, `url-handler-src`).
 
 ## Code Style

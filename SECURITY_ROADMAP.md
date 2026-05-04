@@ -1,7 +1,7 @@
 <!-- IA-SYSTEM-PROTECTION:BEGIN -->
 > **REGLA OBLIGATORIA PARA CUALQUIER IA**
 >
-> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+> Ningun agente de IA, incluyendo Codex, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
 >
 > Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
 <!-- IA-SYSTEM-PROTECTION:END -->
@@ -22,7 +22,7 @@ The biggest security improvements now verifiably in place are:
 - The runtime launch token is no longer shown in the visible browser URL after the runtime web UI boots, and `/runtime` user-facing output now prints a sanitized launch URL.
 - Feedback submission, transcript sharing, nonessential telemetry, background update checks, and changelog fetches are now **disabled by default** in OSS mode unless users explicitly opt in.
 - Internal `/insights` remote collection and upload paths are now **disabled by default** in OSS mode unless maintainers explicitly opt in with internal env configuration.
-- Public package metadata now points to the BotValia repository instead of the legacy Anthropic upstream.
+- Public package metadata now points to the BotValia repository instead of the legacy upstream project.
 - Direct `package.json` dependencies and devDependencies that previously used broad wildcard ranges were pinned to concrete versions from the current lockfile snapshot.
 - A repo-level [SECURITY.md](./SECURITY.md) now exists.
 - Maintainer-facing release docs now exist in [NETWORK_EGRESS.md](./NETWORK_EGRESS.md) and [SECURITY_RELEASE_CHECKLIST.md](./SECURITY_RELEASE_CHECKLIST.md).
@@ -30,9 +30,9 @@ The biggest security improvements now verifiably in place are:
 
 The main release blockers that still remain are:
 
-- OAuth, MCP, and other cloud-oriented paths still reference Anthropic/Claude infrastructure in executable code and compatibility layers.
+- OAuth, MCP, and other cloud-oriented paths still reference legacy provider infrastructure in executable code and compatibility layers.
 - Runtime auth is improved, but the bridge is not yet hardened with per-operation authorization beyond the WebSocket handshake and the runtime token still originates from a launch URL flow.
-- Public docs and product surface still contain legacy/Anthropic assumptions in various places.
+- Public docs and product surface still contain legacy provider assumptions in various places.
 - There is still no dedicated private security contact or advisory workflow in-tree.
 
 ## What Was Verified In This Update
@@ -104,7 +104,7 @@ Observed results:
 
 ### Still open
 
-- OAuth constants and MCP/cloud flows still target Anthropic/Claude-operated domains in files such as:
+- OAuth constants and MCP/cloud flows still target legacy provider-operated domains in files such as:
   - `src/constants/oauth.ts`
   - bridge and auth pathways under `src/bridge/` and `src/utils/auth*`
 - Runtime bridge auth is still only as strong as secrecy of the generated URL/token.
@@ -181,7 +181,7 @@ Verified improvements:
 
 Still pending:
 
-- Review `README.md`, help text, comments, and ancillary docs for legacy Anthropic/Claude wording where it should not ship.
+- Review `README.md`, help text, comments, and ancillary docs for legacy provider wording where it should not ship.
 - Audit org-specific or maintainer-private assumptions in commands like `insights`, bridge flows, and docs.
 
 ## Phase Status
@@ -257,7 +257,7 @@ Status: **partial**
 Resolved now:
 
 - Replace broad direct dependency wildcards in `package.json` with explicit versions aligned to the current lockfile snapshot.
-- Upgrade direct vulnerable dependencies such as `axios`, `@anthropic-ai/sdk`, and `lodash-es`.
+- Upgrade direct vulnerable dependencies such as `axios`, the provider SDK, and `lodash-es`.
 - Add targeted `overrides` for vulnerable transitive packages used through upstream SDKs.
 - Re-run `bun audit` until the current lockfile snapshot is clean.
 
@@ -277,7 +277,7 @@ Status: **partial**
 
 Resolved now:
 
-- Public package metadata now references BotValia instead of the Anthropic upstream repo.
+- Public package metadata now references BotValia instead of the legacy upstream repo.
 
 Still pending:
 
