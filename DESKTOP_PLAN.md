@@ -59,21 +59,21 @@ flowchart LR
 Estas piezas ya apuntan a una futura desktop:
 
 - motor conversacional:
-  - [src/query.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/query.ts)
-  - [src/QueryEngine.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/QueryEngine.ts)
+  - [src/query.ts](./src/query.ts)
+  - [src/QueryEngine.ts](./src/QueryEngine.ts)
 - inicialización principal:
-  - [src/main.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/main.tsx)
+  - [src/main.tsx](./src/main.tsx)
 - bridge y comunicación:
-  - [src/bridge](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/bridge)
-  - [src/server](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/server)
-  - [src/remote](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/remote)
+  - [src/bridge](./src/bridge)
+  - [src/server](./src/server)
+  - [src/remote](./src/remote)
 - swarm y teammates:
-  - [src/commands/swarm/swarm.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/commands/swarm/swarm.tsx)
-  - [src/components/swarm/SwarmDialog.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/components/swarm/SwarmDialog.tsx)
-  - [src/utils/swarm](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/swarm)
+  - [src/commands/swarm/swarm.tsx](./src/commands/swarm/swarm.tsx)
+  - [src/components/swarm/SwarmDialog.tsx](./src/components/swarm/SwarmDialog.tsx)
+  - [src/utils/swarm](./src/utils/swarm)
 - estado y app shell:
-  - [src/state](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/state)
-  - [src/bootstrap/state.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/bootstrap/state.ts)
+  - [src/state](./src/state)
+  - [src/bootstrap/state.ts](./src/bootstrap/state.ts)
 
 ## Arquitectura objetivo
 
@@ -180,7 +180,7 @@ extraer la lógica de runtime del arranque terminal.
 
 Trabajo:
 
-- mover lógica reutilizable desde [src/main.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/main.tsx) a una capa `runtime/` o `core/`
+- mover lógica reutilizable desde [src/main.tsx](./src/main.tsx) a una capa `runtime/` o `core/`
 - exponer API programática para:
   - iniciar sesión
   - mandar prompt
@@ -227,10 +227,10 @@ Resultado esperado:
 
 Estado actual del bridge:
 
-- [src/runtime/runtimeWsServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeWsServer.ts)
-- [src/runtime/runtimeWsClient.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeWsClient.ts)
-- [src/runtime/runtimeServerManager.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeServerManager.ts)
-- [src/runtime/runtimeInspectorServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeInspectorServer.ts)
+- [src/runtime/runtimeWsServer.ts](./src/runtime/runtimeWsServer.ts)
+- [src/runtime/runtimeWsClient.ts](./src/runtime/runtimeWsClient.ts)
+- [src/runtime/runtimeServerManager.ts](./src/runtime/runtimeServerManager.ts)
+- [src/runtime/runtimeInspectorServer.ts](./src/runtime/runtimeInspectorServer.ts)
 - comando `/runtime` para levantar, consultar y apagar el bridge local
 - `/runtime ui` y `/runtime open` para ver una UI mínima sobre sesiones y eventos
 

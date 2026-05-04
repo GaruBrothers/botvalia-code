@@ -19,6 +19,7 @@ Current high-level posture:
 - local runtime bridge is bound to `127.0.0.1`
 - runtime WebSocket connections require a per-runtime auth token
 - nonessential egress is blocked by default for feedback, transcript sharing, telemetry, and update checks
+- internal `/insights` export/upload and remote collection are blocked by default unless maintainers opt in with internal env configuration
 - some legacy and cloud-facing integrations still exist in code and must be reviewed before any public release
 
 ## Local-Only Transport Surfaces
@@ -27,9 +28,9 @@ Current high-level posture:
 
 Primary files:
 
-- [src/runtime/runtimeWsServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeWsServer.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
+- [src/runtime/runtimeWsServer.ts](./src/runtime/runtimeWsServer.ts)
+- [src/runtime/runtimeBridge.ts](./src/runtime/runtimeBridge.ts)
+- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
 
 Current behavior:
 
@@ -42,6 +43,7 @@ Risk notes:
 
 - auth token is still URL-derived rather than a stronger channel-binding model
 - local malware or another local user context on the same machine may still be relevant depending on the environment
+- the token is now removed from the visible browser URL after boot and no longer printed in normal `/runtime` user-facing output, but it still exists in the launch flow itself
 
 Release stance:
 
@@ -52,7 +54,7 @@ Release stance:
 
 Primary file:
 
-- [src/utils/nonEssentialEgress.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/nonEssentialEgress.ts)
+- [src/utils/nonEssentialEgress.ts](./src/utils/nonEssentialEgress.ts)
 
 The following surfaces are blocked by default in the OSS posture unless explicitly enabled:
 
@@ -60,8 +62,8 @@ The following surfaces are blocked by default in the OSS posture unless explicit
 
 Primary files:
 
-- [src/components/Feedback.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/components/Feedback.tsx)
-- [src/utils/nonEssentialEgress.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/nonEssentialEgress.ts)
+- [src/components/Feedback.tsx](./src/components/Feedback.tsx)
+- [src/utils/nonEssentialEgress.ts](./src/utils/nonEssentialEgress.ts)
 
 Default status:
 
@@ -85,8 +87,8 @@ Data sensitivity:
 
 Primary files:
 
-- [src/components/FeedbackSurvey/submitTranscriptShare.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/components/FeedbackSurvey/submitTranscriptShare.ts)
-- [src/utils/nonEssentialEgress.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/nonEssentialEgress.ts)
+- [src/components/FeedbackSurvey/submitTranscriptShare.ts](./src/components/FeedbackSurvey/submitTranscriptShare.ts)
+- [src/utils/nonEssentialEgress.ts](./src/utils/nonEssentialEgress.ts)
 
 Default status:
 
@@ -108,7 +110,7 @@ Data sensitivity:
 
 Primary files:
 
-- [src/utils/nonEssentialEgress.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/nonEssentialEgress.ts)
+- [src/utils/nonEssentialEgress.ts](./src/utils/nonEssentialEgress.ts)
 - telemetry pathways under `src/services/analytics/`
 
 Default status:
@@ -126,8 +128,8 @@ Opt-in controls:
 
 Primary files:
 
-- [src/utils/releaseNotes.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/releaseNotes.ts)
-- [src/utils/nonEssentialEgress.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/nonEssentialEgress.ts)
+- [src/utils/releaseNotes.ts](./src/utils/releaseNotes.ts)
+- [src/utils/nonEssentialEgress.ts](./src/utils/nonEssentialEgress.ts)
 
 Default status:
 
@@ -151,7 +153,7 @@ These are the main surfaces that should be treated as explicit review points bef
 
 Primary file:
 
-- [src/constants/oauth.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/constants/oauth.ts)
+- [src/constants/oauth.ts](./src/constants/oauth.ts)
 
 Current behavior:
 
@@ -170,11 +172,11 @@ Release stance:
 - review before enabling in a public binary
 - document clearly if left intact for compatibility
 
-### 7. Insights export and ant-only remote collection
+### 7. Insights export and internal remote collection
 
 Primary file:
 
-- [src/commands/insights.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/commands/insights.ts)
+- [src/commands/insights.ts](./src/commands/insights.ts)
 
 Observed behaviors in code:
 
@@ -195,12 +197,13 @@ Release stance:
 
 Primary files:
 
-- [BotValia-CodeUI/hooks/useRuntimeInspector.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/BotValia-CodeUI/hooks/useRuntimeInspector.ts)
-- [BotValia-CodeUI/lib/runtime-session-ownership.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/BotValia-CodeUI/lib/runtime-session-ownership.ts)
+- [BotValia-CodeUI/hooks/useRuntimeInspector.ts](./BotValia-CodeUI/hooks/useRuntimeInspector.ts)
+- [BotValia-CodeUI/lib/runtime-session-ownership.ts](./BotValia-CodeUI/lib/runtime-session-ownership.ts)
 
 Current behavior:
 
 - runtime metadata is now session-scoped rather than long-term local persistence by default
+- launch-time runtime token data is cleared from the visible browser URL after boot and kept in session-scoped browser state instead
 
 Why it matters:
 

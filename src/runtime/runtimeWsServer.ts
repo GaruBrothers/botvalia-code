@@ -27,6 +27,23 @@ export type RunningRuntimeWebSocketServer = {
   stop: () => Promise<void>
 }
 
+function isAllowedRuntimeOrigin(rawOrigin: string | undefined): boolean {
+  if (!rawOrigin) {
+    return true
+  }
+
+  try {
+    const origin = new URL(rawOrigin)
+    if (!['http:', 'https:'].includes(origin.protocol)) {
+      return false
+    }
+
+    return ['127.0.0.1', 'localhost', '::1'].includes(origin.hostname)
+  } catch {
+    return false
+  }
+}
+
 function isRuntimeProtocolRequest(
   value: unknown,
 ): value is RuntimeProtocolRequest {
@@ -58,11 +75,19 @@ export async function startRuntimeWebSocketServer(
     host,
     port,
     path,
-    verifyClient: info =>
-      hasRuntimeWebSocketAuthToken(
+    verifyClient: info => {
+      const hasExpectedToken = hasRuntimeWebSocketAuthToken(
         new URL(info.req.url ?? path, `ws://${host}`),
         authToken,
-      ),
+      )
+
+      if (!hasExpectedToken) {
+        return false
+      }
+
+      const originHeader = info.origin ?? info.req.headers.origin
+      return isAllowedRuntimeOrigin(originHeader)
+    },
   })
 
   server.on('connection', socket => {

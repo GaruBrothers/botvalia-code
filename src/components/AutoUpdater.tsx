@@ -13,6 +13,10 @@ import { removeInstalledSymlink } from '../utils/nativeInstaller/index.js';
 import { getOSSDefaultBlockReason } from '../utils/nonEssentialEgress.js';
 import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
+const DEFAULT_UPDATE_PACKAGE_NAME = 'botvalia-code';
+function getVisibleUpdatePackageName(): string {
+  return MACRO.PACKAGE_URL || DEFAULT_UPDATE_PACKAGE_NAME;
+}
 type Props = {
   isUpdating: boolean;
   onChangeIsUpdating: (isUpdating: boolean) => void;
@@ -197,7 +201,7 @@ export function AutoUpdater({
       {(autoUpdaterResult?.status === 'install_failed' || autoUpdaterResult?.status === 'no_permissions') && <Text color="error" wrap="truncate">
           ✗ Auto-update failed &middot; Try <Text bold>botvalia doctor</Text> or{' '}
           <Text bold>
-            {hasLocalInstall ? `cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}` : `npm i -g ${MACRO.PACKAGE_URL}`}
+            {hasLocalInstall ? `npm update ${getVisibleUpdatePackageName()} (from your local BotValia install directory)` : `npm i -g ${getVisibleUpdatePackageName()}`}
           </Text>
         </Text>}
     </Box>;

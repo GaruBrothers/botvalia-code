@@ -6,6 +6,17 @@ This checklist is meant for maintainers preparing a public or semi-public releas
 
 It is intentionally operational. Use it as a gate before tagging a release, publishing a package, or sharing binaries more broadly.
 
+Use it together with:
+
+- [SECURITY.md](./SECURITY.md)
+- [SECURITY_ROADMAP.md](./SECURITY_ROADMAP.md)
+- [NETWORK_EGRESS.md](./NETWORK_EGRESS.md)
+
+The minimum automated baseline before a release candidate is:
+
+- `bun run security:preflight`
+- the `security-preflight` GitHub Actions workflow via PR to `main` or manual `workflow_dispatch` on the candidate branch
+
 This file does not replace [SECURITY_ROADMAP.md](./SECURITY_ROADMAP.md). The roadmap explains what needs to be hardened over time. This checklist answers a different question:
 
 > "Can this exact snapshot be released without exposing obvious identity, transcript, secret, or infrastructure risks?"
@@ -36,7 +47,7 @@ This file does not replace [SECURITY_ROADMAP.md](./SECURITY_ROADMAP.md). The roa
 
 - [ ] `Blocked` if any live token, credential, cookie, or private endpoint secret is present in tracked files
 - [ ] `Blocked` if screenshots, previews, or test fixtures expose account data, filesystem paths, or internal hosts that should not be public
-- [ ] `Pass` if a final pass confirms no live secrets and only acceptable local path leakage remains
+- [ ] `Pass` if a final pass confirms no live secrets and no unnecessary maintainer-local path leakage remains
 
 ### 1.2 Transcript and feedback pathways
 
@@ -61,6 +72,7 @@ Use [NETWORK_EGRESS.md](./NETWORK_EGRESS.md) as the inventory.
 
 - [ ] `Blocked` if internal-only export/upload flows are reachable in normal OSS usage without clear guarding
 - [ ] `Needs explicit release note` if ant-only or enterprise-only code remains in tree but is still intentionally shipped
+- [ ] `Pass` if internal insights/export paths are default-off and require explicit internal opt-in plus env configuration
 
 ## Phase 3. Runtime and Local Transport
 
@@ -119,6 +131,7 @@ Run a final pass before publishing:
 
 - [ ] `bun run version` succeeds
 - [ ] `bun run security:preflight` succeeds
+- [ ] `security-preflight` CI workflow still passes on the candidate branch
 - [ ] runtime bridge still boots and rejects unauthenticated connections
 - [ ] nonessential egress defaults are still off in OSS posture
 - [ ] tracked generated artifacts are not reintroduced

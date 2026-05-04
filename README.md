@@ -54,6 +54,8 @@ What this means in practice:
 - expect breakage, rough edges, and compatibility leftovers in some subsystems
 - do **not** market the repository as security-hardened or release-grade yet
 - use the current branch on a best-effort basis while following [SECURITY.md](./SECURITY.md) for risk context
+- run `bun run security:preflight` before redistributing snapshots or treating a branch as OSS-shareable
+- use [NETWORK_EGRESS.md](./NETWORK_EGRESS.md) and [SECURITY_RELEASE_CHECKLIST.md](./SECURITY_RELEASE_CHECKLIST.md) as the maintainer-facing release gate
 
 ### Free Routing Modes
 
@@ -283,8 +285,8 @@ Environment toggles:
 ### /init, Local Memory, and Activable UX/UI/QA
 
 - `/init` is the best current onboarding command for a project.
-- In the restored tree, `/init` always knows how to create or improve `CLAUDE.md`.
-- When the `NEW_INIT` feature is enabled, or `CLAUDE_CODE_NEW_INIT=1` is set, `/init` can also scaffold `CLAUDE.local.md`, project skills, and hooks.
+- In the restored tree, `/init` always knows how to create or improve the primary BotValia instruction file, which currently uses the legacy-compatible filename `CLAUDE.md`.
+- When the `NEW_INIT` feature is enabled, or `CLAUDE_CODE_NEW_INIT=1` is set, `/init` can also scaffold the legacy-compatible personal instruction file `CLAUDE.local.md`, project skills, and hooks.
 - `/memory` opens the currently discovered instruction files in your editor and, if auto-memory is enabled, can also open auto-memory, team-memory, and agent-memory folders.
 - `/skills` lists bundled, plugin, user, and project skills available to the current session.
 
@@ -292,23 +294,24 @@ Compatibility note:
 
 - File names such as `CLAUDE.md`, `CLAUDE.local.md`, and `.claude/...` are still present because the reconstructed codebase inherited them as working compatibility surfaces.
 - They should be treated as legacy instruction and memory paths, not as product branding guidance for future public releases.
+- The same caution applies to some env vars and settings paths that remain for compatibility while the public OSS surface is still being sanitized.
 
-Current local instruction memory works like this:
+Current local instruction memory works like this today:
 
-1. Managed memory: system-level `CLAUDE.md`
-2. User memory: `~/.claude/CLAUDE.md`
-3. Project memory: `CLAUDE.md`, `.claude/CLAUDE.md`, and `.claude/rules/*.md`
-4. Local memory: `CLAUDE.local.md`
+1. Managed instructions: system-level `CLAUDE.md`
+2. User instructions: `~/.claude/CLAUDE.md`
+3. Project instructions: `CLAUDE.md`, `.claude/CLAUDE.md`, and `.claude/rules/*.md`
+4. Local personal instructions: `CLAUDE.local.md`
 
 Important details:
 
 - Files closer to the current working directory override broader ones.
 - Memory files support `@path` includes such as `@./notes.md`, `@~/common.md`, or `@/absolute/file.md`.
-- `CLAUDE.local.md` is the right place for private endpoints, local test accounts, personal QA notes, or machine-specific workflow tweaks.
+- The legacy-compatible local instruction file `CLAUDE.local.md` is the right place for private endpoints, local test accounts, personal QA notes, or machine-specific workflow tweaks.
 
 For activable specialist behavior today, the cleanest path is:
 
-- **Skills** in `.claude/skills/<skill-name>/SKILL.md` for repeatable workflows you invoke with `/skill-name`
+- **Skills** in the legacy-compatible project path `.claude/skills/<skill-name>/SKILL.md` for repeatable workflows you invoke with `/skill-name`
 - **Per-session profiles** with `--append-system-prompt-file` when you want a lightweight UX/UI/QA mode without creating a full skill
 - **Plugins** when you want opt-in bundles that ship multiple skills, hooks, and MCP config together
 
@@ -459,6 +462,6 @@ This reconstruction includes the following notable local modifications:
 
 - This repository is experimental software provided on a best-effort basis.
 - It may contain reconstructed behavior, compatibility leftovers, incomplete hardening, or partially restored subsystems.
-- Review [SECURITY.md](./SECURITY.md) and [SECURITY_ROADMAP.md](./SECURITY_ROADMAP.md) before redistributing, deploying broadly, or presenting it as open-source-ready infrastructure.
+- Run `bun run security:preflight` and review [SECURITY.md](./SECURITY.md), [SECURITY_ROADMAP.md](./SECURITY_ROADMAP.md), [NETWORK_EGRESS.md](./NETWORK_EGRESS.md), and [SECURITY_RELEASE_CHECKLIST.md](./SECURITY_RELEASE_CHECKLIST.md) before redistributing, deploying broadly, or presenting it as open-source-ready infrastructure.
 - No warranty is implied here that the current tree is production-ready, security-hardened, or suitable for unattended use.
 

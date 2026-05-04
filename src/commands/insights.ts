@@ -452,6 +452,36 @@ const LABEL_MAP: Record<string, string> = {
   essential: 'Essential',
 }
 
+function createStablePrivacyLabel(
+  input: string,
+  prefix: 'workspace' | 'user' | 'remote',
+): string {
+  let hash = 2166136261
+  for (const char of input) {
+    hash ^= char.charCodeAt(0)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `${prefix}-${(hash >>> 0).toString(36)}`
+}
+
+function sanitizeProjectPath(projectPath: string): string {
+  const trimmed = projectPath.trim()
+  if (!trimmed) return ''
+  return createStablePrivacyLabel(trimmed.replace(/\\/g, '/'), 'workspace')
+}
+
+function sanitizeLocalUsername(username?: string): string {
+  const trimmed = username?.trim()
+  if (!trimmed) return 'user-unknown'
+  return createStablePrivacyLabel(trimmed, 'user')
+}
+
+function sanitizeRemoteHostName(hostname: string): string {
+  const trimmed = hostname.trim()
+  if (!trimmed) return 'remote-unknown'
+  return createStablePrivacyLabel(trimmed, 'remote')
+}
+
 // Lazy getters: getClaudeConfigHomeDir() is memoized and reads process.env.
 // Calling it at module scope would populate the memoize cache before
 // entrypoints can set CLAUDE_CONFIG_DIR, breaking all 150+ other callers.
@@ -807,7 +837,7 @@ function logToSessionMeta(log: LogOption): SessionMeta {
 
   return {
     session_id: sessionId,
-    project_path: log.projectPath || '',
+    project_path: sanitizeProjectPath(log.projectPath || ''),
     start_time: startTime,
     duration_minutes: durationMinutes,
     user_message_count: userMessageCount,
@@ -1019,7 +1049,12 @@ async function loadCachedSessionMeta(
   const metaPath = join(getSessionMetaDir(), `${sessionId}.json`)
   try {
     const content = await readFile(metaPath, { encoding: 'utf-8' })
-    return jsonParse(content)
+    return {
+      ...(jsonParse(content) as SessionMeta),
+      project_path: sanitizeProjectPath(
+        ((jsonParse(content) as SessionMeta).project_path || '').toString(),
+      ),
+    }
   } catch {
     return null
   }
@@ -1032,10 +1067,21 @@ async function saveSessionMeta(meta: SessionMeta): Promise<void> {
     // Directory may already exist
   }
   const metaPath = join(getSessionMetaDir(), `${meta.session_id}.json`)
-  await writeFile(metaPath, jsonStringify(meta, null, 2), {
+  await writeFile(
+    metaPath,
+    jsonStringify(
+      {
+        ...meta,
+        project_path: sanitizeProjectPath(meta.project_path || ''),
+      },
+      null,
+      2,
+    ),
+    {
     encoding: 'utf-8',
     mode: 0o600,
-  })
+    },
+  )
 }
 
 async function extractFacetsFromAPI(
@@ -1441,11 +1487,11 @@ Include 3 friction categories with 2 examples each.`,
    - Good for: database queries, Slack integration, GitHub issue lookup, connecting to internal APIs
 
 2. **Custom Skills**: Reusable prompts you define as markdown files that run with a single /command.
-   - How to use: Create \`.claude/skills/commit/SKILL.md\` with instructions. Then type \`/commit\` to run it.
+   - How to use: Create \`.agents/skills/commit/SKILL.md\` with instructions, or use the legacy-compatible \`.claude/skills/commit/SKILL.md\`. Then type \`/commit\` to run it.
    - Good for: repetitive workflows - /commit, /review, /test, /deploy, /pr, or complex multi-step workflows
 
 3. **Hooks**: Shell commands that auto-run at specific lifecycle events.
-   - How to use: Add to \`.claude/settings.json\` under "hooks" key.
+   - How to use: Add to the legacy-compatible \`.claude/settings.json\` under the "hooks" key.
    - Good for: auto-formatting code, running type checks, enforcing conventions
 
 4. **Headless Mode**: Run BotValia non-interactively from scripts and CI/CD.
@@ -1459,7 +1505,7 @@ Include 3 friction categories with 2 examples each.`,
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
   "claude_md_additions": [
-    {"addition": "A specific line or block to add to CLAUDE.md based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in CLAUDE.md. E.g., 'Add under ## Testing section'"}
+    {"addition": "A specific line or block to add to your legacy-compatible CLAUDE.md instruction file based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in the legacy-compatible CLAUDE.md file. E.g., 'Add under ## Testing section'"}
   ],
   "features_to_try": [
     {"feature": "Feature name from CC FEATURES REFERENCE above", "one_liner": "What it does", "why_for_you": "Why this would help YOU based on your sessions", "example_code": "Actual command or config to copy"}
@@ -1469,7 +1515,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
   ]
 }
 
-IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told BotValia the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
+IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told BotValia the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate for their legacy-compatible instruction file - they shouldn't have to repeat themselves.
 
 IMPORTANT for features_to_try: Pick 2-3 from the CC FEATURES REFERENCE above. Include 2-3 items for each category.`,
     maxTokens: 8192,
@@ -1705,7 +1751,7 @@ async function generateParallelInsights(
     facetSummaries +
     '\n\nFRICTION DETAILS:\n' +
     frictionDetails +
-    '\n\nUSER INSTRUCTIONS TO CLAUDE:\n' +
+    '\n\nUSER WORKFLOW PREFERENCES:\n' +
     (userInstructions || 'None captured')
 
   // Run sections in parallel first (excluding at_a_glance)
@@ -2111,10 +2157,10 @@ function generateHtmlReport(
       suggestions.claude_md_additions &&
       suggestions.claude_md_additions.length > 0
         ? `
-    <h2 id="section-features">Existing CC Features to Try</h2>
+    <h2 id="section-features">Existing BotValia Features to Try</h2>
     <div class="claude-md-section">
-      <h3>Suggested CLAUDE.md Additions</h3>
-      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into BotValia Code to add it to your CLAUDE.md.</p>
+      <h3>Suggested Instruction File Additions</h3>
+      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into BotValia Code to add it to your legacy-compatible CLAUDE.md instruction file.</p>
       <div class="claude-md-actions">
         <button class="copy-all-btn" onclick="copyAllCheckedClaudeMd()">Copy All Checked</button>
       </div>
@@ -2122,7 +2168,7 @@ function generateHtmlReport(
         .map(
           (add, i) => `
         <div class="claude-md-item">
-          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to CLAUDE.md')}\\n\\n${escapeHtml(add.addition)}">
+          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to the legacy-compatible CLAUDE.md instruction file')}\\n\\n${escapeHtml(add.addition)}">
           <label for="cmd-${i}">
             <code class="cmd-code">${escapeHtml(add.addition)}</code>
             <button class="copy-btn" onclick="copyCmdItem(${i})">Copy</button>
@@ -2692,7 +2738,7 @@ function generateHtmlReport(
 // ============================================================================
 
 /**
- * Structured export format for claudescope consumption
+ * Structured export format for internal insights consumption
  */
 export type InsightsExport = {
   metadata: {
@@ -2716,7 +2762,7 @@ export type InsightsExport = {
 
 /**
  * Build export data from already-computed values.
- * Used by background upload to S3.
+ * Used by internal export/upload flows when explicitly enabled.
  */
 export function buildExportData(
   data: AggregatedData,
@@ -2728,7 +2774,7 @@ export function buildExportData(
 
   const remote_hosts_collected = remoteStats?.hosts
     .filter(h => h.sessionCount > 0)
-    .map(h => h.name)
+    .map(h => sanitizeRemoteHostName(h.name))
 
   const facets_summary = {
     total: facets.size,
@@ -2762,7 +2808,9 @@ export function buildExportData(
 
   return {
     metadata: {
-      username: process.env.SAFEUSER || process.env.USER || 'unknown',
+      username: sanitizeLocalUsername(
+        process.env.SAFEUSER || process.env.USER || 'unknown',
+      ),
       generated_at: new Date().toISOString(),
       claude_code_version: version,
       date_range: data.date_range,
@@ -3087,6 +3135,7 @@ const usageReport: Command = {
   source: 'builtin',
   async getPromptForCommand(args) {
     const requestedRemote = args?.includes('--homespaces') ?? false
+    const requestedUpload = args?.includes('--upload') ?? false
     const canUseInternalRemoteCollection =
       isInternalInsightsModeEnabled() && hasRemoteCollectionConfig()
     const canUseInternalReportUpload =
@@ -3111,7 +3160,7 @@ const usageReport: Command = {
       if (collectRemote && hasRemoteHosts) {
         // biome-ignore lint/suspicious/noConsole: intentional
         console.error(
-          `Collecting sessions from ${remoteHosts.length} homespace(s): ${remoteHosts.join(', ')}...`,
+          `Collecting sessions from ${remoteHosts.length} homespace(s)...`,
         )
       }
     }
@@ -3123,15 +3172,14 @@ const usageReport: Command = {
     let reportUrl = `file://${htmlPath}`
     let uploadHint = ''
 
-    if (canUseInternalReportUpload) {
-      // Try to upload to S3
+    if (requestedUpload && canUseInternalReportUpload) {
+      // Try to upload to the internal report destination
       const timestamp = new Date()
         .toISOString()
         .replace(/[-:]/g, '')
         .replace('T', '_')
         .slice(0, 15)
-      const username = process.env.SAFEUSER || process.env.USER || 'unknown'
-      const filename = `${username}_insights_${timestamp}.html`
+      const filename = `insights_${timestamp}.html`
       const uploadPath = `${INTERNAL_REPORT_UPLOAD_PATH}${filename}`
       const uploadUrl = `${INTERNAL_REPORT_BASE_URL}${filename}`
 
@@ -3147,8 +3195,11 @@ const usageReport: Command = {
         uploadHint = `\nAutomatic upload failed. To share manually, run: ff cp ${htmlPath} ${uploadPath}
 Then access at: ${uploadUrl}`
       }
-    } else if (isInternalInsightsModeEnabled() && !hasInternalUploadConfig()) {
+    } else if (requestedUpload && isInternalInsightsModeEnabled() && !hasInternalUploadConfig()) {
       uploadHint = `\n${getInternalInsightsDisabledMessage('upload')}`
+    } else if (canUseInternalReportUpload) {
+      uploadHint =
+        '\n_Internal upload is available in the internal environment, but it only runs after explicit user action with `/insights --upload`._'
     }
 
     // Build header with stats
@@ -3168,11 +3219,10 @@ Then access at: ${uploadUrl}`
     let remoteInfo = ''
     if (canUseInternalRemoteCollection) {
       if (remoteStats && remoteStats.totalCopied > 0) {
-        const hsNames = remoteStats.hosts
-          .filter(h => h.sessionCount > 0)
-          .map(h => h.name)
-          .join(', ')
-        remoteInfo = `\n_Collected ${remoteStats.totalCopied} new sessions from: ${hsNames}_\n`
+        const homespaceCount = remoteStats.hosts.filter(
+          h => h.sessionCount > 0,
+        ).length
+        remoteInfo = `\n_Collected ${remoteStats.totalCopied} new sessions from ${homespaceCount} homespace(s)._\n`
       } else if (!collectRemote && hasRemoteHosts) {
         // Suggest using --homespaces if they have remote hosts but didn't use the flag
         remoteInfo = `\n_Tip: Run \`/insights --homespaces\` to include sessions from your ${remoteHosts.length} running homespace(s)_\n`

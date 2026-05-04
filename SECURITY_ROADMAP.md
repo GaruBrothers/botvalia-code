@@ -8,7 +8,7 @@
 # BotValia Code Security Roadmap
 
 Last updated: 2026-05-03  
-Repository: `C:\Users\jhcamachov\Documents\GitHub\PERSONAL\botvalia-code`
+Repository: `botvalia-code`
 
 ## Executive Summary
 
@@ -19,7 +19,9 @@ The biggest security improvements now verifiably in place are:
 - `BotValia-CodeUI/.next/**` is no longer tracked in Git.
 - The local runtime WebSocket now requires a **per-runtime auth token** at connection time.
 - The runtime web UI no longer persists runtime URL, ownership metadata, and drafts in `localStorage`; that data now lives in `sessionStorage` and scopes out the token-bearing query string.
+- The runtime launch token is no longer shown in the visible browser URL after the runtime web UI boots, and `/runtime` user-facing output now prints a sanitized launch URL.
 - Feedback submission, transcript sharing, nonessential telemetry, background update checks, and changelog fetches are now **disabled by default** in OSS mode unless users explicitly opt in.
+- Internal `/insights` remote collection and upload paths are now **disabled by default** in OSS mode unless maintainers explicitly opt in with internal env configuration.
 - Public package metadata now points to the BotValia repository instead of the legacy Anthropic upstream.
 - Direct `package.json` dependencies and devDependencies that previously used broad wildcard ranges were pinned to concrete versions from the current lockfile snapshot.
 - A repo-level [SECURITY.md](./SECURITY.md) now exists.
@@ -41,8 +43,9 @@ The statements in this document were checked directly against the current workin
 Validation executed:
 
 - `bun run version`
+- `bun run security:preflight`
 - `git ls-files "BotValia-CodeUI/.next/**"`
-- `cmd /c "cd /d C:\Users\jhcamachov\Documents\GitHub\PERSONAL\botvalia-code\BotValia-CodeUI && npx tsc --noEmit"`
+- `cd BotValia-CodeUI && npx tsc --noEmit`
 - `bun audit`
 - Runtime auth smoke test:
   - authenticated client can connect with the generated runtime URL
@@ -57,6 +60,7 @@ Observed results:
 
 - `git ls-files "BotValia-CodeUI/.next/**"` returned no tracked files.
 - `BotValia-CodeUI` typecheck passed.
+- `security:preflight` passed.
 - Runtime auth smoke returned:
   - `runtimeAuthWorks: true`
 - OSS-safe default smoke returned:
@@ -86,6 +90,8 @@ Observed results:
   - `src/services/analytics/config.ts`
   - `src/utils/releaseNotes.ts`
   - `src/utils/config.ts`
+- Internal insights gating now defaults off in:
+  - `src/commands/insights.ts`
 - Runtime web persistence was reduced and normalized in:
   - `BotValia-CodeUI/hooks/useRuntimeInspector.ts`
   - `BotValia-CodeUI/lib/runtime-client.ts`
@@ -152,6 +158,7 @@ Verified state:
 - `src/runtime/runtimeWsServer.ts` generates and validates a per-runtime token in the WebSocket URL.
 - `src/runtime/runtimeWsClient.ts` understands the authenticated runtime URL.
 - Browser storage scope strips the token-bearing query string before persisting ownership metadata.
+- User-facing `/runtime` output now prints a sanitized launch URL rather than echoing the full tokenized launch string.
 
 Why it still matters:
 
@@ -219,6 +226,7 @@ Resolved now:
   - nonessential telemetry
   - background update checks
   - release-note/changelog fetches
+- Internal `/insights` export/upload and remote collection now require explicit internal opt-in and env configuration.
 - Opt-in envs now exist for those surfaces.
 - A contributor-facing outbound inventory now exists in `NETWORK_EGRESS.md`.
 

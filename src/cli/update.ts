@@ -30,6 +30,26 @@ import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
 
+const DEFAULT_UPDATE_PACKAGE_NAME = 'botvalia-code'
+
+function getVisibleUpdatePackageName(): string {
+  return MACRO.PACKAGE_URL || DEFAULT_UPDATE_PACKAGE_NAME
+}
+
+function getLocalUpdateRecoveryCommand(): string {
+  return `npm update ${getVisibleUpdatePackageName()}`
+}
+
+function writeLocalUpdateRecoveryInstructions() {
+  process.stderr.write(
+    'Try reinstalling the local BotValia package from the directory where it was installed:\n',
+  )
+  process.stderr.write(`  ${getLocalUpdateRecoveryCommand()}\n`)
+  process.stderr.write(
+    'If you are not sure where that local installation lives, run: botvalia doctor\n',
+  )
+}
+
 export async function update() {
   logEvent('tengu_update_check', {})
   writeToStdout(`Current version: ${MACRO.VERSION}\n`)
@@ -325,11 +345,7 @@ export async function update() {
     process.stderr.write('Try:\n')
     process.stderr.write('  • Check your internet connection\n')
     process.stderr.write('  • Run with --debug flag for more details\n')
-    const packageName =
-      MACRO.PACKAGE_URL ||
-      (process.env.USER_TYPE === 'ant'
-        ? '@anthropic-ai/claude-cli'
-        : '@anthropic-ai/claude-code')
+    const packageName = getVisibleUpdatePackageName()
     process.stderr.write(
       `  • Manually check: npm view ${packageName} version\n`,
     )
@@ -417,10 +433,7 @@ export async function update() {
         'Error: Insufficient permissions to install update\n',
       )
       if (useLocalUpdate) {
-        process.stderr.write('Try manually updating with:\n')
-        process.stderr.write(
-          `  cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}\n`,
-        )
+        writeLocalUpdateRecoveryInstructions()
       } else {
         process.stderr.write('Try running with sudo or fix npm permissions\n')
         process.stderr.write(
@@ -432,10 +445,7 @@ export async function update() {
     case 'install_failed':
       process.stderr.write('Error: Failed to install update\n')
       if (useLocalUpdate) {
-        process.stderr.write('Try manually updating with:\n')
-        process.stderr.write(
-          `  cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}\n`,
-        )
+        writeLocalUpdateRecoveryInstructions()
       } else {
         process.stderr.write(
           'Or consider using native installation with: botvalia install\n',

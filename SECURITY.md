@@ -17,8 +17,10 @@ Current hardening that is now in place:
 
 - runtime WebSocket connections require a per-runtime auth token
 - nonessential feedback, transcript sharing, telemetry, and background update checks are disabled by default in the OSS posture unless users opt in
-- runtime web metadata is session-scoped in the browser instead of being persisted long-term by default
+- internal `/insights` export and remote collection paths are disabled by default in the OSS posture unless maintainers opt in with explicit internal env configuration
+- runtime web metadata is session-scoped in the browser instead of being persisted long-term by default, and the launch token is stripped from the visible browser URL after startup
 - generated `BotValia-CodeUI/.next/**` artifacts are no longer tracked in Git
+- a local `bun run security:preflight` check now exists to catch common OSS-release mistakes before publishing
 
 Before reporting a vulnerability, please read:
 

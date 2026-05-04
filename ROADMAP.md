@@ -71,10 +71,10 @@ Incluye:
 - sesiones vivas, detalle, conversación, refresh, reconnect e interrupt ya están cableados
 
 Archivos base:
-- [src/runtime/runtimeInspectorServer.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeInspectorServer.ts)
-- [src/commands/runtime/runtime.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/commands/runtime/runtime.ts)
-- [BotValia-CodeUI/components/runtime/RuntimeShell.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/BotValia-CodeUI/components/runtime/RuntimeShell.tsx)
-- [BotValia-CodeUI/hooks/useRuntimeInspector.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/BotValia-CodeUI/hooks/useRuntimeInspector.ts)
+- [src/runtime/runtimeInspectorServer.ts](./src/runtime/runtimeInspectorServer.ts)
+- [src/commands/runtime/runtime.ts](./src/commands/runtime/runtime.ts)
+- [BotValia-CodeUI/components/runtime/RuntimeShell.tsx](./BotValia-CodeUI/components/runtime/RuntimeShell.tsx)
+- [BotValia-CodeUI/hooks/useRuntimeInspector.ts](./BotValia-CodeUI/hooks/useRuntimeInspector.ts)
 
 ## Fase 1
 
@@ -102,10 +102,10 @@ Impacto UI actual:
 - la biblioteca cross-device o compartida con CLI sigue pendiente hasta que exista backend de lifecycle
 
 Archivos a tocar cuando se implemente:
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- [src/runtime/runtimeRegistry.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeRegistry.ts)
+- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
+- [src/runtime/runtimeBridge.ts](./src/runtime/runtimeBridge.ts)
+- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
+- [src/runtime/runtimeRegistry.ts](./src/runtime/runtimeRegistry.ts)
 - la capa que persista metadata de sesión
 
 ## Fase 2
@@ -124,9 +124,9 @@ Impacto UI actual:
 - `model_switched` existe como shape/evento, pero no hay acción expuesta para dispararlo desde la web
 
 Archivos a tocar:
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
+- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
+- [src/runtime/runtimeBridge.ts](./src/runtime/runtimeBridge.ts)
+- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
 
 ## Fase 3
 
@@ -158,9 +158,9 @@ Impacto UI actual:
 - `Direct instruction to <agent>` ya funciona vía mensaje dirigido; falta volverlo endpoint oficial
 
 Archivos a tocar:
-- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
+- [src/runtime/types.ts](./src/runtime/types.ts)
+- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
+- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
 - la capa real de coordinator/swarm
 
 ## Fase 4
@@ -206,8 +206,8 @@ Impacto UI actual:
 - si el modelo no emite deltas reales de pensamiento, la UI cae al placeholder y luego muestra la respuesta final
 
 Archivos a tocar:
-- [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
+- [src/runtime/types.ts](./src/runtime/types.ts)
+- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
 
 ## Fase 5
 
@@ -230,9 +230,9 @@ Impacto UI actual:
 - todavía no existe histórico confiable al abrir una sesión antigua o recién cargada
 
 Archivos a tocar:
-- [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/runtimeService.ts)
+- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
+- [src/runtime/runtimeBridge.ts](./src/runtime/runtimeBridge.ts)
+- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
 
 ## Notas
 
@@ -272,10 +272,10 @@ Impacto UX actual:
 - el fan-out multiagente ya funciona mejor en CLI, pero no es todavía una UX “mágica” de spawn automático
 
 Archivos a tocar:
-- [src/components/PromptInput/PromptInput.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/components/PromptInput/PromptInput.tsx)
-- [src/utils/directMemberMessage.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/directMemberMessage.ts)
-- [src/tools/AgentTool/AgentTool.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/tools/AgentTool/AgentTool.tsx)
-- [src/tools/SendMessageTool/SendMessageTool.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/tools/SendMessageTool/SendMessageTool.ts)
+- [src/components/PromptInput/PromptInput.tsx](./src/components/PromptInput/PromptInput.tsx)
+- [src/utils/directMemberMessage.ts](./src/utils/directMemberMessage.ts)
+- [src/tools/AgentTool/AgentTool.tsx](./src/tools/AgentTool/AgentTool.tsx)
+- [src/tools/SendMessageTool/SendMessageTool.ts](./src/tools/SendMessageTool/SendMessageTool.ts)
 
 ## Fase 7
 
@@ -321,8 +321,8 @@ Fuentes públicas sugeridas:
 - Artificial Analysis
 
 Archivos probables a tocar:
-- [src/commands/model/model.tsx](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/commands/model/model.tsx)
-- [src/utils/model/providerRouting.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/model/providerRouting.ts)
-- [scripts/dev-auto.ps1](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/scripts/dev-auto.ps1)
+- [src/commands/model/model.tsx](./src/commands/model/model.tsx)
+- [src/utils/model/providerRouting.ts](./src/utils/model/providerRouting.ts)
+- [scripts/dev-auto.ps1](./scripts/dev-auto.ps1)
 - nuevo helper para fetch/score/persist de ranking
 

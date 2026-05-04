@@ -27,6 +27,8 @@
     "version": "bun run ./src/dev-entry.ts --version",
     "typecheck": "tsc --noEmit",
     "security:preflight": "bun run ./scripts/security-preflight.ts",
+    "security:preflight:strict": "bun run ./scripts/security-preflight.ts --strict",
+    "security:preflight:json": "bun run ./scripts/security-preflight.ts --json",
     "dev:auto": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-auto.ps1 -Preset auto-all",
     "version:auto": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-auto.ps1 -Preset auto-all -VersionOnly",
     "dev:auto:all": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-auto.ps1 -Preset auto-all",

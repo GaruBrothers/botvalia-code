@@ -25,5 +25,5 @@ Resultado observado en esta revisión:
 
 El reto ya queda funcional a nivel de tests.
 
-La implementación actual en [scheduler.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/resultTest/src/scheduler.ts) pasa la suite, aunque todavía podría limpiarse de comentarios duplicados y detalles de estilo si quieres dejar también esa carpeta más prolija.
+La implementación actual en [scheduler.ts](./src/scheduler.ts) pasa la suite, aunque todavía podría limpiarse de comentarios duplicados y detalles de estilo si quieres dejar también esa carpeta más prolija.
 
