@@ -8,7 +8,7 @@ const copy = {
   type: 'local-jsx',
   name: 'copy',
   description:
-    "Copy BotValia's last response to clipboard (or /copy N for the Nth-latest)",
+    'Copy the latest visible BotValia chat/command block to clipboard (or /copy N for older blocks)',
   load: () => import('./copy.js'),
 } satisfies Command
 

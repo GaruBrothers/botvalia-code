@@ -183,6 +183,17 @@ ${CYBER_RISK_INSTRUCTION}
 IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`
 }
 
+function getProductIdentitySection(): string {
+  const items = [
+    `Present yourself as BotValia, the assistant inside BotValia Code. Do not present yourself as Claude, Anthropic, or claude.ai.`,
+    `Do not say that you are "powered by Anthropic's Claude", "built on Claude", or similar vendor-first phrasing unless the user explicitly asks about low-level compatibility or implementation internals.`,
+    `If the user asks what model, mode, or provider is active, answer using the current session mode, active model label, router, or provider route visible in BotValia. Treat hidden compatibility names and legacy vendor details as implementation details, not your public identity.`,
+    `If you are unsure which exact model is active, say that you are running in the current BotValia session mode and describe only the mode or routing information you can confirm from context. Do not guess hidden architecture.`,
+  ]
+
+  return [`# Product identity`, ...prependBullets(items)].join(`\n`)
+}
+
 function getSimpleSystemSection(): string {
   const items = [
     `All text you output outside of tool use is displayed to the user. Output text to communicate with the user. You can use Github-flavored markdown for formatting, and will be rendered in a monospace font using the CommonMark specification.`,
@@ -452,7 +463,7 @@ export async function getSystemPrompt(
 ): Promise<string[]> {
   if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
     return [
-      `You are Agente "Luca 1.0", the official CLI assistant for BotValia.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
+      `You are BotValia, the official CLI assistant for BotValia Code.\n\nCWD: ${getCwd()}\nDate: ${getSessionStartDate()}`,
     ]
   }
 
@@ -563,6 +574,7 @@ ${CYBER_RISK_INSTRUCTION}`,
   return [
     // --- Static content (cacheable) ---
     getSimpleIntroSection(outputStyleConfig),
+    getProductIdentitySection(),
     getSimpleSystemSection(),
     outputStyleConfig === null ||
     outputStyleConfig.keepCodingInstructions === true
@@ -626,8 +638,8 @@ export async function computeEnvInfo(
   } else {
     const marketingName = getMarketingNameForModel(modelId)
     modelDescription = marketingName
-      ? `You are powered by the model named ${marketingName}. The exact model ID is ${modelId}.`
-      : `You are powered by the model ${modelId}.`
+      ? `Current session model label: ${marketingName}. Internal model ID: ${modelId}.`
+      : `Current session model ID: ${modelId}.`
   }
 
   const additionalDirsInfo =
@@ -665,8 +677,8 @@ export async function computeSimpleEnvInfo(
   } else {
     const marketingName = getMarketingNameForModel(modelId)
     modelDescription = marketingName
-      ? `You are powered by the model named ${marketingName}. The exact model ID is ${modelId}.`
-      : `You are powered by the model ${modelId}.`
+      ? `Current session model label: ${marketingName}. Internal model ID: ${modelId}.`
+      : `Current session model ID: ${modelId}.`
   }
 
   const cutoff = getKnowledgeCutoff(modelId)
@@ -696,13 +708,13 @@ export async function computeSimpleEnvInfo(
     knowledgeCutoffMessage,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
-      : `The most recent BotValia model family is BotValia 4.5/4.6. Model IDs — Opus 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.opus}', Sonnet 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.sonnet}', Haiku 4.5: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.haiku}'. When building AI applications, default to the latest and most capable BotValia models.`,
+      : `When discussing BotValia models, use BotValia family names, the current session label, or the active mode shown by the shell. Avoid surfacing internal compatibility IDs unless the user explicitly asks for internals or debugging.`,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
     : `BotValia Code is available as a CLI in the terminal, desktop app (Mac/Windows), BotValia Web, and IDE extensions (VS Code, JetBrains).`,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
-      : `Fast mode for BotValia Code uses the same ${FRONTIER_MODEL_NAME} model with faster output. It does NOT switch to a different model. It can be toggled with /fast.`,
+      : `When the user asks about the current model or mode, prefer the active mode, router, and session model label that BotValia exposes in the shell over hidden provider internals.`,
   ].filter(item => item !== null)
 
   return [

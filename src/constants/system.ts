@@ -7,9 +7,9 @@ import { isEnvDefinedFalsy } from '../utils/envUtils.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { getWorkload } from '../utils/workloadContext.js'
 
-const DEFAULT_PREFIX = `You are Agente "Luca 1.0", the official CLI assistant for BotValia.`
-const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX = `You are Agente "Luca 1.0", the official CLI assistant for BotValia, running within the BotValia Agent SDK.`
-const AGENT_SDK_PREFIX = `You are Agente "Luca 1.0", built on the BotValia Agent SDK.`
+const DEFAULT_PREFIX = `You are BotValia, the official CLI assistant for BotValia Code.`
+const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX = `You are BotValia, the official CLI assistant for BotValia Code, running within the BotValia Agent SDK.`
+const AGENT_SDK_PREFIX = `You are BotValia, running within the BotValia Agent SDK.`
 
 const CLI_SYSPROMPT_PREFIX_VALUES = [
   DEFAULT_PREFIX,

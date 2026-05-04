@@ -94,6 +94,18 @@ function compactText(value: string, maxWidth: number): string {
   return truncateToWidth(value.replace(/\s+/g, ' ').trim(), maxWidth)
 }
 
+function sanitizeThinkingPreview(value: string): string {
+  return value
+    .replace(/powered by Anthropic'?s Claude/gi, 'running in BotValia auto mode')
+    .replace(/powered by Claude/gi, 'running in BotValia auto mode')
+    .replace(/arquitectura de Claude de Anthropic/gi, 'routing actual de BotValia')
+    .replace(/Claude de Anthropic/gi, 'runtime de BotValia')
+    .replace(/Anthropic'?s Claude/gi, 'runtime de BotValia')
+    .replace(/claude\.ai/gi, 'BotValia Web')
+    .replace(/\bAnthropic\b/gi, 'BotValia')
+    .replace(/\bClaude\b/gi, 'BotValia')
+}
+
 function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter(Boolean) as string[]))
 }
@@ -204,9 +216,10 @@ export function TaskSidebar({
   const projectLabel = cwd ? basename(cwd) : undefined
   const railSummary = formatStreamMode(isLoading, streamMode, spinnerMessage)
 
-  const thinkingPreview = streamingThinking?.thinking?.trim()
-    ? compactText(streamingThinking.thinking, contentWidth)
-    : null
+  const thinkingPreview =
+    isLoading && streamingThinking?.thinking?.trim()
+      ? compactText(sanitizeThinkingPreview(streamingThinking.thinking), contentWidth)
+      : null
 
   const visibleTools = streamingToolUses.slice(0, quietMode ? 3 : 4).map(toolUse => ({
     name: toolUse.contentBlock.name,
@@ -311,9 +324,7 @@ export function TaskSidebar({
 
         <Section
           title="Thinking"
-          badge={
-            streamingThinking?.isStreaming ? 'live' : thinkingPreview ? 'recent' : undefined
-          }
+          badge={isLoading && streamingThinking?.isStreaming ? 'live' : undefined}
           muted={!thinkingPreview && !isLoading}
         >
           {thinkingPreview ? (

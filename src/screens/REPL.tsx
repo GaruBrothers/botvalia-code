@@ -4818,7 +4818,7 @@ export function REPL({
     }
     return false;
   });
-  const hasLiveTaskSidebarState = isLoading || hasRunningTeammates || !!streamingThinking?.thinking?.trim() || streamingToolUses.length > 0 || !!spinnerMessage?.trim() || !!teamContext?.selfAgentName || Object.keys(teamContext?.teammates ?? {}).length > 0;
+  const hasLiveTaskSidebarState = isLoading || hasRunningTeammates || streamingToolUses.length > 0 || !!spinnerMessage?.trim() || !!teamContext?.selfAgentName || Object.keys(teamContext?.teammates ?? {}).length > 0;
   const showTaskSidebar = isFullscreenEnvEnabled() && screen === 'prompt' && !viewedAgentTask && !focusedInputDialog && !toolJSX?.isLocalJSXCommand && transcriptCols >= 120 && (showExpandedTodos || hasActiveTaskSidebarWork || hasLiveTaskSidebarState);
   const canShowWelcomeLogo = screen === 'prompt' && !hideBanner && !viewedAgentTask && !focusedInputDialog && !toolJSX && centeredModal == null && toolPermissionOverlay == null && !hasVisibleTranscriptContent && !placeholderText && !showSpinner;
   const showWelcomeHero = isFullscreenEnvEnabled() && canShowWelcomeLogo;

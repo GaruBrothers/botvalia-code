@@ -10,23 +10,52 @@ import { Select } from '../../components/CustomSelect/select.js';
 import { Byline } from '../../components/design-system/Byline.js';
 import { KeyboardShortcutHint } from '../../components/design-system/KeyboardShortcutHint.js';
 import { Pane } from '../../components/design-system/Pane.js';
+import {
+  BASH_INPUT_TAG,
+  BASH_STDERR_TAG,
+  BASH_STDOUT_TAG,
+  COMMAND_ARGS_TAG,
+  COMMAND_MESSAGE_TAG,
+  COMMAND_NAME_TAG,
+  LOCAL_COMMAND_CAVEAT_TAG,
+  LOCAL_COMMAND_STDERR_TAG,
+  LOCAL_COMMAND_STDOUT_TAG,
+  TICK_TAG,
+} from '../../constants/xml.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import { stringWidth } from '../../ink/stringWidth.js';
 import { setClipboard } from '../../ink/termio/osc.js';
 import { Box, Text } from '../../ink.js';
 import { logEvent } from '../../services/analytics/index.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
-import type { AssistantMessage, Message } from '../../types/message.js';
+import type {
+  AssistantMessage,
+  Message,
+  SystemMessage,
+  UserMessage,
+} from '../../types/message.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { extractTextContent, stripPromptXMLTags } from '../../utils/messages.js';
+import { stripIdeContextTags } from '../../utils/displayTags.js';
+import {
+  extractTag,
+  extractTextContent,
+  getContentText,
+  isSystemLocalCommandMessage,
+  stripPromptXMLTags,
+} from '../../utils/messages.js';
 import { countCharInString } from '../../utils/stringUtils.js';
-const COPY_DIR = join(tmpdir(), 'claude');
+const COPY_DIR = join(tmpdir(), 'botvalia');
 const RESPONSE_FILENAME = 'response.md';
 const MAX_LOOKBACK = 20;
 type CodeBlock = {
   code: string;
   lang: string | undefined;
 };
+type VisibleCopySegment = {
+  text: string;
+  assistantText?: string;
+};
+
 function extractCodeBlocks(markdown: string): CodeBlock[] {
   const tokens = marked.lexer(stripPromptXMLTags(markdown));
   const blocks: CodeBlock[] = [];
@@ -42,22 +71,248 @@ function extractCodeBlocks(markdown: string): CodeBlock[] {
   return blocks;
 }
 
-/**
- * Walk messages newest-first, returning text from assistant messages that
- * actually said something (skips tool-use-only turns and API errors).
- * Index 0 = latest, 1 = second-to-latest, etc. Caps at MAX_LOOKBACK.
- */
-export function collectRecentAssistantTexts(messages: Message[]): string[] {
-  const texts: string[] = [];
-  for (let i = messages.length - 1; i >= 0 && texts.length < MAX_LOOKBACK; i--) {
-    const msg = messages[i];
-    if (msg?.type !== 'assistant' || msg.isApiErrorMessage) continue;
-    const content = (msg as AssistantMessage).message.content;
-    if (!Array.isArray(content)) continue;
-    const text = extractTextContent(content, '\n\n');
-    if (text) texts.push(text);
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function renderCommandBreadcrumb(content: string): string | null {
+  const commandName =
+    extractTag(content, COMMAND_NAME_TAG) ??
+    extractTag(content, COMMAND_MESSAGE_TAG);
+
+  if (!commandName) {
+    return null;
   }
-  return texts;
+
+  if (extractTag(content, 'skill-format') === 'true') {
+    return `Skill(${commandName})`;
+  }
+
+  const args = (extractTag(content, COMMAND_ARGS_TAG) ?? '').trim();
+  const normalizedCommandName = commandName.startsWith('/')
+    ? commandName
+    : `/${commandName}`;
+
+  return args ? `${normalizedCommandName} ${args}` : normalizedCommandName;
+}
+
+function joinOutputParts(parts: Array<string | null | undefined>): string | null {
+  const lines = parts
+    .map(part => decodeXmlEntities((part ?? '').trim()))
+    .filter(Boolean);
+
+  return lines.length > 0 ? lines.join('\n\n') : null;
+}
+
+function renderVisibleUserText(content: string): string | null {
+  if (extractTag(content, TICK_TAG) || content.includes(`<${LOCAL_COMMAND_CAVEAT_TAG}>`)) {
+    return null;
+  }
+
+  const bashInput = extractTag(content, BASH_INPUT_TAG);
+  if (bashInput?.trim()) {
+    return decodeXmlEntities(bashInput.trim());
+  }
+
+  const commandBreadcrumb = renderCommandBreadcrumb(content);
+  if (commandBreadcrumb) {
+    return commandBreadcrumb;
+  }
+
+  const localCommandOutput = joinOutputParts([
+    extractTag(content, LOCAL_COMMAND_STDOUT_TAG),
+    extractTag(content, LOCAL_COMMAND_STDERR_TAG),
+  ]);
+  if (localCommandOutput) {
+    return localCommandOutput;
+  }
+
+  const bashOutput = joinOutputParts([
+    extractTag(content, BASH_STDOUT_TAG),
+    extractTag(content, BASH_STDERR_TAG),
+  ]);
+  if (bashOutput) {
+    return bashOutput;
+  }
+
+  const visibleText = stripIdeContextTags(content).trim();
+  if (!visibleText) {
+    return null;
+  }
+
+  return decodeXmlEntities(stripPromptXMLTags(visibleText).trim()) || null;
+}
+
+function renderVisibleMessageText(message: Message): string | null {
+  if (message.isMeta || message.isVisibleInTranscriptOnly) {
+    return null;
+  }
+
+  if (message.type === 'assistant') {
+    if (message.isApiErrorMessage) {
+      const apiErrorText = extractTextContent(message.message.content, '\n\n').trim();
+      return apiErrorText ? stripPromptXMLTags(apiErrorText) : null;
+    }
+
+    const text = getContentText(message.message.content)?.trim();
+    return text ? stripPromptXMLTags(text) : null;
+  }
+
+  if (message.type === 'user') {
+    const text = getContentText(message.message.content);
+    if (!text) {
+      return null;
+    }
+
+    return renderVisibleUserText(text);
+  }
+
+  if (message.type === 'system') {
+    if (message.subtype === 'thinking' || message.subtype === 'compact_boundary' || message.subtype === 'microcompact_boundary') {
+      return null;
+    }
+
+    if (isSystemLocalCommandMessage(message)) {
+      return renderVisibleUserText(message.content ?? '');
+    }
+
+    if (!isVisibleSystemMessage(message)) {
+      return null;
+    }
+
+    return typeof message.content === 'string'
+      ? decodeXmlEntities(stripPromptXMLTags(message.content).trim()) || null
+      : null;
+  }
+
+  return null;
+}
+
+function isVisibleSystemMessage(message: SystemMessage): boolean {
+  if (message.subtype === 'api_error') return true;
+  if (message.subtype === 'away_summary') return true;
+  if (message.subtype === 'agents_killed') return true;
+  if (message.subtype === 'scheduled_task_fire') return true;
+  if (message.subtype === 'permission_retry') return true;
+  if (message.subtype === 'stop_hook_summary') return true;
+
+  return typeof message.content === 'string' && message.level !== 'info';
+}
+
+function formatSpeakerBlock(label: string, text: string): string {
+  return `${label}\n${text.trim()}`;
+}
+
+function createChatSegment(
+  parts: string[],
+  assistantParts: string[],
+): VisibleCopySegment | null {
+  const text = parts.join('\n\n').trim();
+  if (!text) {
+    return null;
+  }
+
+  const assistantText = assistantParts.join('\n\n').trim();
+  return {
+    text,
+    assistantText: assistantText || undefined,
+  };
+}
+
+function createPlainSegment(parts: string[]): VisibleCopySegment | null {
+  const text = parts.join('\n\n').trim();
+  return text ? { text } : null;
+}
+
+/**
+ * Build newest-first visible transcript segments.
+ * A segment is either:
+ * - a chat turn (user + assistant blocks)
+ * - a slash/local-command block
+ * - a visible system notice
+ */
+export function collectRecentVisibleSegments(
+  messages: Message[],
+): VisibleCopySegment[] {
+  const segments: VisibleCopySegment[] = [];
+  let currentKind: 'chat' | 'local_command' | 'system' | null = null;
+  let currentParts: string[] = [];
+  let assistantParts: string[] = [];
+
+  const flushCurrent = () => {
+    if (!currentKind) {
+      return;
+    }
+
+    const segment =
+      currentKind === 'chat'
+        ? createChatSegment(currentParts, assistantParts)
+        : createPlainSegment(currentParts);
+
+    if (segment) {
+      segments.push(segment);
+    }
+
+    currentKind = null;
+    currentParts = [];
+    assistantParts = [];
+  };
+
+  for (const message of messages) {
+    const text = renderVisibleMessageText(message);
+    if (!text) {
+      continue;
+    }
+
+    if (message.type === 'assistant') {
+      if (currentKind !== 'chat') {
+        flushCurrent();
+        currentKind = 'chat';
+      }
+
+      currentParts.push(formatSpeakerBlock('BotValia', text));
+      assistantParts.push(text);
+      continue;
+    }
+
+    if (message.type === 'user') {
+      if (currentKind !== 'chat' || assistantParts.length > 0) {
+        flushCurrent();
+        currentKind = 'chat';
+      }
+
+      currentParts.push(formatSpeakerBlock('You', text));
+      continue;
+    }
+
+    if (isSystemLocalCommandMessage(message)) {
+      if (currentKind !== 'local_command') {
+        flushCurrent();
+        currentKind = 'local_command';
+      }
+
+      currentParts.push(text);
+      continue;
+    }
+
+    if (currentKind === 'chat') {
+      currentParts.push(formatSpeakerBlock('System', text));
+      continue;
+    }
+
+    flushCurrent();
+    currentKind = 'system';
+    currentParts.push(formatSpeakerBlock('System', text));
+  }
+
+  flushCurrent();
+
+  return segments.reverse().slice(0, MAX_LOOKBACK);
 }
 export function fileExtension(lang: string | undefined): string {
   if (lang) {
@@ -332,13 +587,13 @@ function _temp(block, index) {
   };
 }
 export const call: LocalJSXCommandCall = async (onDone, context, args) => {
-  const texts = collectRecentAssistantTexts(context.messages);
-  if (texts.length === 0) {
-    onDone('No assistant message to copy');
+  const segments = collectRecentVisibleSegments(context.messages);
+  if (segments.length === 0) {
+    onDone('No visible transcript block to copy');
     return null;
   }
 
-  // /copy N reaches back N-1 messages (1 = latest, 2 = second-to-latest, ...)
+  // /copy N reaches back N-1 visible segments (1 = latest, 2 = second-to-latest, ...)
   let age = 0;
   const arg = args?.trim();
   if (arg) {
@@ -347,14 +602,17 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
       onDone(`Usage: /copy [N] where N is 1 (latest), 2, 3, \u2026 Got: ${arg}`);
       return null;
     }
-    if (n > texts.length) {
-      onDone(`Only ${texts.length} assistant ${texts.length === 1 ? 'message' : 'messages'} available to copy`);
+    if (n > segments.length) {
+      onDone(`Only ${segments.length} visible ${segments.length === 1 ? 'block' : 'blocks'} available to copy`);
       return null;
     }
     age = n - 1;
   }
-  const text = texts[age]!;
-  const codeBlocks = extractCodeBlocks(text);
+
+  const segment = segments[age]!;
+  const text = segment.text;
+  const codeSource = segment.assistantText ?? text;
+  const codeBlocks = extractCodeBlocks(codeSource);
   const config = getGlobalConfig();
   if (codeBlocks.length === 0 || config.copyFullResponse) {
     logEvent('tengu_copy', {
