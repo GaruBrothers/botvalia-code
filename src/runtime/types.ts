@@ -9,6 +9,7 @@ import type {
 } from '../utils/swarm/teamConversationLog.js'
 
 export type RuntimeSessionId = string
+export type RuntimeSessionChannel = 'cli' | 'web-ui'
 
 export type RuntimeSessionStatus =
   | 'idle'
@@ -24,18 +25,111 @@ export type RuntimeTaskSummary = {
   kind?: string
   title?: string
   isBackgrounded?: boolean
+  owner?: string
+  assigneeName?: string
+}
+
+export type RuntimeExecutionSource =
+  | 'sdk-stream'
+  | 'sdk-message'
+  | 'assistant-message'
+  | 'message-result'
+  | 'app-state'
+  | 'session-runtime'
+
+export type RuntimeThinkingSummary = {
+  messageUuid?: string
+  blockType?: 'thinking' | 'redacted_thinking'
+  source: RuntimeExecutionSource
+}
+
+export type RuntimeTaskUsageSummary = {
+  totalTokens?: number
+  toolUses?: number
+  durationMs?: number
+}
+
+export type RuntimeTaskEventPayload = {
+  task: RuntimeTaskSummary
+  source: RuntimeExecutionSource
+  toolUseId?: string
+  workflowName?: string
+  prompt?: string
+  description?: string
+  summary?: string
+  progressText?: string
+  usage?: RuntimeTaskUsageSummary
+  lastToolName?: string
+}
+
+export type RuntimeToolEventPayload = {
+  toolUseId: string
+  toolName: string
+  source: RuntimeExecutionSource
+  parentToolUseId?: string | null
+  taskId?: string
+  elapsedTimeSeconds?: number
+  summary?: string
+  inputPreview?: string
+  outputPreview?: string
+}
+
+export type RuntimeAgentEventPayload = {
+  kind:
+    | 'task_started'
+    | 'task_progress'
+    | 'task_completed'
+    | 'tool_started'
+    | 'tool_completed'
+    | 'updated'
+  source: RuntimeExecutionSource
+  agentId?: string
+  agentName?: string
+  taskId?: string
+  taskTitle?: string
+  detail?: string
 }
 
 export type RuntimeSwarmSummary = {
   teamName?: string
   isLeader: boolean
   teammateNames: string[]
+  teammates: RuntimeSwarmTeammateSummary[]
+}
+
+export type RuntimeSwarmTeammateSummary = {
+  id: string
+  name: string
+  agentType?: string
+  color?: string
+  cwd?: string
+  worktreePath?: string
+  tmuxSessionName?: string
+  tmuxPaneId?: string
+}
+
+export type RuntimeSwarmEventPayload = {
+  kind:
+    | 'updated'
+    | 'task_started'
+    | 'task_progress'
+    | 'task_completed'
+    | 'tool_started'
+    | 'tool_completed'
+  source: RuntimeExecutionSource
+  swarm: RuntimeSwarmSummary
+  taskId?: string
+  taskTitle?: string
+  toolUseId?: string
+  toolName?: string
 }
 
 export type RuntimeSessionSnapshot = {
   sessionId: RuntimeSessionId
   cwd: string
   status: RuntimeSessionStatus
+  activeChannel: RuntimeSessionChannel
+  activeChannelUpdatedAt: string
   permissionMode: PermissionMode
   isBypassPermissionsModeAvailable: boolean
   isAutoModeAvailable: boolean
@@ -79,6 +173,7 @@ export type RuntimeSessionConfig = {
   setPermissionMode?: (mode: PermissionMode) => Promise<void> | void
   interrupt?: () => void
   initialStatus?: RuntimeSessionStatus
+  initialActiveChannel?: RuntimeSessionChannel
 }
 
 function getTaskTitle(task: TaskState): string | undefined {
@@ -105,6 +200,16 @@ function getTaskKind(task: TaskState): string | undefined {
 }
 
 export function toRuntimeTaskSummary(task: TaskState): RuntimeTaskSummary {
+  const ownerCandidate =
+    ('owner' in task && typeof task.owner === 'string' ? task.owner : undefined) ||
+    ('identity' in task &&
+    task.identity &&
+    typeof task.identity === 'object' &&
+    'agentName' in task.identity &&
+    typeof task.identity.agentName === 'string'
+      ? task.identity.agentName
+      : undefined)
+
   return {
     id: task.id,
     status: task.status,
@@ -114,6 +219,8 @@ export function toRuntimeTaskSummary(task: TaskState): RuntimeTaskSummary {
       'isBackgrounded' in task && typeof task.isBackgrounded === 'boolean'
         ? task.isBackgrounded
         : undefined,
+    owner: ownerCandidate?.trim() || undefined,
+    assigneeName: ownerCandidate?.trim() || undefined,
   }
 }
 
@@ -205,18 +312,40 @@ export function createRuntimeSessionSnapshot(params: {
   sessionId: RuntimeSessionId
   cwd: string
   status: RuntimeSessionStatus
+  activeChannel: RuntimeSessionChannel
+  activeChannelUpdatedAt: string
   appState: AppState
   messages: readonly Message[]
 }): RuntimeSessionSnapshot {
-  const { sessionId, cwd, status, appState, messages } = params
-  const teammateNames = Object.values(appState.teamContext?.teammates || {}).map(
-    teammate => teammate.name,
+  const {
+    sessionId,
+    cwd,
+    status,
+    activeChannel,
+    activeChannelUpdatedAt,
+    appState,
+    messages,
+  } = params
+  const teammates = Object.entries(appState.teamContext?.teammates || {}).map(
+    ([teammateId, teammate]) => ({
+      id: teammateId,
+      name: teammate.name,
+      agentType: teammate.agentType,
+      color: teammate.color,
+      cwd: teammate.cwd,
+      worktreePath: teammate.worktreePath,
+      tmuxSessionName: teammate.tmuxSessionName,
+      tmuxPaneId: teammate.tmuxPaneId,
+    }),
   )
+  const teammateNames = teammates.map(teammate => teammate.name)
 
   return {
     sessionId,
     cwd,
     status,
+    activeChannel,
+    activeChannelUpdatedAt,
     permissionMode: appState.toolPermissionContext.mode,
     isBypassPermissionsModeAvailable:
       appState.toolPermissionContext.isBypassPermissionsModeAvailable,
@@ -229,6 +358,7 @@ export function createRuntimeSessionSnapshot(params: {
       teamName: appState.teamContext?.teamName,
       isLeader: appState.teamContext?.isLeader ?? false,
       teammateNames,
+      teammates,
     },
   }
 }

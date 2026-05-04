@@ -1,5 +1,5 @@
-import { SwarmState, AgentTask } from "@/lib/types";
-import { Users, Bot, Code, Edit3, Shield, Zap, Search, ArrowRight, CheckCircle2, Clock, PlayCircle, XCircle, ListTodo } from "lucide-react";
+import { SwarmState, AgentTask, SwarmTeammate } from "@/lib/types";
+import { Users, Bot, Code, Edit3, Shield, Zap, Search, ArrowRight, CheckCircle2, Clock, PlayCircle, XCircle, ListTodo, MessageSquareText, FolderTree } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,22 @@ function TaskStatusBadge({ status }: { status: AgentTask['status'] }) {
   }
 }
 
-export function SwarmOfficeView({ swarm, onDirectInstruction }: { swarm: SwarmState | undefined, onDirectInstruction?: (teammateId: string, text: string) => void }) {
+function TeammateStatusBadge({ teammate }: { teammate: SwarmTeammate }) {
+  const baseClasses = "text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded";
+
+  switch (teammate.status) {
+    case 'speaking':
+      return <span className={cn(baseClasses, "bg-cyan-500/15 text-cyan-300")}>Responding</span>;
+    case 'waiting':
+      return <span className={cn(baseClasses, "bg-amber-500/15 text-amber-300")}>Waiting</span>;
+    case 'working':
+      return <span className={cn(baseClasses, "bg-indigo-500/20 text-indigo-300")}>Working</span>;
+    default:
+      return <span className={cn(baseClasses, "bg-white/[0.05] text-gray-400")}>Idle</span>;
+  }
+}
+
+export function SwarmOfficeView({ swarm, onDirectInstruction }: { swarm: SwarmState | undefined, onDirectInstruction?: (teammateName: string, text: string) => void }) {
   if (!swarm) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-sm opacity-50 select-none">
@@ -116,13 +131,42 @@ export function SwarmOfficeView({ swarm, onDirectInstruction }: { swarm: SwarmSt
                   </div>
                 </div>
                 <div className="flex flex-col items-end">
-                  <span className={cn("text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded",
-                     isWorking ? "bg-indigo-500/20 text-indigo-300" : "bg-white/[0.05] text-gray-400"
-                  )}>
-                    {agent.status}
-                  </span>
+                  <TeammateStatusBadge teammate={agent} />
                 </div>
               </div>
+
+              {(agent.currentTask || agent.statusDetail || agent.threadTopic || agent.workspace) && (
+                <div className="mb-4 space-y-2 rounded-xl border border-white/[0.05] bg-white/[0.02] p-3">
+                  {agent.currentTask && (
+                    <div>
+                      <div className="mb-1 text-[10px] uppercase tracking-widest text-gray-500">Assigned Task</div>
+                      <div className="text-sm text-gray-200 leading-relaxed">{agent.currentTask}</div>
+                    </div>
+                  )}
+                  {agent.statusDetail && (
+                    <div className="text-xs text-gray-400">{agent.statusDetail}</div>
+                  )}
+                  {agent.threadTopic && (
+                    <div className="flex items-start gap-2 text-xs text-gray-400">
+                      <MessageSquareText className="mt-0.5 h-3.5 w-3.5 text-indigo-300" />
+                      <span>{agent.threadTopic}</span>
+                    </div>
+                  )}
+                  {agent.workspace && (
+                    <div className="flex items-start gap-2 text-xs text-gray-500">
+                      <FolderTree className="mt-0.5 h-3.5 w-3.5 text-gray-500" />
+                      <span className="truncate">{agent.workspace}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {agent.currentInstruction && (
+                <div className="mb-4 rounded-xl border border-cyan-500/15 bg-cyan-500/5 p-3">
+                  <div className="mb-1 text-[10px] uppercase tracking-widest text-cyan-300">Direct Instruction</div>
+                  <div className="text-sm leading-relaxed text-cyan-100/90">{agent.currentInstruction}</div>
+                </div>
+              )}
 
               {assignedTasks.length > 0 && (
                 <div className="mt-4 space-y-3 flex-grow border-t border-white/[0.05] pt-4">
@@ -160,7 +204,7 @@ export function SwarmOfficeView({ swarm, onDirectInstruction }: { swarm: SwarmSt
                   className="w-full bg-black/50 border border-white/[0.1] rounded-lg pl-3 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all shadow-inner"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                      onDirectInstruction?.(agent.id, e.currentTarget.value.trim());
+                      onDirectInstruction?.(agent.name, e.currentTarget.value.trim());
                       e.currentTarget.value = '';
                     }
                   }}

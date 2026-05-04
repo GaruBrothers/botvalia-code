@@ -7,6 +7,11 @@ import { errorMessage } from '../../utils/errors.js'
 import { getAuthHeaders, getUserAgent } from '../../utils/http.js'
 import { normalizeMessagesForAPI } from '../../utils/messages.js'
 import {
+  getOSSDefaultBlockReason,
+  isTranscriptSharingEnabledByDefaultForOSS,
+} from '../../utils/nonEssentialEgress.js'
+import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
+import {
   extractAgentIdsFromMessages,
   getTranscriptPath,
   loadSubagentTranscripts,
@@ -32,6 +37,17 @@ export async function submitTranscriptShare(
   appearanceId: string,
 ): Promise<TranscriptShareResult> {
   try {
+    if (isEssentialTrafficOnly()) {
+      return { success: false }
+    }
+
+    if (!isTranscriptSharingEnabledByDefaultForOSS()) {
+      logForDebugging(getOSSDefaultBlockReason('transcript-share'), {
+        level: 'info',
+      })
+      return { success: false }
+    }
+
     logForDebugging('Collecting transcript for sharing', { level: 'info' })
 
     const transcript = normalizeMessagesForAPI(messages)

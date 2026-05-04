@@ -7,12 +7,18 @@ import {
 } from './events.js'
 import {
   createRuntimeSessionSnapshot,
+  type RuntimeAgentEventPayload,
+  type RuntimeSessionChannel,
+  type RuntimeSwarmEventPayload,
   toRuntimeTaskSummary,
   type RuntimeSendMessageInput,
   type RuntimeSessionConfig,
   type RuntimeSessionSnapshot,
   type RuntimeSessionStatus,
   type RuntimeTaskSummary,
+  type RuntimeTaskEventPayload,
+  type RuntimeThinkingSummary,
+  type RuntimeToolEventPayload,
 } from './types.js'
 import type { PermissionMode } from '../types/permissions.js'
 
@@ -24,12 +30,21 @@ export class SessionRuntime {
   private config: RuntimeSessionConfig
   private eventBus = new RuntimeEventBus()
   private thinkingActive = false
+  private currentThinking: RuntimeThinkingSummary = {
+    source: 'session-runtime',
+  }
+  private taskStatuses = new Map<string, string>()
+  private activeTools = new Map<string, RuntimeToolEventPayload>()
+  private activeChannel: RuntimeSessionChannel
+  private activeChannelUpdatedAt: string
 
   constructor(config: RuntimeSessionConfig) {
     this.config = config
     this.sessionId = config.sessionId
     this.cwd = config.cwd
     this.status = config.initialStatus ?? 'idle'
+    this.activeChannel = config.initialActiveChannel ?? 'cli'
+    this.activeChannelUpdatedAt = new Date().toISOString()
 
     this.emit({
       type: 'session_started',
@@ -52,6 +67,8 @@ export class SessionRuntime {
       sessionId: this.sessionId,
       cwd: this.cwd,
       status: this.status,
+      activeChannel: this.activeChannel,
+      activeChannelUpdatedAt: this.activeChannelUpdatedAt,
       appState: this.config.getAppState(),
       messages: this.getMessages(),
     })
@@ -59,6 +76,10 @@ export class SessionRuntime {
 
   getStatus(): RuntimeSessionStatus {
     return this.status
+  }
+
+  getActiveChannel(): RuntimeSessionChannel {
+    return this.activeChannel
   }
 
   onEvent(listener: RuntimeEventListener): RuntimeEventUnsubscribe {
@@ -72,6 +93,17 @@ export class SessionRuntime {
   setStatus(status: RuntimeSessionStatus): void {
     this.status = status
     this.refreshSnapshot()
+  }
+
+  claimActiveChannel(channel: RuntimeSessionChannel): boolean {
+    if (this.activeChannel === channel) {
+      return false
+    }
+
+    this.activeChannel = channel
+    this.activeChannelUpdatedAt = new Date().toISOString()
+    this.refreshSnapshot()
+    return true
   }
 
   refreshSnapshot(): void {
@@ -92,43 +124,77 @@ export class SessionRuntime {
     })
   }
 
-  emitThinkingStarted(): void {
-    if (this.thinkingActive) {
+  emitThinkingStarted(thinking?: Partial<RuntimeThinkingSummary>): void {
+    const nextThinking: RuntimeThinkingSummary = {
+      ...this.currentThinking,
+      ...thinking,
+      source: thinking?.source ?? this.currentThinking.source,
+    }
+
+    if (
+      this.thinkingActive &&
+      this.currentThinking.messageUuid === nextThinking.messageUuid &&
+      this.currentThinking.blockType === nextThinking.blockType
+    ) {
       return
     }
 
     this.thinkingActive = true
+    this.currentThinking = nextThinking
     this.emit({
       type: 'thinking_started',
       sessionId: this.sessionId,
+      thinking: this.currentThinking,
       timestamp: new Date().toISOString(),
     })
   }
 
-  emitThinkingDelta(delta: string): void {
+  emitThinkingDelta(
+    delta: string,
+    thinking?: Partial<RuntimeThinkingSummary>,
+  ): void {
     if (!this.thinkingActive) {
-      this.emitThinkingStarted()
+      this.emitThinkingStarted(thinking)
+    } else if (thinking) {
+      this.currentThinking = {
+        ...this.currentThinking,
+        ...thinking,
+        source: thinking.source ?? this.currentThinking.source,
+      }
     }
 
     this.emit({
       type: 'thinking_delta',
       sessionId: this.sessionId,
       delta,
+      thinking: this.currentThinking,
       timestamp: new Date().toISOString(),
     })
   }
 
-  emitThinkingCompleted(): void {
+  emitThinkingCompleted(thinking?: Partial<RuntimeThinkingSummary>): void {
     if (!this.thinkingActive) {
       return
+    }
+
+    if (thinking) {
+      this.currentThinking = {
+        ...this.currentThinking,
+        ...thinking,
+        source: thinking.source ?? this.currentThinking.source,
+      }
     }
 
     this.thinkingActive = false
     this.emit({
       type: 'thinking_completed',
       sessionId: this.sessionId,
+      thinking: this.currentThinking,
       timestamp: new Date().toISOString(),
     })
+    this.currentThinking = {
+      source: 'session-runtime',
+    }
   }
 
   emitMessageCompleted(message: Message): void {
@@ -142,12 +208,113 @@ export class SessionRuntime {
   }
 
   emitTaskUpdated(task: RuntimeTaskSummary): void {
+    this.taskStatuses.set(task.id, task.status)
     this.emit({
       type: 'task_updated',
       sessionId: this.sessionId,
       task,
+      source: 'app-state',
       timestamp: new Date().toISOString(),
     })
+  }
+
+  emitTaskStarted(payload: RuntimeTaskEventPayload): void {
+    this.taskStatuses.set(payload.task.id, payload.task.status)
+    this.emit({
+      type: 'task_started',
+      sessionId: this.sessionId,
+      payload,
+      timestamp: new Date().toISOString(),
+    })
+    this.emit({
+      type: 'task_updated',
+      sessionId: this.sessionId,
+      task: payload.task,
+      source: payload.source,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  emitTaskProgress(payload: RuntimeTaskEventPayload): void {
+    this.taskStatuses.set(payload.task.id, payload.task.status)
+    this.emit({
+      type: 'task_progress',
+      sessionId: this.sessionId,
+      payload,
+      timestamp: new Date().toISOString(),
+    })
+    this.emit({
+      type: 'task_updated',
+      sessionId: this.sessionId,
+      task: payload.task,
+      source: payload.source,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  emitTaskCompleted(payload: RuntimeTaskEventPayload): void {
+    this.taskStatuses.set(payload.task.id, payload.task.status)
+    this.emit({
+      type: 'task_completed',
+      sessionId: this.sessionId,
+      payload,
+      timestamp: new Date().toISOString(),
+    })
+    this.emit({
+      type: 'task_updated',
+      sessionId: this.sessionId,
+      task: payload.task,
+      source: payload.source,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  getTaskStatus(taskId: string): string | undefined {
+    return this.taskStatuses.get(taskId)
+  }
+
+  emitToolStarted(payload: RuntimeToolEventPayload): void {
+    this.activeTools.set(payload.toolUseId, payload)
+    this.emit({
+      type: 'tool_started',
+      sessionId: this.sessionId,
+      payload,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  emitToolProgress(payload: RuntimeToolEventPayload): void {
+    const mergedPayload = {
+      ...this.activeTools.get(payload.toolUseId),
+      ...payload,
+    }
+
+    this.activeTools.set(payload.toolUseId, mergedPayload)
+    this.emit({
+      type: 'tool_progress',
+      sessionId: this.sessionId,
+      payload: mergedPayload,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  emitToolCompleted(payload: RuntimeToolEventPayload): void {
+    const mergedPayload = {
+      ...this.activeTools.get(payload.toolUseId),
+      ...payload,
+    }
+
+    this.activeTools.delete(payload.toolUseId)
+    this.emit({
+      type: 'tool_completed',
+      sessionId: this.sessionId,
+      payload: mergedPayload,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  getActiveTool(toolUseId: string): RuntimeToolEventPayload | undefined {
+    return this.activeTools.get(toolUseId)
   }
 
   emitSwarmUpdated(): void {
@@ -155,6 +322,25 @@ export class SessionRuntime {
       type: 'swarm_updated',
       sessionId: this.sessionId,
       swarm: this.getSnapshot().swarm,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  emitSwarmEvent(payload: RuntimeSwarmEventPayload): void {
+    this.emit({
+      type: 'swarm_event',
+      sessionId: this.sessionId,
+      payload,
+      timestamp: new Date().toISOString(),
+    })
+    this.emitSwarmUpdated()
+  }
+
+  emitAgentEvent(payload: RuntimeAgentEventPayload): void {
+    this.emit({
+      type: 'agent_event',
+      sessionId: this.sessionId,
+      payload,
       timestamp: new Date().toISOString(),
     })
   }
@@ -172,6 +358,10 @@ export class SessionRuntime {
   emitError(error: unknown): void {
     this.status = 'errored'
     this.thinkingActive = false
+    this.currentThinking = {
+      source: 'session-runtime',
+    }
+    this.activeTools.clear()
     this.emit({
       type: 'error',
       sessionId: this.sessionId,
@@ -193,6 +383,7 @@ export class SessionRuntime {
       )
     }
 
+    this.claimActiveChannel(input.channel ?? 'cli')
     this.setStatus('running')
 
     try {
@@ -206,13 +397,17 @@ export class SessionRuntime {
     }
   }
 
-  async setPermissionMode(mode: PermissionMode): Promise<void> {
+  async setPermissionMode(
+    mode: PermissionMode,
+    channel?: RuntimeSessionChannel,
+  ): Promise<void> {
     if (!this.config.setPermissionMode) {
       throw new Error(
         'SessionRuntime aún no tiene setPermissionMode conectado al motor real.',
       )
     }
 
+    this.claimActiveChannel(channel ?? 'cli')
     await this.config.setPermissionMode(mode)
     this.emit({
       type: 'permission_mode_changed',
@@ -223,10 +418,15 @@ export class SessionRuntime {
     this.refreshSnapshot()
   }
 
-  interrupt(): void {
+  interrupt(channel?: RuntimeSessionChannel): void {
+    this.claimActiveChannel(channel ?? 'cli')
     this.config.interrupt?.()
     this.status = 'interrupted'
     this.thinkingActive = false
+    this.currentThinking = {
+      source: 'session-runtime',
+    }
+    this.activeTools.clear()
     this.emit({
       type: 'interrupted',
       sessionId: this.sessionId,

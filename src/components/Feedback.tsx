@@ -20,6 +20,7 @@ import { env } from '../utils/env.js';
 import { type GitRepoState, getGitState, getIsGit } from '../utils/git.js';
 import { getAuthHeaders, getUserAgent } from '../utils/http.js';
 import { getInMemoryErrors, logError } from '../utils/log.js';
+import { getOSSDefaultBlockReason, isFeedbackSubmissionEnabledByDefaultForOSS } from '../utils/nonEssentialEgress.js';
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js';
 import { extractTeammateTranscriptsFromTasks, getTranscriptPath, loadAllSubagentTranscriptsFromDisk, MAX_TRANSCRIPT_READ_BYTES } from '../utils/sessionStorage.js';
 import { jsonStringify } from '../utils/slowOperations.js';
@@ -241,6 +242,8 @@ export function Feedback({
     } else {
       if (result.isZdrOrg) {
         setError('Feedback collection is not available for organizations with custom data retention policies.');
+      } else if (result.disabledReason) {
+        setError(result.disabledReason);
       } else {
         setError('Could not submit feedback. Please try again later.');
       }
@@ -519,10 +522,17 @@ async function submitFeedback(data: FeedbackData, signal?: AbortSignal): Promise
   success: boolean;
   feedbackId?: string;
   isZdrOrg?: boolean;
+  disabledReason?: string;
 }> {
   if (isEssentialTrafficOnly()) {
     return {
       success: false
+    };
+  }
+  if (!isFeedbackSubmissionEnabledByDefaultForOSS()) {
+    return {
+      success: false,
+      disabledReason: getOSSDefaultBlockReason('feedback')
     };
   }
   try {

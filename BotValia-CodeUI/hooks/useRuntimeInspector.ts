@@ -10,6 +10,28 @@ import {
   mergeDetailIntoSessions,
   mergeSnapshotsIntoSessions,
 } from '@/lib/runtime-mappers';
+import {
+  applyRuntimeSessionOwnership,
+  createSessionDraft,
+  getNextVisibleSessionId,
+  readRuntimeSessionOwnershipStore,
+  stripDraftSessions,
+  updateSessionDraft,
+  upsertSessionDraft,
+  upsertSessionOwnershipMetadata,
+  writeRuntimeSessionOwnershipStore,
+} from '@/lib/runtime-session-ownership';
+import {
+  readBrowserStorage,
+  removeBrowserStorage,
+  writeBrowserStorage,
+} from '@/lib/runtime-browser-storage';
+import {
+  clearRuntimeLaunchParamsFromBrowserUrl,
+  extractRuntimeAuthToken,
+  readRuntimeLaunchConfigFromLocation,
+  stripRuntimeAuthToken,
+} from '@/lib/runtime-url';
 import type { RuntimeProtocolEvent } from '@/lib/runtime-protocol';
 import type { GlobalRuntimeState, Session } from '@/lib/types';
 
@@ -31,8 +53,16 @@ type UseRuntimeInspectorResult = {
   setSelectedSessionId: (sessionId: string | null) => void;
   reconnect: () => Promise<void>;
   refresh: () => Promise<void>;
+  claimSessionControl: (sessionId?: string | null) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
+  sendDirectInstruction: (teammateName: string, text: string) => Promise<void>;
   interrupt: () => Promise<void>;
+  createSession: (title: string, workspacePath: string) => Promise<void>;
+  renameSession: (sessionId: string, newTitle: string) => Promise<void>;
+  archiveSession: (sessionId: string) => Promise<void>;
+  restoreSession: (sessionId: string) => Promise<void>;
+  togglePinnedSession: (sessionId: string) => void;
+  updateSessionNotes: (sessionId: string, notes: string) => void;
   cyclePermissionMode: () => Promise<void>;
   toggleAutoRefresh: () => void;
   dismissNotice: () => void;
@@ -41,30 +71,45 @@ type UseRuntimeInspectorResult = {
 
 const AUTO_REFRESH_STORAGE_KEY = 'botvalia.runtime.autoRefresh';
 const RUNTIME_URL_STORAGE_KEY = 'botvalia.runtime.url';
+const RUNTIME_AUTH_TOKEN_STORAGE_KEY = 'botvalia.runtime.authToken';
 
 function readInitialRuntimeConfig(): {
   autoRefresh: boolean;
   runtimeUrl: string | null;
+  runtimeAuthToken: string | null;
 } {
   if (typeof window === 'undefined') {
     return {
       autoRefresh: true,
       runtimeUrl: null,
+      runtimeAuthToken: null,
     };
   }
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const runtimeFromQuery = searchParams.get('runtime')?.trim() || null;
-  const runtimeFromStorage = window.localStorage.getItem(RUNTIME_URL_STORAGE_KEY);
+  const runtimeFromLaunch = readRuntimeLaunchConfigFromLocation(window.location);
+  const runtimeFromStorage = stripRuntimeAuthToken(
+    readBrowserStorage(RUNTIME_URL_STORAGE_KEY, 'session'),
+  );
+  const runtimeAuthTokenFromStorage =
+    readBrowserStorage(RUNTIME_AUTH_TOKEN_STORAGE_KEY, 'session') ||
+    extractRuntimeAuthToken(readBrowserStorage(RUNTIME_URL_STORAGE_KEY, 'session'));
+  removeBrowserStorage(RUNTIME_URL_STORAGE_KEY, 'local');
+  removeBrowserStorage(RUNTIME_AUTH_TOKEN_STORAGE_KEY, 'local');
+  removeBrowserStorage(AUTO_REFRESH_STORAGE_KEY, 'local');
 
   return {
-    autoRefresh: window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY) !== 'false',
-    runtimeUrl: runtimeFromQuery || runtimeFromStorage || null,
+    autoRefresh: readBrowserStorage(AUTO_REFRESH_STORAGE_KEY, 'session') !== 'false',
+    runtimeUrl: runtimeFromLaunch.runtimeUrl || runtimeFromStorage || null,
+    runtimeAuthToken:
+      runtimeFromLaunch.runtimeAuthToken || runtimeAuthTokenFromStorage || null,
   };
 }
 
 export function useRuntimeInspector(): UseRuntimeInspectorResult {
   const [initialRuntimeConfig] = useState(readInitialRuntimeConfig);
+  const ownershipStoreRef = useRef(
+    readRuntimeSessionOwnershipStore(initialRuntimeConfig.runtimeUrl),
+  );
   const [globalState, setGlobalState] = useState<GlobalRuntimeState>(() => ({
     isReady: false,
     isSocketConnected: false,
@@ -75,7 +120,9 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       ? undefined
       : 'Falta la URL runtime en la pantalla actual.',
   }));
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessions, setSessions] = useState<Session[]>(() =>
+    applyRuntimeSessionOwnership([], ownershipStoreRef.current),
+  );
   const [selectedSessionId, setSelectedSessionIdState] = useState<string | null>(null);
   const [notice, setNotice] = useState<RuntimeNotice | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -86,6 +133,9 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   const sessionSubscriptionIdRef = useRef<string | null>(null);
   const selectedSessionIdRef = useRef<string | null>(null);
   const runtimeUrlRef = useRef<string | null>(initialRuntimeConfig.runtimeUrl);
+  const runtimeAuthTokenRef = useRef<string | null>(
+    initialRuntimeConfig.runtimeAuthToken,
+  );
   const sessionRefreshTimerRef = useRef<number | null>(null);
   const eventUnsubscribeRef = useRef<(() => void) | null>(null);
   const connectionUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -95,6 +145,26 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     () => sessions.find(session => session.id === selectedSessionId) || null,
     [sessions, selectedSessionId],
   );
+
+  const applyOwnedSessions = (runtimeSessions: Session[]) =>
+    applyRuntimeSessionOwnership(runtimeSessions, ownershipStoreRef.current);
+
+  const commitRuntimeSessions = (
+    updater: (runtimeSessions: Session[]) => Session[],
+  ) => {
+    setSessions(previous => applyOwnedSessions(updater(stripDraftSessions(previous))));
+  };
+
+  const commitOwnershipStore = (
+    nextStore: ReturnType<typeof readRuntimeSessionOwnershipStore>,
+    baseSessions: Session[] = stripDraftSessions(sessions),
+  ) => {
+    ownershipStoreRef.current = nextStore;
+    writeRuntimeSessionOwnershipStore(runtimeUrlRef.current, nextStore);
+    const nextSessions = applyRuntimeSessionOwnership(baseSessions, nextStore);
+    setSessions(nextSessions);
+    return nextSessions;
+  };
 
   const pushNotice = (kind: NoticeKind, message: string) => {
     setNotice({
@@ -130,7 +200,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     sessionId: string | null,
     client: BrowserRuntimeClient | null = clientRef.current,
   ): Promise<void> => {
-    if (!client || !sessionId) {
+    if (!client || !sessionId || ownershipStoreRef.current.drafts[sessionId]) {
       return;
     }
 
@@ -139,7 +209,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       return;
     }
 
-    setSessions(previous => mergeDetailIntoSessions(previous, detail));
+    commitRuntimeSessions(previous => mergeDetailIntoSessions(previous, detail));
   };
 
   const scheduleSessionDetailRefresh = (sessionId: string | null) => {
@@ -207,11 +277,22 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       const snapshots = await client.listSessions();
       let nextSelectedId: string | null = null;
 
-      setSessions(previous => mergeSnapshotsIntoSessions(previous, snapshots));
+      commitRuntimeSessions(previous => mergeSnapshotsIntoSessions(previous, snapshots));
       setSelectedSessionIdState(previousSelectedId => {
+        if (
+          previousSelectedId &&
+          ownershipStoreRef.current.drafts[previousSelectedId]
+        ) {
+          nextSelectedId = previousSelectedId;
+          return previousSelectedId;
+        }
+
         if (snapshots.length === 0) {
-          nextSelectedId = null;
-          return null;
+          nextSelectedId =
+            applyRuntimeSessionOwnership([], ownershipStoreRef.current).find(
+              session => !session.archived,
+            )?.id || null;
+          return nextSelectedId;
         }
 
         if (
@@ -270,7 +351,9 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       lastError: undefined,
     }));
 
-    const client = new BrowserRuntimeClient(runtimeUrl);
+    const client = new BrowserRuntimeClient(runtimeUrl, {
+      authToken: runtimeAuthTokenRef.current,
+    });
     clientRef.current = client;
     eventUnsubscribeRef.current = client.onEvent(event => {
       handleProtocolEventRef.current(event);
@@ -299,12 +382,36 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   }, [selectedSessionId]);
 
   useEffect(() => {
+    if (selectedSessionId || sessions.length === 0) {
+      return;
+    }
+
+    const firstVisibleSession = sessions.find(session => !session.archived);
+    if (firstVisibleSession) {
+      setSelectedSessionIdState(firstVisibleSession.id);
+    }
+  }, [selectedSessionId, sessions]);
+
+  useEffect(() => {
     handleProtocolEventRef.current = event => {
       if (event.type === 'runtime_bootstrap') {
-        setSessions(previous => mergeSnapshotsIntoSessions(previous, event.sessions, event.timestamp));
+        commitRuntimeSessions(previous =>
+          mergeSnapshotsIntoSessions(previous, event.sessions, event.timestamp),
+        );
         setSelectedSessionIdState(previousSelectedId => {
+          if (
+            previousSelectedId &&
+            ownershipStoreRef.current.drafts[previousSelectedId]
+          ) {
+            return previousSelectedId;
+          }
+
           if (event.sessions.length === 0) {
-            return null;
+            return (
+              applyRuntimeSessionOwnership([], ownershipStoreRef.current).find(
+                session => !session.archived,
+              )?.id || null
+            );
           }
 
           if (
@@ -320,21 +427,21 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       }
 
       if (event.type === 'session_bootstrap') {
-        setSessions(previous =>
+        commitRuntimeSessions(previous =>
           mergeSnapshotsIntoSessions(previous, [event.session], event.timestamp),
         );
         return;
       }
 
       if (event.type === 'runtime_registry_event') {
-        setSessions(previous => applyRuntimeRegistryEvent(previous, event.event));
+        commitRuntimeSessions(previous => applyRuntimeRegistryEvent(previous, event.event));
         if (selectedSessionIdRef.current === event.event.sessionId) {
           scheduleSessionDetailRefresh(event.event.sessionId);
         }
         return;
       }
 
-      setSessions(previous =>
+      commitRuntimeSessions(previous =>
         applyRuntimeSessionEvent(previous, event.sessionId, event.event),
       );
 
@@ -366,10 +473,32 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   }, [notice]);
 
   useEffect(() => {
+    removeBrowserStorage(RUNTIME_URL_STORAGE_KEY, 'local');
+    removeBrowserStorage(RUNTIME_AUTH_TOKEN_STORAGE_KEY, 'local');
+    removeBrowserStorage(AUTO_REFRESH_STORAGE_KEY, 'local');
+
     if (initialRuntimeConfig.runtimeUrl) {
-      window.localStorage.setItem(RUNTIME_URL_STORAGE_KEY, initialRuntimeConfig.runtimeUrl);
+      writeBrowserStorage(
+        RUNTIME_URL_STORAGE_KEY,
+        initialRuntimeConfig.runtimeUrl,
+        'session',
+      );
+    } else {
+      removeBrowserStorage(RUNTIME_URL_STORAGE_KEY, 'session');
     }
-  }, [initialRuntimeConfig.runtimeUrl]);
+
+    if (initialRuntimeConfig.runtimeAuthToken) {
+      writeBrowserStorage(
+        RUNTIME_AUTH_TOKEN_STORAGE_KEY,
+        initialRuntimeConfig.runtimeAuthToken,
+        'session',
+      );
+    } else {
+      removeBrowserStorage(RUNTIME_AUTH_TOKEN_STORAGE_KEY, 'session');
+    }
+
+    clearRuntimeLaunchParamsFromBrowserUrl();
+  }, [initialRuntimeConfig.runtimeAuthToken, initialRuntimeConfig.runtimeUrl]);
 
   useEffect(() => {
     void connect().catch(error => {
@@ -384,7 +513,12 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   }, []);
 
   useEffect(() => {
-    if (!clientRef.current || !selectedSessionId || connectionVersion === 0) {
+    if (
+      !clientRef.current ||
+      !selectedSessionId ||
+      connectionVersion === 0 ||
+      selectedSession?.isDraft
+    ) {
       return;
     }
 
@@ -428,7 +562,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     };
     // The session subscription lifecycle is keyed only by connection and selected session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionVersion, selectedSessionId]);
+  }, [connectionVersion, selectedSession?.isDraft, selectedSessionId]);
 
   useEffect(() => {
     if (!globalState.autoRefresh || connectionVersion === 0) {
@@ -449,12 +583,13 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   const sendMessage = async (text: string) => {
     const client = clientRef.current;
     const sessionId = selectedSessionIdRef.current;
-    if (!client || !sessionId) {
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!client || !sessionId || !session || session.isDraft) {
       pushNotice('warn', 'Selecciona una sesión activa antes de enviar un mensaje.');
       return;
     }
 
-    setSessions(previous => appendOptimisticMessage(previous, sessionId, text));
+    commitRuntimeSessions(previous => appendOptimisticMessage(previous, sessionId, text));
 
     try {
       await client.sendMessage(sessionId, {
@@ -470,15 +605,56 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     }
   };
 
-  const interrupt = async () => {
+  const claimSessionControl = async (sessionIdOverride?: string | null) => {
     const client = clientRef.current;
-    const sessionId = selectedSessionIdRef.current;
-    if (!client || !sessionId) {
+    const sessionId = sessionIdOverride ?? selectedSessionIdRef.current;
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!client || !sessionId || !session || session.isDraft) {
+      pushNotice(
+        'warn',
+        'Selecciona una sesion runtime activa antes de tomar control desde la web.',
+      );
       return;
     }
 
     try {
-      await client.interrupt(sessionId);
+      const snapshot = await client.claimSession(sessionId, 'web-ui');
+      commitRuntimeSessions(previous =>
+        mergeSnapshotsIntoSessions(previous, [snapshot], snapshot.activeChannelUpdatedAt),
+      );
+      pushNotice('info', 'La Web UI tomo control de esta sesion.');
+      scheduleSessionDetailRefresh(sessionId);
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error
+          ? error.message
+          : 'No pude tomar control de la sesion desde la UI.',
+      );
+    }
+  };
+
+  const sendDirectInstruction = async (teammateName: string, text: string) => {
+    const trimmedName = teammateName.trim();
+    const trimmedText = text.trim();
+
+    if (!trimmedName || !trimmedText) {
+      pushNotice('warn', 'La instruccion directa necesita agente y contenido.');
+      return;
+    }
+
+    await sendMessage(`@${trimmedName} ${trimmedText}`);
+  };
+
+  const interrupt = async () => {
+    const client = clientRef.current;
+    const sessionId = selectedSessionIdRef.current;
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!client || !sessionId || !session || session.isDraft) {
+      return;
+    }
+
+    try {
+      await client.interrupt(sessionId, 'web-ui');
       scheduleSessionDetailRefresh(sessionId);
     } catch (error) {
       setRuntimeError(
@@ -493,7 +669,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     const client = clientRef.current;
     const sessionId = selectedSessionIdRef.current;
     const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!client || !sessionId || !session) {
+    if (!client || !sessionId || !session || session.isDraft) {
       pushNotice('warn', 'Selecciona una sesión activa antes de cambiar el modo.');
       return;
     }
@@ -504,8 +680,8 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     });
 
     try {
-      await client.setPermissionMode(sessionId, nextMode);
-      setSessions(previous =>
+      await client.setPermissionMode(sessionId, nextMode, 'web-ui');
+      commitRuntimeSessions(previous =>
         previous.map(candidate =>
           candidate.id === sessionId
             ? {
@@ -526,12 +702,152 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     }
   };
 
+  const createSession = async (title: string, workspacePath: string) => {
+    const trimmedTitle = title.trim();
+    const trimmedWorkspacePath = workspacePath.trim();
+    if (!trimmedTitle) {
+      pushNotice('warn', 'El borrador necesita al menos un titulo.');
+      return;
+    }
+
+    const draft = createSessionDraft({
+      title: trimmedTitle,
+      workspacePath: trimmedWorkspacePath,
+    });
+    const nextStore = upsertSessionDraft(ownershipStoreRef.current, draft);
+    commitOwnershipStore(nextStore);
+    setSelectedSessionIdState(draft.id);
+    pushNotice(
+      'warn',
+      'Borrador creado en la UI. El runtime actual todavia no expone create_session para lanzar un worker real desde browser.',
+    );
+  };
+
+  const renameSession = async (sessionId: string, newTitle: string) => {
+    const trimmedTitle = newTitle.trim();
+    if (!trimmedTitle) {
+      pushNotice('warn', 'El nombre de la sesion no puede quedar vacio.');
+      return;
+    }
+
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!session) {
+      pushNotice('warn', 'No encontre la sesion que intentabas renombrar.');
+      return;
+    }
+
+    if (session.isDraft) {
+      const nextStore = updateSessionDraft(ownershipStoreRef.current, sessionId, {
+        title: trimmedTitle,
+      });
+      commitOwnershipStore(nextStore);
+      pushNotice('info', 'Borrador renombrado en esta UI.');
+      return;
+    }
+
+    const nextStore = upsertSessionOwnershipMetadata(
+      ownershipStoreRef.current,
+      sessionId,
+      { customTitle: trimmedTitle },
+    );
+    commitOwnershipStore(nextStore);
+
+    const client = clientRef.current;
+    if (!client) {
+      pushNotice(
+        'warn',
+        'Nombre guardado solo en esta UI/browser. No hay conexion runtime activa para persistirlo en backend.',
+      );
+      return;
+    }
+
+    try {
+      await client.renameSession(sessionId, trimmedTitle);
+      pushNotice('info', 'Nombre de sesion guardado en runtime y UI.');
+    } catch (error) {
+      pushNotice(
+        'warn',
+        `Nombre guardado solo en esta UI/browser. Backend runtime sin soporte completo o error: ${
+          error instanceof Error ? error.message : 'rename_session no disponible'
+        }`,
+      );
+    }
+  };
+
+  const archiveSession = async (sessionId: string) => {
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    const nextStore = session.isDraft
+      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { archived: true })
+      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, {
+          archived: true,
+        });
+    const nextSessions = commitOwnershipStore(nextStore);
+
+    if (selectedSessionIdRef.current === sessionId) {
+      setSelectedSessionIdState(getNextVisibleSessionId(nextSessions, sessionId));
+    }
+
+    pushNotice(
+      session.isDraft ? 'info' : 'warn',
+      session.isDraft
+        ? 'Borrador archivado en la UI.'
+        : 'Sesion archivada en la UI. El runtime/CLI actual todavia no expone archive_session.',
+    );
+  };
+
+  const restoreSession = async (sessionId: string) => {
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    const nextStore = session.isDraft
+      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { archived: false })
+      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, {
+          archived: false,
+        });
+    commitOwnershipStore(nextStore);
+    pushNotice('info', 'Sesion restaurada en la UI.');
+  };
+
+  const togglePinnedSession = (sessionId: string) => {
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    const nextPinned = !session.pinned;
+    const nextStore = session.isDraft
+      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { pinned: nextPinned })
+      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, {
+          pinned: nextPinned,
+        });
+    commitOwnershipStore(nextStore);
+  };
+
+  const updateSessionNotes = (sessionId: string, notes: string) => {
+    const session = sessions.find(candidate => candidate.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    const nextStore = session.isDraft
+      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { notes })
+      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, { notes });
+    commitOwnershipStore(nextStore);
+  };
+
   const toggleAutoRefresh = () => {
     setGlobalState(previous => {
       const nextValue = !previous.autoRefresh;
-      window.localStorage.setItem(
+      writeBrowserStorage(
         AUTO_REFRESH_STORAGE_KEY,
         nextValue ? 'true' : 'false',
+        'session',
       );
       return {
         ...previous,
@@ -565,8 +881,16 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
         );
       }
     },
+    claimSessionControl,
     sendMessage,
+    sendDirectInstruction,
     interrupt,
+    createSession,
+    renameSession,
+    archiveSession,
+    restoreSession,
+    togglePinnedSession,
+    updateSessionNotes,
     cyclePermissionMode,
     toggleAutoRefresh,
     dismissNotice: () => setNotice(null),

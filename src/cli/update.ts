@@ -7,6 +7,8 @@ import {
 } from 'src/utils/autoUpdater.js'
 import { regenerateCompletionCache } from 'src/utils/completionCache.js'
 import {
+  formatAutoUpdaterDisabledReason,
+  getAutoUpdaterDisabledReason,
   getGlobalConfig,
   type InstallMethod,
   saveGlobalConfig,
@@ -23,6 +25,7 @@ import {
   removeInstalledSymlink,
 } from 'src/utils/nativeInstaller/index.js'
 import { getPackageManager } from 'src/utils/nativeInstaller/packageManagers.js'
+import { getOSSDefaultBlockReason } from 'src/utils/nonEssentialEgress.js'
 import { writeToStdout } from 'src/utils/process.js'
 import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
@@ -35,6 +38,36 @@ export async function update() {
   writeToStdout(`Checking for updates to ${channel} version...\n`)
 
   logForDebugging('update: Starting update check')
+
+  const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason()
+  if (autoUpdaterDisabledReason?.type === 'oss-safe') {
+    writeToStdout('\n')
+    writeToStdout(
+      chalk.yellow('Update checks are disabled by the OSS-safe default.\n'),
+    )
+    writeToStdout(
+      'This OSS build avoids contacting update services unless you opt in.\n',
+    )
+    writeToStdout(chalk.bold(`${getOSSDefaultBlockReason('updates')}\n`))
+    writeToStdout('\n')
+    writeToStdout(
+      'This command did not fail; it exited intentionally without checking or installing updates.\n',
+    )
+    await gracefulShutdown(0)
+  }
+
+  if (autoUpdaterDisabledReason?.type === 'env') {
+    writeToStdout('\n')
+    writeToStdout(
+      chalk.yellow(
+        `Update checks are disabled because ${formatAutoUpdaterDisabledReason(autoUpdaterDisabledReason)}.\n`,
+      ),
+    )
+    writeToStdout(
+      `Unset ${autoUpdaterDisabledReason.envVar} to re-enable update checks and manual updates.\n`,
+    )
+    await gracefulShutdown(0)
+  }
 
   // Run diagnostic to detect potential issues
   logForDebugging('update: Running diagnostic')

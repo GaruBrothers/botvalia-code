@@ -1,4 +1,15 @@
-import { Search, Users, Plus, Folder, FolderOpen, Archive, Edit2 } from "lucide-react";
+import {
+  Search,
+  Users,
+  Plus,
+  Folder,
+  FolderOpen,
+  Archive,
+  ArchiveRestore,
+  Edit2,
+  Pin,
+  PinOff,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,23 +37,45 @@ interface SidebarProps {
   onCreateSession?: (title: string, workspacePath: string) => void;
   onRename?: (id: string, newTitle: string) => void;
   onArchive?: (id: string) => void;
+  onRestore?: (id: string) => void;
+  onTogglePin?: (id: string) => void;
 }
 
-export function SessionSidebar({ sessions, selectedId, onSelect, onCreateSession, onRename, onArchive }: SidebarProps) {
+export function SessionSidebar({
+  sessions,
+  selectedId,
+  onSelect,
+  onCreateSession,
+  onRename,
+  onArchive,
+  onRestore,
+  onTogglePin,
+}: SidebarProps) {
   const [search, setSearch] = useState("");
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [showArchived, setShowArchived] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectPath, setNewProjectPath] = useState("");
   const [renameModalContext, setRenameModalContext] = useState<{ id: string, title: string } | null>(null);
 
-  const filteredSessions = useMemo(() => {
+  const visibleSessions = useMemo(() => {
     return sessions.filter(s => 
-      !s.archived && 
       (s.projectName.toLowerCase().includes(search.toLowerCase()) || 
-       s.title?.toLowerCase().includes(search.toLowerCase()))
+       s.title?.toLowerCase().includes(search.toLowerCase()) ||
+       s.workspaceName.toLowerCase().includes(search.toLowerCase()))
     );
   }, [sessions, search]);
+
+  const filteredSessions = useMemo(
+    () => visibleSessions.filter(session => !session.archived),
+    [visibleSessions],
+  );
+
+  const archivedSessions = useMemo(
+    () => visibleSessions.filter(session => session.archived),
+    [visibleSessions],
+  );
 
   const grouped = useMemo(() => {
     const groups: Record<string, Session[]> = {};
@@ -126,6 +159,7 @@ export function SessionSidebar({ sessions, selectedId, onSelect, onCreateSession
                             <div className="flex items-center justify-between mb-1">
                               <div className="flex items-center space-x-2">
                                 <StatusDot status={s.status} />
+                                {s.pinned && <Pin className="h-3 w-3 text-amber-300" />}
                                 <span className={cn("font-medium text-[13px] transition-colors tracking-tight line-clamp-1", isSelected ? "text-white" : "text-gray-300 group-hover/item:text-gray-100")}>
                                   {s.title || s.projectName}
                                 </span>
@@ -154,6 +188,13 @@ export function SessionSidebar({ sessions, selectedId, onSelect, onCreateSession
                         {/* Context Menu (Hover) */}
                         <div className="absolute right-2 top-2 opacity-0 group-hover/item:opacity-100 transition-opacity flex space-x-1 z-20">
                            <button 
+                             onClick={(e) => { e.stopPropagation(); onTogglePin?.(s.id); }}
+                             className="p-1 rounded-md bg-black/60 border border-white/[0.1] text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                             title={s.pinned ? "Unpin" : "Pin"}
+                           >
+                             {s.pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+                           </button>
+                           <button 
                              onClick={(e) => { e.stopPropagation(); onArchive?.(s.id); }}
                              className="p-1 rounded-md bg-black/60 border border-white/[0.1] text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                              title="Archive"
@@ -179,17 +220,79 @@ export function SessionSidebar({ sessions, selectedId, onSelect, onCreateSession
             </div>
           );
         })}
+
+        {archivedSessions.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={() => setShowArchived(current => !current)}
+              className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-300 transition-colors group"
+            >
+              <span className="tracking-wide uppercase">Archived</span>
+              <span className="text-[10px] bg-white/[0.05] px-1.5 py-0.5 rounded">
+                {archivedSessions.length}
+              </span>
+            </button>
+
+            {showArchived && (
+              <div className="space-y-1">
+                {archivedSessions.map(session => (
+                  <div key={session.id} className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        onClick={() => onSelect(session.id)}
+                        className="flex-1 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          {session.pinned && <Pin className="h-3 w-3 text-amber-300" />}
+                          <span className="text-[13px] font-medium text-gray-300">
+                            {session.title || session.projectName}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[10px] text-gray-500 truncate">
+                          {session.workspaceName}
+                        </div>
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => onTogglePin?.(session.id)}
+                          className="p-1 rounded-md bg-black/40 border border-white/[0.08] text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                          title={session.pinned ? "Unpin" : "Pin"}
+                        >
+                          {session.pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => onRestore?.(session.id)}
+                          className="p-1 rounded-md bg-black/40 border border-white/[0.08] text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                          title="Restore"
+                        >
+                          <ArchiveRestore className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {filteredSessions.length === 0 && archivedSessions.length === 0 && (
+          <div className="rounded-xl border border-dashed border-white/[0.08] bg-white/[0.02] p-4 text-center text-xs text-gray-500">
+            No sessions yet. Create a draft here or connect a live runtime from the CLI.
+          </div>
+        )}
       </div>
 
       {/* New Project Modal Overlay */}
       {showNewProjectModal && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
            <div className="bg-[#111] border border-white/[0.1] rounded-2xl w-full max-w-sm p-5 shadow-2xl flex flex-col">
-             <h3 className="text-sm font-semibold text-white mb-4">Create New Project</h3>
+             <h3 className="text-sm font-semibold text-white mb-4">Create Draft Session</h3>
              
              <div className="space-y-3">
                <div>
-                 <label className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1.5 block">Project Name</label>
+                 <label className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1.5 block">Draft Title</label>
                  <Input 
                    value={newProjectName}
                    onChange={e => setNewProjectName(e.target.value)}
@@ -198,7 +301,7 @@ export function SessionSidebar({ sessions, selectedId, onSelect, onCreateSession
                  />
                </div>
                <div>
-                 <label className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1.5 block">Local Path</label>
+                 <label className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1.5 block">Workspace Path</label>
                  <div className="flex space-x-2">
                    <Input 
                      value={newProjectPath}
@@ -240,7 +343,7 @@ export function SessionSidebar({ sessions, selectedId, onSelect, onCreateSession
                   Cancel
                 </Button>
                 <Button size="sm" onClick={handleCreateProject} disabled={!newProjectName} className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                  Create
+                  Save Draft
                 </Button>
              </div>
            </div>

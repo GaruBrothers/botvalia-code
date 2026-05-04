@@ -58,8 +58,41 @@ type RemoteHostInfo = {
 }
 
 /* eslint-disable custom-rules/no-process-env-top-level */
+const INTERNAL_INSIGHTS_ENABLED =
+  process.env.BOTVALIA_ENABLE_INTERNAL_INSIGHTS === '1'
+const INTERNAL_REMOTE_HOST_SUFFIX =
+  process.env.BOTVALIA_INTERNAL_REMOTE_HOST_SUFFIX
+const INTERNAL_REMOTE_PROJECTS_PATH =
+  process.env.BOTVALIA_INTERNAL_REMOTE_PROJECTS_PATH
+const INTERNAL_REPORT_UPLOAD_PATH =
+  process.env.BOTVALIA_INTERNAL_INSIGHTS_UPLOAD_PATH
+const INTERNAL_REPORT_BASE_URL =
+  process.env.BOTVALIA_INTERNAL_INSIGHTS_REPORT_BASE_URL
+
+function isInternalInsightsModeEnabled(): boolean {
+  return process.env.USER_TYPE === 'ant' && INTERNAL_INSIGHTS_ENABLED
+}
+
+function hasRemoteCollectionConfig(): boolean {
+  return Boolean(
+    INTERNAL_REMOTE_HOST_SUFFIX && INTERNAL_REMOTE_PROJECTS_PATH,
+  )
+}
+
+function hasInternalUploadConfig(): boolean {
+  return Boolean(INTERNAL_REPORT_UPLOAD_PATH && INTERNAL_REPORT_BASE_URL)
+}
+
+function getInternalInsightsDisabledMessage(capability: 'remote' | 'upload') {
+  const action =
+    capability === 'remote'
+      ? 'La recoleccion de homespaces'
+      : 'La publicacion de reportes'
+  return `${action} interna esta deshabilitada por defecto en modo OSS-safe. Para reactivarla debes hacer opt-in explicito con BOTVALIA_ENABLE_INTERNAL_INSIGHTS=1 y configurar las rutas internas necesarias por entorno.`
+}
+
 const getRunningRemoteHosts: () => Promise<string[]> =
-  process.env.USER_TYPE === 'ant'
+  isInternalInsightsModeEnabled() && hasRemoteCollectionConfig()
     ? async () => {
         const { stdout, code } = await execFileNoThrow(
           'coder',
@@ -82,13 +115,13 @@ const getRunningRemoteHosts: () => Promise<string[]> =
     : async () => []
 
 const getRemoteHostSessionCount: (hs: string) => Promise<number> =
-  process.env.USER_TYPE === 'ant'
+  isInternalInsightsModeEnabled() && hasRemoteCollectionConfig()
     ? async (homespace: string) => {
         const { stdout, code } = await execFileNoThrow(
           'ssh',
           [
-            `${homespace}.coder`,
-            'find /root/.claude/projects -name "*.jsonl" 2>/dev/null | wc -l',
+            `${homespace}${INTERNAL_REMOTE_HOST_SUFFIX}`,
+            `find ${INTERNAL_REMOTE_PROJECTS_PATH} -name "*.jsonl" 2>/dev/null | wc -l`,
           ],
           { timeout: 30000 },
         )
@@ -101,18 +134,22 @@ const collectFromRemoteHost: (
   hs: string,
   destDir: string,
 ) => Promise<{ copied: number; skipped: number }> =
-  process.env.USER_TYPE === 'ant'
+  isInternalInsightsModeEnabled() && hasRemoteCollectionConfig()
     ? async (homespace: string, destDir: string) => {
         const result = { copied: 0, skipped: 0 }
 
         // Create temp directory
-        const tempDir = await mkdtemp(join(tmpdir(), 'claude-hs-'))
+        const tempDir = await mkdtemp(join(tmpdir(), 'botvalia-hs-'))
 
         try {
           // SCP the projects folder
           const scpResult = await execFileNoThrow(
             'scp',
-            ['-rq', `${homespace}.coder:/root/.claude/projects/`, tempDir],
+            [
+              '-rq',
+              `${homespace}${INTERNAL_REMOTE_HOST_SUFFIX}:${INTERNAL_REMOTE_PROJECTS_PATH}`,
+              tempDir,
+            ],
             { timeout: 300000 },
           )
           if (scpResult.code !== 0) {
@@ -189,7 +226,7 @@ const collectAllRemoteHostData: (destDir: string) => Promise<{
   totalCopied: number
   totalSkipped: number
 }> =
-  process.env.USER_TYPE === 'ant'
+  isInternalInsightsModeEnabled() && hasRemoteCollectionConfig()
     ? async (destDir: string) => {
         const rHosts = await getRunningRemoteHosts()
         const result: RemoteHostInfo[] = []
@@ -1452,7 +1489,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 Include 3 opportunities. Think BIG - autonomous workflows, parallel agents, iterating against tests.`,
     maxTokens: 8192,
   },
-  ...(process.env.USER_TYPE === 'ant'
+  ...(isInternalInsightsModeEnabled()
     ? [
         {
           name: 'cc_team_improvements',
@@ -2195,14 +2232,12 @@ function generateHtmlReport(
       : ''
 
   // Build Team Feedback section (collapsible, ant-only)
-  const ccImprovements =
-    process.env.USER_TYPE === 'ant'
-      ? insights.cc_team_improvements?.improvements || []
-      : []
-  const modelImprovements =
-    process.env.USER_TYPE === 'ant'
-      ? insights.model_behavior_improvements?.improvements || []
-      : []
+  const ccImprovements = isInternalInsightsModeEnabled()
+    ? insights.cc_team_improvements?.improvements || []
+    : []
+  const modelImprovements = isInternalInsightsModeEnabled()
+    ? insights.model_behavior_improvements?.improvements || []
+    : []
   const teamFeedbackHtml =
     ccImprovements.length > 0 || modelImprovements.length > 0
       ? `
@@ -2812,7 +2847,7 @@ export async function generateUsageReport(options?: {
   let remoteStats: { hosts: RemoteHostInfo[]; totalCopied: number } | undefined
 
   // Optionally collect data from remote hosts first (ant-only)
-  if (process.env.USER_TYPE === 'ant' && options?.collectRemote) {
+  if (isInternalInsightsModeEnabled() && options?.collectRemote) {
     const destDir = join(getClaudeConfigHomeDir(), 'projects')
     const { hosts, totalCopied } = await collectAllRemoteHostData(destDir)
     remoteStats = { hosts, totalCopied }
@@ -3051,14 +3086,23 @@ const usageReport: Command = {
   progressMessage: 'analyzing your sessions',
   source: 'builtin',
   async getPromptForCommand(args) {
+    const requestedRemote = args?.includes('--homespaces') ?? false
+    const canUseInternalRemoteCollection =
+      isInternalInsightsModeEnabled() && hasRemoteCollectionConfig()
+    const canUseInternalReportUpload =
+      isInternalInsightsModeEnabled() && hasInternalUploadConfig()
+
     let collectRemote = false
     let remoteHosts: string[] = []
     let hasRemoteHosts = false
+    let ossSafeNotice = ''
 
-    if (process.env.USER_TYPE === 'ant') {
-      // Parse --homespaces flag
-      collectRemote = args?.includes('--homespaces') ?? false
+    if (requestedRemote && !canUseInternalRemoteCollection) {
+      ossSafeNotice = getInternalInsightsDisabledMessage('remote')
+    }
 
+    if (canUseInternalRemoteCollection) {
+      collectRemote = requestedRemote
       // Check for available remote hosts
       remoteHosts = await getRunningRemoteHosts()
       hasRemoteHosts = remoteHosts.length > 0
@@ -3079,7 +3123,7 @@ const usageReport: Command = {
     let reportUrl = `file://${htmlPath}`
     let uploadHint = ''
 
-    if (process.env.USER_TYPE === 'ant') {
+    if (canUseInternalReportUpload) {
       // Try to upload to S3
       const timestamp = new Date()
         .toISOString()
@@ -3088,22 +3132,23 @@ const usageReport: Command = {
         .slice(0, 15)
       const username = process.env.SAFEUSER || process.env.USER || 'unknown'
       const filename = `${username}_insights_${timestamp}.html`
-      const s3Path = `s3://anthropic-serve/atamkin/cc-user-reports/${filename}`
-      const s3Url = `https://s3-frontend.infra.ant.dev/anthropic-serve/atamkin/cc-user-reports/${filename}`
+      const uploadPath = `${INTERNAL_REPORT_UPLOAD_PATH}${filename}`
+      const uploadUrl = `${INTERNAL_REPORT_BASE_URL}${filename}`
 
-      reportUrl = s3Url
+      reportUrl = uploadUrl
       try {
-        execFileSync('ff', ['cp', htmlPath, s3Path], {
+        execFileSync('ff', ['cp', htmlPath, uploadPath], {
           timeout: 60000,
           stdio: 'pipe', // Suppress output
         })
       } catch {
         // Upload failed - fall back to local file and show upload command
         reportUrl = `file://${htmlPath}`
-        uploadHint = `\nAutomatic upload failed. Are you on the boron namespace? Try \`use-bo\` and ensure you've run \`sso\`.
-To share, run: ff cp ${htmlPath} ${s3Path}
-Then access at: ${s3Url}`
+        uploadHint = `\nAutomatic upload failed. To share manually, run: ff cp ${htmlPath} ${uploadPath}
+Then access at: ${uploadUrl}`
       }
+    } else if (isInternalInsightsModeEnabled() && !hasInternalUploadConfig()) {
+      uploadHint = `\n${getInternalInsightsDisabledMessage('upload')}`
     }
 
     // Build header with stats
@@ -3121,7 +3166,7 @@ Then access at: ${s3Url}`
 
     // Build remote host info (ant-only)
     let remoteInfo = ''
-    if (process.env.USER_TYPE === 'ant') {
+    if (canUseInternalRemoteCollection) {
       if (remoteStats && remoteStats.totalCopied > 0) {
         const hsNames = remoteStats.hosts
           .filter(h => h.sessionCount > 0)
@@ -3132,6 +3177,8 @@ Then access at: ${s3Url}`
         // Suggest using --homespaces if they have remote hosts but didn't use the flag
         remoteInfo = `\n_Tip: Run \`/insights --homespaces\` to include sessions from your ${remoteHosts.length} running homespace(s)_\n`
       }
+    } else if (requestedRemote || ossSafeNotice) {
+      remoteInfo = `\n_${ossSafeNotice || getInternalInsightsDisabledMessage('remote')}_\n`
     }
 
     // Build markdown summary from insights
@@ -3169,8 +3216,6 @@ Here is the full insights data:
 ${jsonStringify(insights, null, 2)}
 
 Report URL: ${reportUrl}
-HTML file: ${htmlPath}
-Facets directory: ${getFacetsDir()}
 
 Here is what the user sees:
 ${userSummary}

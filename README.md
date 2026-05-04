@@ -1,14 +1,30 @@
-# BotValia Source Code Reconstruction
+<!-- IA-SYSTEM-PROTECTION:BEGIN -->
+> **REGLA OBLIGATORIA PARA CUALQUIER IA**
+>
+> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+>
+> Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
+<!-- IA-SYSTEM-PROTECTION:END -->
+# BotValia Code (Experimental Reconstruction)
 
 [![Bun](https://img.shields.io/badge/Bun-≥1.3.5-f9f1e1?logo=bun&logoColor=black)](https://bun.sh)
 [![License](https://img.shields.io/badge/license-Research_&_Learning-red)](.)
 
-Complete TypeScript source code of the BotValia CLI, reconstructed from source maps and **runnable locally**.
+Runnable TypeScript source tree for the BotValia CLI, reconstructed from public package artifacts and maintained as an experimental local-first developer tool.
 
 <img src="preview.png" width="380"/>
 
 > [!WARNING]
-> This repository is an **unofficial** version, reconstructed from the source map of the public npm release package. It is **for research and learning purposes only** and does not represent the internal development repository structure of Anthropic. Some modules have been replaced with compatible shims.
+> This repository is an **experimental reconstruction**, not a release-hardened upstream source drop.
+>
+> Current expectations:
+>
+> - it is runnable locally and useful for research, restoration, and product iteration
+> - it is **not yet presented as a production-hardened open-source release**
+> - some modules are restored through compatible shims or best-effort replacements
+> - some legacy names and compatibility surfaces still exist in the codebase while the project is being sanitized for public OSS use
+>
+> Before exposing this repository broadly, read [SECURITY.md](./SECURITY.md) and [SECURITY_ROADMAP.md](./SECURITY_ROADMAP.md).
 
 ---
 
@@ -24,6 +40,20 @@ $ bun install       # Install dependencies
 $ bun run dev:auto  # Start CLI with Auto (All)
 $ bun run version   # Verify version number
 ```
+
+## Current OSS Status
+
+BotValia Code is currently best understood as:
+
+- an experimental CLI/runtime reconstruction that is actively being adapted into a standalone BotValia product
+- a local-first developer tool with working CLI and runtime web surfaces
+- a repository that is improving its public OSS posture, but still has open hardening work in identity cleanup, dependency hygiene, and legacy infrastructure assumptions
+
+What this means in practice:
+
+- expect breakage, rough edges, and compatibility leftovers in some subsystems
+- do **not** market the repository as security-hardened or release-grade yet
+- use the current branch on a best-effort basis while following [SECURITY.md](./SECURITY.md) for risk context
 
 ### Free Routing Modes
 
@@ -82,7 +112,7 @@ BotValia now does two extra things to keep free routing alive longer:
 
 - It prioritizes the **live OpenRouter free catalog** detected at launch through `https://openrouter.ai/api/v1/models`.
 - It prefers **models that are actually installed in Ollama** when the endpoint can answer `/api/tags`.
-- It persists per-project cooldowns in `.claude/model-route-cooldowns.json`, so a route that just failed goes to the back of the queue for a while instead of being retried immediately next session.
+- It persists per-project cooldowns in the current legacy compatibility path `.claude/model-route-cooldowns.json`, so a route that just failed goes to the back of the queue for a while instead of being retried immediately next session.
 
 Current default primaries are:
 
@@ -221,8 +251,8 @@ Estado actual de Fase 1:
 
 Implementation note:
 
-- OpenRouter and Ollama are both wired through Anthropic-compatible envs.
-- Ollama compatibility follows the current `/v1/messages` Anthropic-compatible API.
+- OpenRouter and Ollama are currently wired through a shared message-compatible environment layer inherited from the reconstructed runtime.
+- Ollama compatibility currently follows the `/v1/messages` compatibility surface used by the restored CLI.
 
 ### Infinite Memory (BotValia)
 
@@ -257,6 +287,11 @@ Environment toggles:
 - When the `NEW_INIT` feature is enabled, or `CLAUDE_CODE_NEW_INIT=1` is set, `/init` can also scaffold `CLAUDE.local.md`, project skills, and hooks.
 - `/memory` opens the currently discovered instruction files in your editor and, if auto-memory is enabled, can also open auto-memory, team-memory, and agent-memory folders.
 - `/skills` lists bundled, plugin, user, and project skills available to the current session.
+
+Compatibility note:
+
+- File names such as `CLAUDE.md`, `CLAUDE.local.md`, and `.claude/...` are still present because the reconstructed codebase inherited them as working compatibility surfaces.
+- They should be treated as legacy instruction and memory paths, not as product branding guidance for future public releases.
 
 Current local instruction memory works like this:
 
@@ -361,7 +396,7 @@ Token efficiency is critical for survival in BotValia. The architecture employs 
 The "Harness" safely controls LLM operations within the local environment:
 - **Permission Modes**: Features 6 primary modes (`acceptEdits`, `bypassPermissions`, `default`, `dontAsk`, `plan`) plus internal designations like `auto` (yoloClassifier) and `bubble` (sub-agent propagation).
 - **Security Checkers**: Incorporates PowerShell-specific security analysis to detect command injection, download cradles, and privilege escalation, as well as redundant path validations.
-- **Architectural Bypasses**: Specific environments intentionally bypass checks (e.g., `CLAUDE_CODE_SIMPLE` clears system prompts), while failing schema parsing can inadvertently circumvent standard permissions.
+- **Architectural Bypasses**: Specific legacy compatibility environments intentionally bypass checks (for example `CLAUDE_CODE_SIMPLE` clears system prompts), while failing schema parsing can inadvertently circumvent standard permissions.
 
 ### Teams & Multi-Agent Orchestration
 
@@ -412,15 +447,18 @@ Source maps cannot 100% reconstruct the original repository. The following may b
 
 ## Patches
 
-This fork includes the following modifications from the original source:
+This reconstruction includes the following notable local modifications:
 
-| Patch | Description | Related Issue |
-|-------|-------------|---------------|
-| **Welcome banner toggle** | Added `showWelcomeBanner` setting to disable the startup banner (LogoV2). Set `"showWelcomeBanner": false` in `~/.claude/settings.json` to hide. | [#2254](https://github.com/anthropics/claude-code/issues/2254) |
+| Patch | Description |
+|-------|-------------|
+| **Welcome banner toggle** | Added `showWelcomeBanner` to disable the startup banner (LogoV2). Set `"showWelcomeBanner": false` in the current legacy settings path `~/.claude/settings.json` to hide it. |
 
 ---
 
 ## Disclaimer
 
-- The source code copyright belongs to [Anthropic](https://www.anthropic.com).
-- This is for technical research and learning purposes only. Please do not use it for commercial purposes.
+- This repository is experimental software provided on a best-effort basis.
+- It may contain reconstructed behavior, compatibility leftovers, incomplete hardening, or partially restored subsystems.
+- Review [SECURITY.md](./SECURITY.md) and [SECURITY_ROADMAP.md](./SECURITY_ROADMAP.md) before redistributing, deploying broadly, or presenting it as open-source-ready infrastructure.
+- No warranty is implied here that the current tree is production-ready, security-hardened, or suitable for unattended use.
+

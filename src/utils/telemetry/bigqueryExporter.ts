@@ -16,6 +16,11 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage, toError } from '../errors.js'
 import { getAuthHeaders } from '../http.js'
 import { logError } from '../log.js'
+import {
+  getOSSDefaultBlockReason,
+  isNonEssentialTelemetryEnabledByDefaultForOSS,
+} from '../nonEssentialEgress.js'
+import { isTelemetryDisabled } from '../privacyLevel.js'
 import { jsonStringify } from '../slowOperations.js'
 import { getClaudeCodeUserAgent } from '../userAgent.js'
 
@@ -89,6 +94,18 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
     resultCallback: (result: ExportResult) => void,
   ): Promise<void> {
     try {
+      if (isTelemetryDisabled()) {
+        logForDebugging('BigQuery metrics export: telemetry disabled by privacy level')
+        resultCallback({ code: ExportResultCode.SUCCESS })
+        return
+      }
+
+      if (!isNonEssentialTelemetryEnabledByDefaultForOSS()) {
+        logForDebugging(getOSSDefaultBlockReason('telemetry'))
+        resultCallback({ code: ExportResultCode.SUCCESS })
+        return
+      }
+
       // Skip if trust not established in interactive mode
       // This prevents triggering apiKeyHelper before trust dialog
       const hasTrust =

@@ -19,6 +19,8 @@ type Props = {
   setScreen: React.Dispatch<React.SetStateAction<Screen>>;
   showAllInTranscript: boolean;
   setShowAllInTranscript: React.Dispatch<React.SetStateAction<boolean>>;
+  hideTechnicalNoise: boolean;
+  onToggleTechnicalNoise: () => void;
   messageCount: number;
   onEnterTranscript?: () => void;
   onExitTranscript?: () => void;
@@ -38,6 +40,8 @@ export function GlobalKeybindingHandlers({
   setScreen,
   showAllInTranscript,
   setShowAllInTranscript,
+  hideTechnicalNoise,
+  onToggleTechnicalNoise,
   messageCount,
   onEnterTranscript,
   onExitTranscript,
@@ -140,6 +144,14 @@ export function GlobalKeybindingHandlers({
     setShowAllInTranscript(prev_1 => !prev_1);
   }, [showAllInTranscript, setShowAllInTranscript, messageCount]);
 
+  const handleToggleTechnicalNoise = useCallback(() => {
+    logEvent('tengu_shell_noise_toggled', {
+      hidden: !hideTechnicalNoise,
+      screen
+    });
+    onToggleTechnicalNoise();
+  }, [hideTechnicalNoise, onToggleTechnicalNoise, screen]);
+
   // Exit transcript mode (ctrl+c or escape)
   const handleExitTranscript = useCallback(() => {
     logEvent('tengu_transcript_exit', {
@@ -186,6 +198,9 @@ export function GlobalKeybindingHandlers({
     context: 'Global'
   });
   useKeybinding('app:toggleTranscript', handleToggleTranscript, {
+    context: 'Global'
+  });
+  useKeybinding('app:toggleTechnicalNoise', handleToggleTechnicalNoise, {
     context: 'Global'
   });
   if (feature('KAIROS') || feature('KAIROS_BRIEF')) {

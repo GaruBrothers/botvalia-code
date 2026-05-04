@@ -219,6 +219,8 @@ type Props = {
   streamingText?: string | null;
   /** When true, only show Brief tool output (hide everything else) */
   isBriefOnly?: boolean;
+  /** When true, hide tool/thinking/system chatter in prompt mode. */
+  hideTechnicalNoise?: boolean;
   /** Fullscreen-mode "─── N new ───" divider. Renders before the first
    *  renderableMessage derived from firstUnseenUuid (matched by the 24-char
    *  prefix that deriveUUID preserves). */
@@ -291,6 +293,19 @@ const MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE = 30;
 // in-progress badge snapshots in scrollback.
 const MAX_MESSAGES_WITHOUT_VIRTUALIZATION = 200;
 const MESSAGE_CAP_STEP = 50;
+const QUIET_HIDDEN_SYSTEM_SUBTYPES = new Set([
+  'api_metrics',
+  'turn_duration',
+  'bridge_status',
+  'local_command',
+  'stop_hook_summary',
+  'compact_boundary',
+  'microcompact_boundary',
+  'permission_retry',
+  'scheduled_task_fire',
+  'away_summary',
+  'informational',
+]);
 export type SliceAnchor = {
   uuid: string;
   idx: number;
@@ -323,6 +338,32 @@ export function computeSliceStart(collapsed: ReadonlyArray<{
   }
   return start;
 }
+function shouldShowInQuietShell(message: MessageWithoutProgress): boolean {
+  switch (message.type) {
+    case 'assistant': {
+      const block = message.message.content[0];
+      if (!block) return false;
+      return block.type !== 'thinking' && block.type !== 'redacted_thinking' && block.type !== 'tool_use';
+    }
+    case 'user': {
+      if (message.isMeta) return false;
+      const block = message.message.content[0];
+      if (!block) {
+        return typeof message.message.content === 'string' && message.message.content.trim().length > 0;
+      }
+      return block.type !== 'tool_result';
+    }
+    case 'system':
+      if (message.isMeta) return false;
+      if (message.level === 'warning' || message.level === 'error') return true;
+      if (message.subtype && QUIET_HIDDEN_SYSTEM_SUBTYPES.has(message.subtype)) return false;
+      return message.subtype === 'memory_saved';
+    case 'attachment':
+      return message.attachment?.isMeta !== true;
+    default:
+      return true;
+  }
+}
 const MessagesImpl = ({
   messages,
   tools,
@@ -344,6 +385,7 @@ const MessagesImpl = ({
   streamingThinking,
   streamingText,
   isBriefOnly = false,
+  hideTechnicalNoise = false,
   unseenDivider,
   scrollRef,
   trackStickyPrompt,
@@ -497,8 +539,9 @@ const MessagesImpl = ({
     // assistant text for file-only turns would leave the user with no context.
     const dropTextToolNames = [BRIEF_TOOL_NAME].filter((n_0): n_0 is string => n_0 !== null);
     const briefFiltered: MessageWithoutProgress[] = briefToolNames.length > 0 && !isTranscriptMode ? isBriefOnly ? filterForBriefTool(messagesToShowNotTruncated, briefToolNames) : dropTextToolNames.length > 0 ? dropTextInBriefTurns(messagesToShowNotTruncated, dropTextToolNames) : messagesToShowNotTruncated : messagesToShowNotTruncated;
-    const messagesToShow: MessageWithoutProgress[] = shouldTruncate ? briefFiltered.slice(-MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE) : briefFiltered;
-    const hasTruncatedMessages = shouldTruncate && briefFiltered.length > MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE;
+    const quietFiltered = hideTechnicalNoise && !isTranscriptMode ? briefFiltered.filter(shouldShowInQuietShell) : briefFiltered;
+    const messagesToShow: MessageWithoutProgress[] = shouldTruncate ? quietFiltered.slice(-MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE) : quietFiltered;
+    const hasTruncatedMessages = shouldTruncate && quietFiltered.length > MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE;
     const {
       messages: groupedMessages
     } = applyGrouping(messagesToShow, tools, verbose);
@@ -511,7 +554,7 @@ const MessagesImpl = ({
       hasTruncatedMessages,
       hiddenMessageCount
     };
-  }, [verbose, normalizedMessages, isTranscriptMode, syntheticStreamingToolUseMessages, shouldTruncate, tools, isBriefOnly]);
+  }, [verbose, normalizedMessages, isTranscriptMode, syntheticStreamingToolUseMessages, shouldTruncate, tools, isBriefOnly, hideTechnicalNoise]);
 
   // Cheap slice — only runs when scroll range or slice config changes.
   const renderableMessages = useMemo(() => {
@@ -696,7 +739,7 @@ const MessagesImpl = ({
           </Box>
         </Box>}
 
-      {isStreamingThinkingVisible && streamingThinking && !isBriefOnly && <Box marginTop={1}>
+      {isStreamingThinkingVisible && streamingThinking && !isBriefOnly && !hideTechnicalNoise && <Box marginTop={1}>
           <AssistantThinkingMessage param={{
         type: 'thinking',
         thinking: streamingThinking.thinking

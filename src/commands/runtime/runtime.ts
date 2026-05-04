@@ -10,6 +10,10 @@ import {
   getRuntimeServerStatus,
   stopRuntimeServer,
 } from '../../runtime/runtimeServerManager.js'
+import {
+  getRuntimeWebSocketAuthToken,
+  RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM,
+} from '../../runtime/protocol.js'
 import { openBrowser } from '../../utils/browser.js'
 
 const HELP_TEXT = [
@@ -52,7 +56,33 @@ function buildInspectorLaunchUrl(
   }
 
   const url = new URL(inspectorUrl)
-  url.searchParams.set('runtime', runtimeUrl)
+  const runtimeSocketUrl = new URL(runtimeUrl)
+  const runtimeAuthToken = getRuntimeWebSocketAuthToken(runtimeSocketUrl)
+  runtimeSocketUrl.searchParams.delete(RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM)
+  url.searchParams.set('runtime', runtimeSocketUrl.toString())
+  if (runtimeAuthToken) {
+    const hashParams = new URLSearchParams(
+      url.hash.startsWith('#') ? url.hash.slice(1) : url.hash,
+    )
+    hashParams.set(RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM, runtimeAuthToken)
+    url.hash = hashParams.toString()
+  }
+  return url.toString()
+}
+
+function sanitizeRuntimeWebSocketUrl(runtimeUrl: string): string {
+  const url = new URL(runtimeUrl)
+  url.searchParams.delete(RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM)
+  return url.toString()
+}
+
+function sanitizeInspectorLaunchUrl(launchUrl: string): string {
+  const url = new URL(launchUrl)
+  const hashParams = new URLSearchParams(
+    url.hash.startsWith('#') ? url.hash.slice(1) : url.hash,
+  )
+  hashParams.delete(RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM)
+  url.hash = hashParams.toString()
   return url.toString()
 }
 
@@ -63,7 +93,9 @@ function formatRuntimeStatus(): string {
 
   if (runtimeStatus.status === 'running') {
     lines.push('Bridge runtime activo.')
-    lines.push(`URL runtime: ${runtimeStatus.server.url}`)
+    lines.push(
+      `URL runtime: ${sanitizeRuntimeWebSocketUrl(runtimeStatus.server.url)}`,
+    )
     lines.push(`Host runtime: ${runtimeStatus.server.host}`)
     lines.push(`Puerto runtime: ${runtimeStatus.server.port}`)
     lines.push(`Sesiones activas: ${getSessionCount()}`)
@@ -80,9 +112,11 @@ function formatRuntimeStatus(): string {
     lines.push(`URL inspector: ${inspectorStatus.server.url}`)
     if (runtimeStatus.status === 'running') {
       lines.push(
-        `Launch URL: ${buildInspectorLaunchUrl(
-          inspectorStatus.server.url,
-          runtimeStatus.server.url,
+        `Launch URL: ${sanitizeInspectorLaunchUrl(
+          buildInspectorLaunchUrl(
+            inspectorStatus.server.url,
+            runtimeStatus.server.url,
+          ),
         )}`,
       )
     }
@@ -121,7 +155,7 @@ export const call: LocalCommandCall = async args => {
           reusedExistingServer
             ? 'Bridge runtime ya estaba activo y se reutilizó.'
             : 'Bridge runtime activo.',
-          `URL: ${server.url}`,
+          `URL: ${sanitizeRuntimeWebSocketUrl(server.url)}`,
           `Host: ${server.host}`,
           `Puerto: ${server.port}`,
           `Sesiones activas: ${getSessionCount()}`,
@@ -144,12 +178,13 @@ export const call: LocalCommandCall = async args => {
         inspectorServer.url,
         runtimeServer.url,
       )
+      const visibleInspectorUrl = sanitizeInspectorLaunchUrl(inspectorUrl)
 
       return {
         type: 'text',
         value: [
-          `BotValia-CodeUI lista en ${inspectorUrl}`,
-          `Runtime WebSocket: ${runtimeServer.url}`,
+          `BotValia-CodeUI lista en ${visibleInspectorUrl}`,
+          `Runtime WebSocket: ${sanitizeRuntimeWebSocketUrl(runtimeServer.url)}`,
           `Sesiones activas: ${getSessionCount()}`,
         ].join('\n'),
       }
@@ -162,15 +197,16 @@ export const call: LocalCommandCall = async args => {
         inspectorServer.url,
         runtimeServer.url,
       )
+      const visibleInspectorUrl = sanitizeInspectorLaunchUrl(inspectorUrl)
       const opened = await openBrowser(inspectorUrl)
 
       return {
         type: 'text',
         value: [
           opened
-            ? `Inspector visual abierto en ${inspectorUrl}`
-            : `Inspector visual listo en ${inspectorUrl}`,
-          `Runtime WebSocket: ${runtimeServer.url}`,
+            ? `Inspector visual abierto en ${visibleInspectorUrl}`
+            : `Inspector visual listo en ${visibleInspectorUrl}`,
+          `Runtime WebSocket: ${sanitizeRuntimeWebSocketUrl(runtimeServer.url)}`,
           `Sesiones activas: ${getSessionCount()}`,
           opened
             ? 'Se abrió el navegador por defecto.'

@@ -1,6 +1,12 @@
+import { randomBytes } from 'crypto'
 import type { AddressInfo } from 'net'
 import { WebSocket, WebSocketServer } from 'ws'
-import type { RuntimeProtocolMessage, RuntimeProtocolRequest } from './protocol.js'
+import {
+  hasRuntimeWebSocketAuthToken,
+  withRuntimeWebSocketAuthToken,
+  type RuntimeProtocolMessage,
+  type RuntimeProtocolRequest,
+} from './protocol.js'
 import { RuntimeBridge } from './runtimeBridge.js'
 import { createRuntimeService, type RuntimeService } from './runtimeService.js'
 
@@ -8,6 +14,7 @@ export type RuntimeWebSocketServerConfig = {
   host?: string
   port?: number
   path?: string
+  authToken?: string
   runtimeService?: RuntimeService
 }
 
@@ -16,6 +23,7 @@ export type RunningRuntimeWebSocketServer = {
   port: number
   path: string
   url: string
+  authToken: string
   stop: () => Promise<void>
 }
 
@@ -43,12 +51,18 @@ export async function startRuntimeWebSocketServer(
   const host = config.host ?? '127.0.0.1'
   const port = config.port ?? 0
   const path = config.path ?? '/botvalia-runtime'
+  const authToken = config.authToken ?? randomBytes(32).toString('hex')
   const runtimeService = config.runtimeService ?? createRuntimeService()
 
   const server = new WebSocketServer({
     host,
     port,
     path,
+    verifyClient: info =>
+      hasRuntimeWebSocketAuthToken(
+        new URL(info.req.url ?? path, `ws://${host}`),
+        authToken,
+      ),
   })
 
   server.on('connection', socket => {
@@ -113,13 +127,17 @@ export async function startRuntimeWebSocketServer(
 
   const address = server.address() as AddressInfo | null
   const actualPort = address?.port ?? port
-  const url = `ws://${host}:${actualPort}${path}`
+  const url = withRuntimeWebSocketAuthToken(
+    `ws://${host}:${actualPort}${path}`,
+    authToken,
+  )
 
   return {
     host,
     port: actualPort,
     path,
     url,
+    authToken,
     stop: async () => {
       await new Promise<void>((resolve, reject) => {
         server.close(error => {

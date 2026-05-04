@@ -7,6 +7,7 @@ import { getGlobalConfig, saveGlobalConfig } from './config.js'
 import { getClaudeConfigHomeDir } from './envUtils.js'
 import { toError } from './errors.js'
 import { logError } from './log.js'
+import { isUpdateChecksEnabledByDefaultForOSS } from './nonEssentialEgress.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'
 import { gt } from './semver.js'
 
@@ -26,13 +27,13 @@ const MAX_RELEASE_NOTES_SHOWN = 5
  * 3. Next time the user starts BotValia, the cached changelog is available immediately
  */
 export const CHANGELOG_URL =
-  'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md'
+  'https://github.com/GaruBrothers/botvalia-code/blob/main/CHANGELOG.md'
 const RAW_CHANGELOG_URL =
-  'https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md'
+  'https://raw.githubusercontent.com/GaruBrothers/botvalia-code/refs/heads/main/CHANGELOG.md'
 
 /**
  * Get the path for the cached changelog file.
- * The changelog is stored at ~/.claude/cache/changelog.md
+ * The changelog is stored inside the BotValia config-home cache directory.
  */
 function getChangelogCachePath(): string {
   return join(getClaudeConfigHomeDir(), 'cache', 'changelog.md')
@@ -87,6 +88,10 @@ export async function fetchAndStoreChangelog(): Promise<void> {
 
   // Skip network requests if nonessential traffic is disabled
   if (isEssentialTrafficOnly()) {
+    return
+  }
+
+  if (!isUpdateChecksEnabledByDefaultForOSS()) {
     return
   }
 
@@ -288,6 +293,13 @@ export async function checkForReleaseNotes(
   lastSeenVersion: string | null | undefined,
   currentVersion: string = MACRO.VERSION,
 ): Promise<{ hasReleaseNotes: boolean; releaseNotes: string[] }> {
+  if (!isUpdateChecksEnabledByDefaultForOSS()) {
+    return {
+      hasReleaseNotes: false,
+      releaseNotes: [],
+    }
+  }
+
   // For Ant builds, use VERSION_CHANGELOG bundled at build time
   if (process.env.USER_TYPE === 'ant') {
     const changelog = MACRO.VERSION_CHANGELOG
@@ -336,6 +348,13 @@ export function checkForReleaseNotesSync(
   lastSeenVersion: string | null | undefined,
   currentVersion: string = MACRO.VERSION,
 ): { hasReleaseNotes: boolean; releaseNotes: string[] } {
+  if (!isUpdateChecksEnabledByDefaultForOSS()) {
+    return {
+      hasReleaseNotes: false,
+      releaseNotes: [],
+    }
+  }
+
   // For Ant builds, use VERSION_CHANGELOG bundled at build time
   if (process.env.USER_TYPE === 'ant') {
     const changelog = MACRO.VERSION_CHANGELOG

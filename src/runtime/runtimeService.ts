@@ -6,6 +6,7 @@ import {
   type RuntimeRegistryListener,
 } from './runtimeRegistry.js'
 import type {
+  RuntimeSessionChannel,
   RuntimeSendMessageInput,
   RuntimeSessionDetail,
   RuntimeSessionId,
@@ -18,6 +19,8 @@ import {
   buildSwarmWaitingEdges,
   readTeamConversationEvents,
 } from '../utils/swarm/teamConversationLog.js'
+import { getProjectDir, saveCustomTitle } from '../utils/sessionStorage.js'
+import { join } from 'path'
 
 export type RuntimeService = {
   listSessions: () => RuntimeSessionSnapshot[]
@@ -30,11 +33,20 @@ export type RuntimeService = {
     sessionId: RuntimeSessionId,
     input: RuntimeSendMessageInput,
   ) => Promise<void>
+  renameSession: (
+    sessionId: RuntimeSessionId,
+    title: string,
+  ) => Promise<void>
   setPermissionMode: (
     sessionId: RuntimeSessionId,
     mode: PermissionMode,
+    channel?: RuntimeSessionChannel,
   ) => Promise<void>
-  interrupt: (sessionId: RuntimeSessionId) => void
+  interrupt: (sessionId: RuntimeSessionId, channel?: RuntimeSessionChannel) => void
+  claimSession: (
+    sessionId: RuntimeSessionId,
+    channel: RuntimeSessionChannel,
+  ) => RuntimeSessionSnapshot
   subscribe: (listener: RuntimeRegistryListener) => RuntimeEventUnsubscribe
   subscribeToSession: (
     sessionId: RuntimeSessionId,
@@ -90,13 +102,24 @@ export function createRuntimeService(
       const runtime = requireRuntime(registry, sessionId)
       await runtime.submit(input)
     },
-    setPermissionMode: async (sessionId, mode) => {
+    renameSession: async (sessionId, title) => {
       const runtime = requireRuntime(registry, sessionId)
-      await runtime.setPermissionMode(mode)
+      const snapshot = runtime.getSnapshot()
+      const fullPath = join(getProjectDir(snapshot.cwd), `${sessionId}.jsonl`)
+      await saveCustomTitle(sessionId, title.trim(), fullPath)
     },
-    interrupt: sessionId => {
+    setPermissionMode: async (sessionId, mode, channel) => {
       const runtime = requireRuntime(registry, sessionId)
-      runtime.interrupt()
+      await runtime.setPermissionMode(mode, channel)
+    },
+    interrupt: (sessionId, channel) => {
+      const runtime = requireRuntime(registry, sessionId)
+      runtime.interrupt(channel)
+    },
+    claimSession: (sessionId, channel) => {
+      const runtime = requireRuntime(registry, sessionId)
+      runtime.claimActiveChannel(channel)
+      return runtime.getSnapshot()
     },
     subscribe: listener => registry.subscribe(listener),
     subscribeToSession: (sessionId, listener) => {

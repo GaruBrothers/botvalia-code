@@ -6,6 +6,7 @@
  */
 
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isNonEssentialTelemetryEnabledByDefaultForOSS } from '../../utils/nonEssentialEgress.js'
 import { isTelemetryDisabled } from '../../utils/privacyLevel.js'
 
 /**
@@ -22,7 +23,8 @@ export function isAnalyticsDisabled(): boolean {
     isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isTelemetryDisabled()
+    isTelemetryDisabled() ||
+    !isNonEssentialTelemetryEnabledByDefaultForOSS()
   )
 }
 
@@ -34,5 +36,9 @@ export function isAnalyticsDisabled(): boolean {
  * transcript data — enterprise customers capture responses via OTEL.
  */
 export function isFeedbackSurveyDisabled(): boolean {
-  return process.env.NODE_ENV === 'test' || isTelemetryDisabled()
+  return (
+    process.env.NODE_ENV === 'test' ||
+    isTelemetryDisabled() ||
+    !isNonEssentialTelemetryEnabledByDefaultForOSS()
+  )
 }

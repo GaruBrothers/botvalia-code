@@ -35,6 +35,17 @@ import {
   isProviderRouteSpec,
   parseProviderRoute,
 } from '../../utils/model/providerRouting.js'
+import {
+  applyRouterUpdatePayload,
+  auditModelRouter,
+  createRouterUpdatePayload,
+  type RouterAuditResult,
+  type RouterChains,
+} from '../../utils/model/routerAudit.js'
+import {
+  getSettingsForSource,
+  updateSettingsForSource,
+} from '../../utils/settings/settings.js'
 import { validateModel } from '../../utils/model/validateModel.js'
 
 type PickerStage = 'mode' | 'manual'
@@ -57,40 +68,20 @@ const FREE_ONLY_MODEL_HELP_TEXT = [
   '- openrouter/free es un router automático, no un modelo manual fijo',
   '',
   'Ranking dinámico:',
-  '- /model audit   Pendiente; comparará la cola actual con rankings públicos',
-  '- /model update  Pendiente; reordenará próximos turnos sin mover el turno activo',
-  '- Fuentes previstas: OpenRouter, Aider, Artificial Analysis',
+  '- /model audit   Audita la cola actual y recomienda un orden por lane',
+  '- /model update  Persiste el orden recomendado para turnos futuros',
+  '- Señales actuales: catálogo live de OpenRouter + inventario local de Ollama',
+  '- Próxima capa de señales: OpenRouter rankings, Aider, Artificial Analysis',
   '',
   'Estado actual:',
   '- la cola base vive en scripts/dev-auto.ps1',
   '- el routing en caliente vive en providerRouting.ts',
-  '- el plan completo está en ROADMAP.md (Fase 7)',
+  '- update no mueve el turno activo; aplica a routing automático futuro',
+  '- el plan extendido está en ROADMAP.md',
 ].join('\n')
 
 const FREE_ONLY_MODEL_DIRECT_HINT =
   'Tip: use /model auto-all, /model auto-openrouter, /model auto-ollama, /model manual, /model openrouter::MODEL, or /model ollama::MODEL.'
-
-const MODEL_AUDIT_PREVIEW_TEXT = [
-  'La auditoría dinámica de modelos todavía no está implementada como comando de producto.',
-  '',
-  'Flujo previsto:',
-  '1. /model audit',
-  '   Compara la cola actual fast / complex / code contra señales públicas.',
-  '2. /model update',
-  '   Reordena próximos turnos sin mover el modelo que ya está respondiendo.',
-  '',
-  'Fuentes previstas:',
-  '- OpenRouter rankings',
-  '- OpenRouter programming collection',
-  '- OpenRouter free models collection',
-  '- Aider leaderboard',
-  '- Artificial Analysis',
-  '',
-  'Estado actual:',
-  '- el orden base vive en scripts/dev-auto.ps1',
-  '- el routing en caliente vive en src/utils/model/providerRouting.ts',
-  '- el detalle del plan quedó documentado en ROADMAP.md (Fase 7)',
-].join('\n')
 
 function isFreeOnlyModeEnabled(): boolean {
   return process.env.BOTVALIA_FREE_ONLY_MODE === '1'
@@ -148,6 +139,174 @@ function getModelModeSummary(model: string | null): string | undefined {
   }
 
   return 'Manual Anthropic route pinned to one exact model with no auto routing or fallbacks.'
+}
+
+function pushChainBlock(
+  lines: string[],
+  label: string,
+  routes: string[],
+): void {
+  lines.push(`- ${label}`)
+  if (routes.length === 0) {
+    lines.push('  (empty)')
+    return
+  }
+
+  for (const [index, route] of routes.entries()) {
+    lines.push(`  ${index + 1}. ${route}`)
+  }
+}
+
+function formatAuditResult(
+  audit: RouterAuditResult,
+  action: 'audit' | 'update',
+  changedKeys?: string[],
+): string {
+  const lines = [
+    `${action === 'update' ? 'Updated' : 'Audit'} router preset: ${chalk.bold(audit.selection)}`,
+  ]
+
+  if (audit.manualMode && audit.selectionReason) {
+    lines.push(chalk.dim(audit.selectionReason))
+  }
+
+  lines.push('')
+  lines.push('Current chains:')
+  pushChainBlock(lines, 'fast', audit.current.fast)
+  pushChainBlock(lines, 'complex', audit.current.complex)
+  pushChainBlock(lines, 'code', audit.current.code)
+  lines.push('')
+  lines.push('Recommended chains:')
+  pushChainBlock(lines, 'fast', audit.recommended.fast)
+  pushChainBlock(lines, 'complex', audit.recommended.complex)
+  pushChainBlock(lines, 'code', audit.recommended.code)
+  lines.push('')
+  lines.push('Signals:')
+  lines.push(
+    `- OpenRouter catalog: ${audit.openRouter.source} (${audit.openRouter.modelCount} free models)`,
+  )
+  lines.push(
+    `- Ollama inventory: ${audit.ollama.source} (${audit.ollama.modelCount} local models across ${audit.ollama.endpoints.length} endpoint(s))`,
+  )
+
+  const changedTiers = audit.diffs.filter(diff => diff.changed)
+  if (changedTiers.length > 0) {
+    lines.push('')
+    lines.push('Reordering summary:')
+    for (const diff of changedTiers) {
+      const notes: string[] = []
+      if (diff.movedToFront.length > 0) {
+        notes.push(`promoted: ${diff.movedToFront.join(', ')}`)
+      }
+      if (diff.deprioritized.length > 0) {
+        notes.push(`deprioritized: ${diff.deprioritized.join(', ')}`)
+      }
+      lines.push(`- ${diff.tier} ${notes.join(' · ') || 'order changed'}`)
+    }
+  } else {
+    lines.push('')
+    lines.push('No ordering changes were recommended.')
+  }
+
+  if (audit.ignoredRoutes.length > 0) {
+    lines.push('')
+    lines.push(
+      `Ignored routes outside ${audit.selection}: ${audit.ignoredRoutes.join(', ')}`,
+    )
+  }
+
+  if (action === 'audit') {
+    lines.push('')
+    lines.push(
+      changedTiers.length > 0
+        ? 'Run /model update to persist this ordering in user settings for future turns.'
+        : 'Run /model update if you still want to refresh the local snapshot metadata.',
+    )
+  } else if (changedKeys) {
+    lines.push('')
+    lines.push(
+      `Persisted ${changedKeys.length} router env key(s) to user settings. Active turn model was not changed; the new order applies to future automatic routing.`,
+    )
+  }
+
+  return lines.join('\n')
+}
+
+function AuditOrUpdateModelRouter({
+  action,
+  onDone,
+}: {
+  action: 'audit' | 'update'
+  onDone: (
+    result?: string,
+    options?: { display?: CommandResultDisplay },
+  ) => void
+}): React.ReactNode {
+  const mainLoopModel = useAppState(s => s.mainLoopModel)
+  const setAppState = useSetAppState()
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    async function run(): Promise<void> {
+      try {
+        const audit = await auditModelRouter(mainLoopModel)
+        if (cancelled) {
+          return
+        }
+
+        if (action === 'audit') {
+          onDone(formatAuditResult(audit, 'audit'), { display: 'system' })
+          return
+        }
+
+        const payload = createRouterUpdatePayload(audit)
+        const currentUserSettings = getSettingsForSource('userSettings') || {}
+        const nextUserEnv = {
+          ...(currentUserSettings.env || {}),
+          ...payload.env,
+        }
+        const { error } = updateSettingsForSource('userSettings', {
+          env: nextUserEnv,
+        })
+
+        if (error) {
+          onDone(`Failed to persist router update: ${error.message}`, {
+            display: 'system',
+          })
+          return
+        }
+
+        applyRouterUpdatePayload(payload)
+        setAppState(previous => ({
+          ...previous,
+          settings: {
+            ...previous.settings,
+            env: {
+              ...(previous.settings.env || {}),
+              ...payload.env,
+            },
+          },
+        }))
+
+        onDone(formatAuditResult(audit, 'update', payload.changedKeys), {
+          display: 'system',
+        })
+      } catch (error) {
+        onDone(`Failed to ${action} router preset: ${(error as Error).message}`, {
+          display: 'system',
+        })
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [action, mainLoopModel, onDone, setAppState])
+
+  return null
 }
 
 function ModelPickerWrapper({
@@ -457,8 +616,12 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     normalizedArgs.startsWith('audit ') ||
     normalizedArgs.startsWith('update ')
   ) {
-    onDone(MODEL_AUDIT_PREVIEW_TEXT, { display: 'system' })
-    return
+    return (
+      <AuditOrUpdateModelRouter
+        action={normalizedArgs.startsWith('update') ? 'update' : 'audit'}
+        onDone={onDone}
+      />
+    )
   }
 
   if (args) {

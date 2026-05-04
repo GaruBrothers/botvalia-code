@@ -27,6 +27,10 @@ import { stripBOM } from './jsonRead.js'
 import * as lockfile from './lockfile.js'
 import { logError } from './log.js'
 import type { MemoryType } from './memory/types.js'
+import {
+  isTranscriptSharingEnabledByDefaultForOSS,
+  isUpdateChecksEnabledByDefaultForOSS,
+} from './nonEssentialEgress.js'
 import { normalizePathForConfigKey } from './path.js'
 import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
@@ -534,6 +538,10 @@ export type GlobalConfig = {
   // Tmux live panel visibility (ant-only, toggled via Enter on tmux pill)
   tungstenPanelVisible?: boolean
 
+  // Shell transcript filter for the prompt screen/right rail.
+  // true = hide tool/thinking/system chatter and keep the shell chat-first.
+  shellTechnicalNoiseHidden?: boolean
+
   // Cached org-level fast mode status from the API.
   // Used to detect cross-session changes and notify users.
   penguinModeOrgEnabled?: boolean
@@ -602,6 +610,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
       approved: [],
       rejected: [],
     },
+    transcriptShareDismissed: !isTranscriptSharingEnabledByDefaultForOSS(),
     env: {},
     tipsHistory: {},
     memoryUsageCount: 0,
@@ -1717,6 +1726,7 @@ export function shouldSkipPluginAutoupdate(): boolean {
 export type AutoUpdaterDisabledReason =
   | { type: 'development' }
   | { type: 'env'; envVar: string }
+  | { type: 'oss-safe' }
   | { type: 'config' }
 
 export function formatAutoUpdaterDisabledReason(
@@ -1727,6 +1737,8 @@ export function formatAutoUpdaterDisabledReason(
       return 'development build'
     case 'env':
       return `${reason.envVar} set`
+    case 'oss-safe':
+      return 'OSS-safe default'
     case 'config':
       return 'config'
   }
@@ -1742,6 +1754,9 @@ export function getAutoUpdaterDisabledReason(): AutoUpdaterDisabledReason | null
   const essentialTrafficEnvVar = getEssentialTrafficOnlyReason()
   if (essentialTrafficEnvVar) {
     return { type: 'env', envVar: essentialTrafficEnvVar }
+  }
+  if (!isUpdateChecksEnabledByDefaultForOSS()) {
+    return { type: 'oss-safe' }
   }
   const config = getGlobalConfig()
   if (

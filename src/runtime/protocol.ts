@@ -1,12 +1,43 @@
 import type { RuntimeEvent } from './events.js'
 import type { RuntimeRegistryEvent } from './runtimeService.js'
 import type {
+  RuntimeSessionChannel,
   RuntimeSendMessageInput,
   RuntimeSessionDetail,
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './types.js'
 import type { PermissionMode } from '../types/permissions.js'
+
+export const RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM = 'runtimeToken'
+
+export function withRuntimeWebSocketAuthToken(
+  rawUrl: string,
+  authToken: string,
+): string {
+  const url = new URL(rawUrl)
+  url.searchParams.set(RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM, authToken)
+  return url.toString()
+}
+
+export function getRuntimeWebSocketAuthToken(
+  rawUrl: string | URL,
+): string | null {
+  const url = rawUrl instanceof URL ? rawUrl : new URL(rawUrl)
+  return url.searchParams.get(RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM)
+}
+
+export function hasRuntimeWebSocketAuthToken(
+  rawUrl: string | URL,
+  expectedAuthToken: string,
+): boolean {
+  const providedAuthToken = getRuntimeWebSocketAuthToken(rawUrl)
+  return (
+    typeof providedAuthToken === 'string' &&
+    providedAuthToken.length > 0 &&
+    providedAuthToken === expectedAuthToken
+  )
+}
 
 export type RuntimeProtocolRequest =
   | {
@@ -31,14 +62,28 @@ export type RuntimeProtocolRequest =
     }
   | {
       requestId: string
+      method: 'claim_session'
+      sessionId: RuntimeSessionId
+      channel: RuntimeSessionChannel
+    }
+  | {
+      requestId: string
       method: 'interrupt'
       sessionId: RuntimeSessionId
+      channel?: RuntimeSessionChannel
+    }
+  | {
+      requestId: string
+      method: 'rename_session'
+      sessionId: RuntimeSessionId
+      title: string
     }
   | {
       requestId: string
       method: 'set_permission_mode'
       sessionId: RuntimeSessionId
       mode: PermissionMode
+      channel?: RuntimeSessionChannel
     }
   | {
       requestId: string
@@ -77,6 +122,14 @@ export type RuntimeProtocolSuccessResponse =
   | {
       requestId: string
       ok: true
+      method: 'claim_session'
+      sessionId: RuntimeSessionId
+      channel: RuntimeSessionChannel
+      snapshot: RuntimeSessionSnapshot
+    }
+  | {
+      requestId: string
+      ok: true
       method: 'send_message'
       accepted: true
       sessionId: RuntimeSessionId
@@ -87,6 +140,15 @@ export type RuntimeProtocolSuccessResponse =
       method: 'interrupt'
       interrupted: true
       sessionId: RuntimeSessionId
+      channel?: RuntimeSessionChannel
+    }
+  | {
+      requestId: string
+      ok: true
+      method: 'rename_session'
+      renamed: true
+      sessionId: RuntimeSessionId
+      title: string
     }
   | {
       requestId: string
@@ -94,6 +156,7 @@ export type RuntimeProtocolSuccessResponse =
       method: 'set_permission_mode'
       sessionId: RuntimeSessionId
       mode: PermissionMode
+      channel?: RuntimeSessionChannel
     }
   | {
       requestId: string

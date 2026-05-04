@@ -9,12 +9,15 @@ export type PermissionMode =
   | 'dontAsk'
   | 'auto'
   | 'bubble';
+export type RuntimeSessionChannel = 'cli' | 'web-ui';
 
 export interface AgentTask {
   id: string;
   description: string;
   status: 'pending' | 'active' | 'completed' | 'failed';
   assigneeId?: string;
+  assigneeName?: string;
+  kind?: string;
 }
 
 export interface SwarmMessage {
@@ -31,9 +34,13 @@ export interface SwarmTeammate {
   id: string;
   name: string;
   role: string;
-  status: 'idle' | 'working' | 'speaking';
+  status: 'idle' | 'working' | 'speaking' | 'waiting';
   avatarColor?: string;
   currentTask?: string;
+  currentInstruction?: string;
+  statusDetail?: string;
+  threadTopic?: string;
+  workspace?: string;
 }
 
 export interface SwarmThread {
@@ -92,6 +99,8 @@ export interface Session {
   title?: string;
   workspaceName: string;
   status: SessionStatus;
+  activeChannel: RuntimeSessionChannel;
+  activeChannelUpdatedAt: string;
   permissionMode: PermissionMode;
   isBypassPermissionsModeAvailable: boolean;
   isAutoModeAvailable: boolean;
@@ -102,6 +111,9 @@ export interface Session {
   startedAt: string;
   updatedAt: string;
   archived?: boolean;
+  pinned?: boolean;
+  notes?: string;
+  isDraft?: boolean;
   messageCount: number;
   taskCount: number;
   rawSnapshot?: unknown;

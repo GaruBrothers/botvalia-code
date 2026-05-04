@@ -8,7 +8,8 @@ export default {
   get description() {
     return `Set the AI model for BotValia Code (currently ${renderModelName(getMainLoopModel())})`
   },
-  argumentHint: '[model]',
+  argumentHint:
+    '[audit|update|auto-all|auto-openrouter|auto-ollama|manual|RUTA]',
   get immediate() {
     return shouldInferenceConfigCommandBeImmediate()
   },

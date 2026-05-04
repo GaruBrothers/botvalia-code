@@ -27,8 +27,16 @@ export function RuntimeShell() {
     setSelectedSessionId,
     reconnect,
     refresh,
+    claimSessionControl,
     sendMessage,
+    sendDirectInstruction,
     interrupt,
+    createSession,
+    renameSession,
+    archiveSession,
+    restoreSession,
+    togglePinnedSession,
+    updateSessionNotes,
     cyclePermissionMode,
     toggleAutoRefresh,
     dismissNotice,
@@ -145,9 +153,11 @@ export function RuntimeShell() {
                       setShowSidebar(false);
                     }
                   }}
-                  onCreateSession={() => handlePendingFeature('Crear sesión desde la UI')}
-                  onRename={() => handlePendingFeature('Renombrar sesión')}
-                  onArchive={() => handlePendingFeature('Archivar sesión')}
+                  onCreateSession={createSession}
+                  onRename={renameSession}
+                  onArchive={archiveSession}
+                  onRestore={restoreSession}
+                  onTogglePin={togglePinnedSession}
                 />
               </div>
             </motion.div>
@@ -168,12 +178,17 @@ export function RuntimeShell() {
 
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-semibold tracking-tight text-gray-200">
-                  {selectedSession?.projectName || 'BotValia Runtime'}
+                  {selectedSession?.title || selectedSession?.projectName || 'BotValia Runtime'}
                 </span>
                 {selectedSession && (
-                  <span className="rounded border border-white/[0.05] bg-white/[0.02] px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-gray-500">
-                    {selectedSession.status}
-                  </span>
+                  <>
+                    <span className="rounded border border-white/[0.05] bg-white/[0.02] px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-gray-500">
+                      {selectedSession.isDraft ? 'draft' : selectedSession.status}
+                    </span>
+                    <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-indigo-300">
+                      {selectedSession.activeChannel === 'web-ui' ? 'WEB' : 'CLI'}
+                    </span>
+                  </>
                 )}
               </div>
 
@@ -249,9 +264,7 @@ export function RuntimeShell() {
           ) : (
             <SwarmOfficeView
               swarm={selectedSession?.swarm}
-              onDirectInstruction={() =>
-                handlePendingFeature('Instrucción directa a un agente del swarm')
-              }
+              onDirectInstruction={sendDirectInstruction}
             />
           )}
 
@@ -267,10 +280,16 @@ export function RuntimeShell() {
                   ? formatPermissionModeLabel(selectedSession.permissionMode)
                   : undefined
               }
-              disabled={!selectedSession || !globalState.isSocketConnected}
+              disabled={
+                !selectedSession ||
+                selectedSession.isDraft ||
+                !globalState.isSocketConnected
+              }
               placeholder={
                 !selectedSession
                   ? 'No hay una sesión viva seleccionada...'
+                  : selectedSession.isDraft
+                    ? 'Este borrador aun no tiene worker runtime; lanzalo desde el CLI para chatear.'
                   : viewMode === 'swarm'
                     ? 'Send global instruction to swarm...'
                     : undefined
@@ -298,6 +317,12 @@ export function RuntimeShell() {
                   runtimeState={globalState}
                   onClose={() => setShowContext(false)}
                   onReconnect={reconnect}
+                  onClaimSession={claimSessionControl}
+                  onRename={renameSession}
+                  onArchive={archiveSession}
+                  onRestore={restoreSession}
+                  onTogglePin={togglePinnedSession}
+                  onUpdateNotes={updateSessionNotes}
                 />
               </div>
             </motion.div>

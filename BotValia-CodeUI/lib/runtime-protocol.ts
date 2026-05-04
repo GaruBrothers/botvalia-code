@@ -1,4 +1,5 @@
 export type RuntimeSessionId = string;
+export type RuntimeSessionChannel = 'cli' | 'web-ui';
 
 export type RuntimeSessionStatus =
   | 'idle'
@@ -14,18 +15,133 @@ export interface RuntimeTaskSummary {
   kind?: string;
   title?: string;
   isBackgrounded?: boolean;
+  owner?: string;
+  assigneeName?: string;
+}
+
+export interface RuntimeSwarmTeammateSummary {
+  id: string;
+  name: string;
+  agentType?: string;
+  color?: string;
+  cwd?: string;
+  worktreePath?: string;
+  tmuxSessionName?: string;
+  tmuxPaneId?: string;
 }
 
 export interface RuntimeSwarmSummary {
   teamName?: string;
   isLeader: boolean;
   teammateNames: string[];
+  teammates: RuntimeSwarmTeammateSummary[];
+}
+
+export interface RuntimeThinkingSummary {
+  messageUuid?: string;
+  blockType?: 'thinking' | 'redacted_thinking';
+  source:
+    | 'sdk-stream'
+    | 'sdk-message'
+    | 'assistant-message'
+    | 'message-result'
+    | 'app-state'
+    | 'session-runtime';
+}
+
+export interface RuntimeTaskUsageSummary {
+  totalTokens?: number;
+  toolUses?: number;
+  durationMs?: number;
+}
+
+export interface RuntimeTaskEventPayload {
+  task: RuntimeTaskSummary;
+  source:
+    | 'sdk-stream'
+    | 'sdk-message'
+    | 'assistant-message'
+    | 'message-result'
+    | 'app-state'
+    | 'session-runtime';
+  toolUseId?: string;
+  workflowName?: string;
+  prompt?: string;
+  description?: string;
+  summary?: string;
+  progressText?: string;
+  usage?: RuntimeTaskUsageSummary;
+  lastToolName?: string;
+}
+
+export interface RuntimeToolEventPayload {
+  toolUseId: string;
+  toolName: string;
+  source:
+    | 'sdk-stream'
+    | 'sdk-message'
+    | 'assistant-message'
+    | 'message-result'
+    | 'app-state'
+    | 'session-runtime';
+  parentToolUseId?: string | null;
+  taskId?: string;
+  elapsedTimeSeconds?: number;
+  summary?: string;
+  inputPreview?: string;
+  outputPreview?: string;
+}
+
+export interface RuntimeAgentEventPayload {
+  kind:
+    | 'task_started'
+    | 'task_progress'
+    | 'task_completed'
+    | 'tool_started'
+    | 'tool_completed'
+    | 'updated';
+  source:
+    | 'sdk-stream'
+    | 'sdk-message'
+    | 'assistant-message'
+    | 'message-result'
+    | 'app-state'
+    | 'session-runtime';
+  agentId?: string;
+  agentName?: string;
+  taskId?: string;
+  taskTitle?: string;
+  detail?: string;
+}
+
+export interface RuntimeSwarmEventPayload {
+  kind:
+    | 'updated'
+    | 'task_started'
+    | 'task_progress'
+    | 'task_completed'
+    | 'tool_started'
+    | 'tool_completed';
+  source:
+    | 'sdk-stream'
+    | 'sdk-message'
+    | 'assistant-message'
+    | 'message-result'
+    | 'app-state'
+    | 'session-runtime';
+  swarm: RuntimeSwarmSummary;
+  taskId?: string;
+  taskTitle?: string;
+  toolUseId?: string;
+  toolName?: string;
 }
 
 export interface RuntimeSessionSnapshot {
   sessionId: RuntimeSessionId;
   cwd: string;
   status: RuntimeSessionStatus;
+  activeChannel: RuntimeSessionChannel;
+  activeChannelUpdatedAt: string;
   permissionMode:
     | 'default'
     | 'acceptEdits'
@@ -111,6 +227,12 @@ export type RuntimeProtocolRequest =
     }
   | {
       requestId: string;
+      method: 'claim_session';
+      sessionId: RuntimeSessionId;
+      channel: RuntimeSessionChannel;
+    }
+  | {
+      requestId: string;
       method: 'send_message';
       sessionId: RuntimeSessionId;
       input: RuntimeSendMessageInput;
@@ -119,6 +241,13 @@ export type RuntimeProtocolRequest =
       requestId: string;
       method: 'interrupt';
       sessionId: RuntimeSessionId;
+      channel?: RuntimeSessionChannel;
+    }
+  | {
+      requestId: string;
+      method: 'rename_session';
+      sessionId: RuntimeSessionId;
+      title: string;
     }
   | {
       requestId: string;
@@ -132,6 +261,7 @@ export type RuntimeProtocolRequest =
         | 'dontAsk'
         | 'auto'
         | 'bubble';
+      channel?: RuntimeSessionChannel;
     }
   | {
       requestId: string;
@@ -170,6 +300,14 @@ export type RuntimeProtocolSuccessResponse =
   | {
       requestId: string;
       ok: true;
+      method: 'claim_session';
+      sessionId: RuntimeSessionId;
+      channel: RuntimeSessionChannel;
+      snapshot: RuntimeSessionSnapshot;
+    }
+  | {
+      requestId: string;
+      ok: true;
       method: 'send_message';
       accepted: true;
       sessionId: RuntimeSessionId;
@@ -180,6 +318,15 @@ export type RuntimeProtocolSuccessResponse =
       method: 'interrupt';
       interrupted: true;
       sessionId: RuntimeSessionId;
+      channel?: RuntimeSessionChannel;
+    }
+  | {
+      requestId: string;
+      ok: true;
+      method: 'rename_session';
+      renamed: true;
+      sessionId: RuntimeSessionId;
+      title: string;
     }
   | {
       requestId: string;
@@ -194,6 +341,7 @@ export type RuntimeProtocolSuccessResponse =
         | 'dontAsk'
         | 'auto'
         | 'bubble';
+      channel?: RuntimeSessionChannel;
     }
   | {
       requestId: string;
@@ -263,17 +411,20 @@ export type RuntimeEvent =
   | {
       type: 'thinking_started';
       sessionId: RuntimeSessionId;
+      thinking: RuntimeThinkingSummary;
       timestamp: string;
     }
   | {
       type: 'thinking_delta';
       sessionId: RuntimeSessionId;
       delta: string;
+      thinking: RuntimeThinkingSummary;
       timestamp: string;
     }
   | {
       type: 'thinking_completed';
       sessionId: RuntimeSessionId;
+      thinking: RuntimeThinkingSummary;
       timestamp: string;
     }
   | {
@@ -286,12 +437,67 @@ export type RuntimeEvent =
       type: 'task_updated';
       sessionId: RuntimeSessionId;
       task: RuntimeTaskSummary;
+      source?:
+        | 'sdk-stream'
+        | 'sdk-message'
+        | 'assistant-message'
+        | 'message-result'
+        | 'app-state'
+        | 'session-runtime';
+      timestamp: string;
+    }
+  | {
+      type: 'task_started';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeTaskEventPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'task_progress';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeTaskEventPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'task_completed';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeTaskEventPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'tool_started';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeToolEventPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'tool_progress';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeToolEventPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'tool_completed';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeToolEventPayload;
       timestamp: string;
     }
   | {
       type: 'swarm_updated';
       sessionId: RuntimeSessionId;
       swarm: RuntimeSwarmSummary;
+      timestamp: string;
+    }
+  | {
+      type: 'swarm_event';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeSwarmEventPayload;
+      timestamp: string;
+    }
+  | {
+      type: 'agent_event';
+      sessionId: RuntimeSessionId;
+      payload: RuntimeAgentEventPayload;
       timestamp: string;
     }
   | {

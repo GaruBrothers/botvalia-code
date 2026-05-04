@@ -5,11 +5,12 @@ import { useInterval } from 'usehooks-ts';
 import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
 import { Box, Text } from '../ink.js';
 import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, type InstallStatus, installGlobalPackage, shouldSkipVersion } from '../utils/autoUpdater.js';
-import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
+import { formatAutoUpdaterDisabledReason, getAutoUpdaterDisabledReason, getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
 import { logForDebugging } from '../utils/debug.js';
 import { getCurrentInstallationType } from '../utils/doctorDiagnostic.js';
 import { installOrUpdateClaudePackage, localInstallationExists } from '../utils/localInstaller.js';
 import { removeInstalledSymlink } from '../utils/nativeInstaller/index.js';
+import { getOSSDefaultBlockReason } from '../utils/nonEssentialEgress.js';
 import { gt, gte } from '../utils/semver.js';
 import { getInitialSettings } from '../utils/settings/settings.js';
 type Props = {
@@ -28,6 +29,7 @@ export function AutoUpdater({
   showSuccessMessage,
   verbose
 }: Props): React.ReactNode {
+  const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason();
   const [versions, setVersions] = useState<{
     global?: string | null;
     latest?: string | null;
@@ -168,16 +170,20 @@ export function AutoUpdater({
 
   // Check every 30 minutes
   useInterval(checkForUpdates, 30 * 60 * 1000);
-  if (!autoUpdaterResult?.version && (!versions.global || !versions.latest)) {
+  const shouldShowDisabledState = autoUpdaterDisabledReason?.type === 'oss-safe' || autoUpdaterDisabledReason?.type === 'env';
+  if (!shouldShowDisabledState && !autoUpdaterResult?.version && (!versions.global || !versions.latest)) {
     return null;
   }
-  if (!autoUpdaterResult?.version && !isUpdating) {
+  if (!shouldShowDisabledState && !autoUpdaterResult?.version && !isUpdating) {
     return null;
   }
   return <Box flexDirection="row" gap={1}>
       {verbose && <Text dimColor wrap="truncate">
           globalVersion: {versions.global} &middot; latestVersion:{' '}
           {versions.latest}
+        </Text>}
+      {shouldShowDisabledState && !isUpdating && !autoUpdaterResult?.version && <Text color="warning" wrap="truncate-end">
+          {autoUpdaterDisabledReason?.type === 'oss-safe' ? `Updates disabled · OSS-safe default · ${getOSSDefaultBlockReason('updates')}` : `Updates disabled · ${formatAutoUpdaterDisabledReason(autoUpdaterDisabledReason!)}`}
         </Text>}
       {isUpdating ? <>
           <Box>

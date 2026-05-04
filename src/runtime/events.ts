@@ -1,10 +1,16 @@
 import type { Message } from '../types/message.js'
 import type { PermissionMode } from '../types/permissions.js'
 import type {
+  RuntimeAgentEventPayload,
+  RuntimeExecutionSource,
   RuntimeSessionId,
   RuntimeSessionSnapshot,
   RuntimeSwarmSummary,
+  RuntimeSwarmEventPayload,
+  RuntimeTaskEventPayload,
   RuntimeTaskSummary,
+  RuntimeThinkingSummary,
+  RuntimeToolEventPayload,
 } from './types.js'
 
 export type RuntimeEvent =
@@ -29,17 +35,20 @@ export type RuntimeEvent =
   | {
       type: 'thinking_started'
       sessionId: RuntimeSessionId
+      thinking: RuntimeThinkingSummary
       timestamp: string
     }
   | {
       type: 'thinking_delta'
       sessionId: RuntimeSessionId
       delta: string
+      thinking: RuntimeThinkingSummary
       timestamp: string
     }
   | {
       type: 'thinking_completed'
       sessionId: RuntimeSessionId
+      thinking: RuntimeThinkingSummary
       timestamp: string
     }
   | {
@@ -52,12 +61,61 @@ export type RuntimeEvent =
       type: 'task_updated'
       sessionId: RuntimeSessionId
       task: RuntimeTaskSummary
+      source?: RuntimeExecutionSource
+      timestamp: string
+    }
+  | {
+      type: 'task_started'
+      sessionId: RuntimeSessionId
+      payload: RuntimeTaskEventPayload
+      timestamp: string
+    }
+  | {
+      type: 'task_progress'
+      sessionId: RuntimeSessionId
+      payload: RuntimeTaskEventPayload
+      timestamp: string
+    }
+  | {
+      type: 'task_completed'
+      sessionId: RuntimeSessionId
+      payload: RuntimeTaskEventPayload
+      timestamp: string
+    }
+  | {
+      type: 'tool_started'
+      sessionId: RuntimeSessionId
+      payload: RuntimeToolEventPayload
+      timestamp: string
+    }
+  | {
+      type: 'tool_progress'
+      sessionId: RuntimeSessionId
+      payload: RuntimeToolEventPayload
+      timestamp: string
+    }
+  | {
+      type: 'tool_completed'
+      sessionId: RuntimeSessionId
+      payload: RuntimeToolEventPayload
       timestamp: string
     }
   | {
       type: 'swarm_updated'
       sessionId: RuntimeSessionId
       swarm: RuntimeSwarmSummary
+      timestamp: string
+    }
+  | {
+      type: 'swarm_event'
+      sessionId: RuntimeSessionId
+      payload: RuntimeSwarmEventPayload
+      timestamp: string
+    }
+  | {
+      type: 'agent_event'
+      sessionId: RuntimeSessionId
+      payload: RuntimeAgentEventPayload
       timestamp: string
     }
   | {

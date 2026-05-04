@@ -1,3 +1,10 @@
+<!-- IA-SYSTEM-PROTECTION:BEGIN -->
+> **REGLA OBLIGATORIA PARA CUALQUIER IA**
+>
+> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+>
+> Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
+<!-- IA-SYSTEM-PROTECTION:END -->
 # Runtime UI and Model Routing Roadmap
 
 Este roadmap refleja la integración real entre `BotValia-CodeUI`, el runtime actual del CLI y los pendientes reales del router de modelos.
@@ -9,7 +16,10 @@ La UI web nueva ya quedó conectada al runtime real para estas capacidades exist
 - `list_sessions`
 - `get_session_detail`
 - `send_message`
+- `claim_session`
 - `interrupt`
+- `rename_session`
+- `set_permission_mode`
 - `subscribe_runtime`
 - `subscribe_session`
 - `unsubscribe`
@@ -28,18 +38,23 @@ Además, hoy ya existe en producto:
 
 - topbar y shell nuevos de `BotValia-CodeUI` corriendo sobre el runtime real
 - placeholder de `thinking` en vivo en web
+- thinking incremental cuando el runtime emite `thinking_delta`
 - reemplazo limpio de `thinking` por respuesta final cuando llega el assistant message
 - `Shift+Tab` en la UI web para ciclar modo de ejecución
 - mensaje de sistema `Auto cancelado por el usuario.` al interrumpir desde la UI
 - transcript más compacto en altura para mostrar más conversación en pantalla
 - task rail lateral en CLI cuando el flujo expone tareas enumeradas o trabajo en curso
+- rail operativo en CLI con secciones `Tasks`, `Thinking`, `Tools`, `Agents` y `Context`
+- canal activo visible por sesión (`CLI` / `Web UI`) y takeover explícito desde la web
+- `/model audit` y `/model update` como comandos reales de producto
 
 Y hoy el routing de modelos funciona así:
 
 - la cola base `fast / complex / code` se construye en `scripts/dev-auto.ps1`
 - el catálogo live de modelos free de OpenRouter ya se consulta hoy
 - el CLI también puede aplicar rutas en caliente vía `src/utils/model/providerRouting.ts`
-- todavía no existe un comando de producto para auditar o reordenar esa cola con criterios públicos
+- `/model audit` ya inspecciona la cola efectiva y propone reordenamiento conservador
+- `/model update` ya persiste el nuevo orden en settings sin mover el turno en vuelo
 
 ## Fase 0
 
@@ -65,22 +80,26 @@ Archivos base:
 
 Objetivo: paridad funcional de lifecycle de sesión desde la UI.
 
-Pendientes backend:
-- `create_session`
+Ya existe hoy:
 - `rename_session`
-- `archive_session`
-- `unarchive_session`
-- `pin_session`
-- persistencia de metadata visual por sesión
+- drafts locales de sesión en browser
+- metadata visual local por sesión
   - `title`
   - `archived`
   - `pinned`
+  - `notes`
+
+Pendientes backend reales:
+- `create_session`
+- `archive_session`
+- `unarchive_session`
+- `pin_session`
 
 Impacto UI actual:
-- `Nueva sesión` queda visible, pero pendiente
-- `Rename` queda visible, pero pendiente
-- `Archive` queda visible, pero pendiente
-- la sidebar agrupa sesiones activas reales, pero no hay biblioteca persistente
+- `Nueva sesión` crea borradores locales funcionales mientras falta `create_session`
+- `Rename` ya persiste en runtime cuando hay backend conectado
+- `Archive`, `Restore`, `Pin` y `Notes` viven hoy en persistencia local del browser
+- la biblioteca cross-device o compartida con CLI sigue pendiente hasta que exista backend de lifecycle
 
 Archivos a tocar cuando se implemente:
 - [src/runtime/protocol.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/protocol.ts)
@@ -117,25 +136,26 @@ Ya existe hoy:
 - `teamName`
 - `isLeader`
 - `teammateNames`
+- `teammates[]` básicos con metadata real cuando el runtime la conoce
 - `tasks`
 - `swarmThreads`
 - `swarmWaitingEdges`
+- `Direct instruction` desde web enviando `@agente ...` por el runtime actual
 
 Pendientes backend:
-- `swarm.teammates[]` ricos con:
-  - `id`
-  - `name`
+- enriquecer consistentemente `swarm.teammates[]` en todos los caminos del runtime con:
   - `role`
   - `status`
   - `currentTask`
-- `swarm.tasks[]` con `assigneeId` real
-- `send_swarm_instruction`
+  - `currentInstruction`
+- `swarm.tasks[]` con `assigneeId`/`owner` real en todos los providers
+- `send_swarm_instruction` nativo como método de protocolo en vez de piggyback sobre `@agente`
 - un feed más fiel para `internalChat`
 
 Impacto UI actual:
 - la vista swarm ya usa datos reales donde existen
-- teammates, roles y asignaciones siguen siendo heurísticos cuando el backend no los provee
-- `Direct instruction to <agent>` queda visible, pero pendiente
+- teammates, roles y asignaciones siguen siendo heurísticos solo cuando el backend no los provee
+- `Direct instruction to <agent>` ya funciona vía mensaje dirigido; falta volverlo endpoint oficial
 
 Archivos a tocar:
 - [src/runtime/types.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/runtime/types.ts)
@@ -151,32 +171,38 @@ Ya existe hoy:
 - mensajes reales por sesión
 - timestamps reales
 - sanitización en frontend para esconder thinking, redacted thinking, caveats y XML interno
-- placeholder y lifecycle básico de `thinking` en web
+- placeholder y lifecycle real de `thinking` en web
 - contexto explícito de origen `web-ui` al enviar desde la UI
+- takeover explícito de canal activo con `claim_session`
+- eventos estructurados:
+  - `thinking_started`
+  - `thinking_delta`
+  - `thinking_completed`
+  - `task_started`
+  - `task_progress`
+  - `task_completed`
+  - `tool_started`
+  - `tool_progress`
+  - `tool_completed`
+  - `agent_event`
+  - `swarm_event`
 
 Pendientes backend:
 - payload de mensaje más fiel que `RuntimeMessageSummary.text`
 - bloques estructurados para markdown/code/table con mejor preservación
 - soporte real de attachments desde la UI
-- metadata explícita de origen/canal por turno
-  - `cli`
-  - `web-ui`
-- handoff estricto de canal activo para evitar ambigüedad cuando la misma sesión está abierta en terminal y navegador
-- eventos más ricos para pensamiento/streaming
-  - `thinking_started`
-  - `thinking_delta`
-  - `thinking_completed`
 - texto de pensamiento realmente incremental y visible en tiempo real cuando el modelo/provider lo emite
 - diferenciación más fuerte entre:
   - `thinking`
   - `tool progress`
   - `final answer`
+- policy más estricta de ownership por turno cuando CLI y web pelean por la misma sesión
 
 Impacto UI actual:
 - la conversación principal ya funciona con mensajes reales
 - aún depende de un adapter/sanitizador porque el runtime colapsa varios contenidos a texto plano
 - el botón attach queda visible, pero pendiente
-- la UI ya muestra streaming textual y placeholder de thinking en vivo, pero todavía no existe una fase backend separada y estructurada para “pensamiento bonito” completo ni un lock duro de canal por sesión
+- la UI ya muestra streaming textual, thinking y eventos estructurados, pero todavía no existe una representación rica por bloques ni un ownership lock duro por turno
 - si el modelo no emite deltas reales de pensamiento, la UI cae al placeholder y luego muestra la respuesta final
 
 Archivos a tocar:
@@ -191,6 +217,7 @@ Ya existe hoy:
 - `runtime_registry_event`
 - `runtime_session_event`
 - timestamps en eventos runtime
+- feed live local con tasks, tools, swarm, agents, modelo y permission mode
 
 Pendientes backend:
 - historial consultable de eventos por sesión
@@ -255,23 +282,25 @@ Archivos a tocar:
 Objetivo: ranking dinámico de modelos free para programación con reordenamiento controlado de colas.
 
 Estado:
-- pendiente de producto
+- activo como primera version de producto; pendiente de enriquecimiento
 
 Qué ya existe hoy:
 - comando `/model`
+- `/model audit`
+- `/model update`
 - rutas separadas por lane:
   - `fast`
   - `complex`
   - `code`
 - catálogo live de modelos free de OpenRouter
+- inventario local de Ollama
 - aplicación de rutas en caliente desde `providerRouting.ts`
+- persistencia en `userSettings.env`
 
 Qué falta:
-- `/model audit`
-  - comparar la cola actual vs ranking público y disponibilidad real
-- `/model update`
-  - reordenar la cola actual sin tocar el turno ya en vuelo
-- persistencia local de overrides de router
+- enriquecer `/model audit` con ranking público además de disponibilidad real
+- snapshot/export de auditorías previas
+- persistencia dedicada de overrides de router
   - por ejemplo `~/.botvalia/model-router-overrides.json`
 - scoring híbrido con múltiples señales:
   - disponibilidad free real
@@ -296,3 +325,4 @@ Archivos probables a tocar:
 - [src/utils/model/providerRouting.ts](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/src/utils/model/providerRouting.ts)
 - [scripts/dev-auto.ps1](/C:/Users/jhcamachov/Documents/GitHub/PERSONAL/botvalia-code/scripts/dev-auto.ps1)
 - nuevo helper para fetch/score/persist de ranking
+

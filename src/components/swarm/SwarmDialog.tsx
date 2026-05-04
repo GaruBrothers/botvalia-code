@@ -646,7 +646,8 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
         </Text>
         {detailSummary.waitingOn ? (
           <Text dimColor>
-            Waiting: @{detailSummary.waitingOn.from} -> @{detailSummary.waitingOn.to}
+            Waiting: @{detailSummary.waitingOn.from}
+            {' -> '}@{detailSummary.waitingOn.to}
           </Text>
         ) : (
           <Text dimColor>Estado: resuelto</Text>
@@ -658,7 +659,8 @@ export function SwarmDialog({ onDone }: Props): React.ReactNode {
             detailEvents.map(event => (
               <Box key={event.event_id} flexDirection="column">
                 <Text>
-                  {event.kind} · @{event.from} -> @{event.to}
+                  {event.kind} · @{event.from}
+                  {' -> '}@{event.to}
                   {event.topic ? ` · ${truncateText(event.topic, 36)}` : ''}
                 </Text>
                 <Text dimColor>{truncateText(event.body, 140)}</Text>

@@ -1,4 +1,5 @@
 import type {
+  RuntimeSessionChannel,
   RuntimeProtocolEvent,
   RuntimeProtocolMessage,
   RuntimeProtocolRequest,
@@ -9,6 +10,7 @@ import type {
   RuntimeSessionSnapshot,
 } from './runtime-protocol';
 import type { PermissionMode } from './types';
+import { normalizeRuntimeUrl, withRuntimeAuthToken } from './runtime-url';
 
 type PendingRequest = {
   resolve: (value: RuntimeProtocolResponse) => void;
@@ -32,6 +34,10 @@ function isProtocolResponse(
 
 const RUNTIME_REQUEST_TIMEOUT_MS = 20_000;
 
+export type BrowserRuntimeClientConfig = {
+  authToken?: string | null;
+};
+
 export class BrowserRuntimeClient {
   private readonly url: string;
   private socket: WebSocket | null = null;
@@ -39,8 +45,13 @@ export class BrowserRuntimeClient {
   private readonly connectionListeners = new Set<RuntimeConnectionListener>();
   private readonly pending = new Map<string, PendingRequest>();
 
-  constructor(url: string) {
-    this.url = url;
+  constructor(url: string, config: BrowserRuntimeClientConfig = {}) {
+    const normalizedUrl = normalizeRuntimeUrl(url);
+    if (!normalizedUrl) {
+      throw new Error('La URL runtime debe usar ws:// o wss://.');
+    }
+
+    this.url = withRuntimeAuthToken(normalizedUrl, config.authToken) || normalizedUrl;
   }
 
   async connect(): Promise<void> {
@@ -210,10 +221,34 @@ export class BrowserRuntimeClient {
     }
   }
 
-  async interrupt(sessionId: RuntimeSessionId): Promise<void> {
+  async claimSession(
+    sessionId: RuntimeSessionId,
+    channel: RuntimeSessionChannel,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'claim_session',
+      sessionId,
+      channel,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'claim_session') {
+      throw new Error('La respuesta runtime no coincide con claim_session.');
+    }
+
+    return response.snapshot;
+  }
+
+  async interrupt(
+    sessionId: RuntimeSessionId,
+    channel?: RuntimeSessionChannel,
+  ): Promise<void> {
     const response = await this.sendRequest({
       method: 'interrupt',
       sessionId,
+      channel,
     });
 
     if (!response.ok) {
@@ -224,14 +259,33 @@ export class BrowserRuntimeClient {
     }
   }
 
+  async renameSession(sessionId: RuntimeSessionId, title: string): Promise<string> {
+    const response = await this.sendRequest({
+      method: 'rename_session',
+      sessionId,
+      title,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'rename_session') {
+      throw new Error('La respuesta runtime no coincide con rename_session.');
+    }
+
+    return response.title;
+  }
+
   async setPermissionMode(
     sessionId: RuntimeSessionId,
     mode: PermissionMode,
+    channel?: RuntimeSessionChannel,
   ): Promise<PermissionMode> {
     const response = await this.sendRequest({
       method: 'set_permission_mode',
       sessionId,
       mode,
+      channel,
     });
 
     if (!response.ok) {

@@ -19,12 +19,37 @@ import type {
   RuntimeSessionDetail,
   RuntimeSessionSnapshot,
   RuntimeSessionStatus,
+  RuntimeSwarmTeammateSummary,
   RuntimeSwarmThreadSummary,
   RuntimeSwarmWaitingEdge,
   RuntimeTaskSummary,
 } from './runtime-protocol';
 
 const AVATAR_COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'];
+const SWARM_COLOR_MAP: Record<string, string> = {
+  slate: '#64748b',
+  gray: '#6b7280',
+  zinc: '#71717a',
+  neutral: '#737373',
+  stone: '#78716c',
+  red: '#ef4444',
+  orange: '#f97316',
+  amber: '#f59e0b',
+  yellow: '#eab308',
+  lime: '#84cc16',
+  green: '#22c55e',
+  emerald: '#10b981',
+  teal: '#14b8a6',
+  cyan: '#06b6d4',
+  sky: '#0ea5e9',
+  blue: '#3b82f6',
+  indigo: '#6366f1',
+  violet: '#8b5cf6',
+  purple: '#a855f7',
+  fuchsia: '#d946ef',
+  pink: '#ec4899',
+  rose: '#f43f5e',
+};
 const STREAMING_ASSISTANT_PREFIX = 'streaming-assistant-';
 const STREAMING_THINKING_PREFIX = 'streaming-thinking-';
 
@@ -330,15 +355,80 @@ function inferTeammateRole(name: string, index: number): string {
   return index === 0 ? 'Lead Agent' : 'AI Agent';
 }
 
-function mapTasks(tasks: RuntimeTaskSummary[]): AgentTask[] {
-  return tasks.map(task => ({
-    id: task.id,
-    description:
-      task.title?.trim() ||
-      task.kind?.trim() ||
-      `Task ${task.id.slice(0, 8)}`,
-    status: mapTaskStatus(task.status),
-  }));
+function formatAgentType(agentType: string | undefined): string | undefined {
+  if (!agentType?.trim()) {
+    return undefined;
+  }
+
+  return agentType
+    .trim()
+    .split(/[_-\s]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function resolveSwarmColor(color: string | undefined, index: number): string {
+  if (!color?.trim()) {
+    return AVATAR_COLORS[index % AVATAR_COLORS.length];
+  }
+
+  const normalized = color.trim().toLowerCase();
+  if (
+    normalized.startsWith('#') ||
+    normalized.startsWith('rgb(') ||
+    normalized.startsWith('rgba(') ||
+    normalized.startsWith('hsl(') ||
+    normalized.startsWith('hsla(')
+  ) {
+    return color;
+  }
+
+  return SWARM_COLOR_MAP[normalized] || AVATAR_COLORS[index % AVATAR_COLORS.length];
+}
+
+function createFallbackTeammateSummary(
+  name: string,
+  index: number,
+): RuntimeSwarmTeammateSummary {
+  return {
+    id: `teammate-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name,
+  };
+}
+
+function participantMatches(
+  candidate: string | undefined,
+  teammate: RuntimeSwarmTeammateSummary,
+): boolean {
+  if (!candidate) {
+    return false;
+  }
+
+  return candidate === teammate.id || candidate === teammate.name;
+}
+
+function mapTasks(
+  tasks: RuntimeTaskSummary[],
+  teammates: RuntimeSwarmTeammateSummary[],
+): AgentTask[] {
+  return tasks.map(task => {
+    const assignee = teammates.find(teammate =>
+      participantMatches(task.owner || task.assigneeName, teammate),
+    );
+
+    return {
+      id: task.id,
+      description:
+        task.title?.trim() ||
+        task.kind?.trim() ||
+        `Task ${task.id.slice(0, 8)}`,
+      status: mapTaskStatus(task.status),
+      assigneeId: assignee?.id,
+      assigneeName: assignee?.name || task.assigneeName || task.owner,
+      kind: task.kind?.trim() || undefined,
+    };
+  });
 }
 
 function mapThreads(threads: RuntimeSwarmThreadSummary[]): SwarmThread[] {
@@ -407,21 +497,67 @@ function createSwarmState(
     return undefined;
   }
 
-  const mappedTasks = mapTasks(tasks);
-  const activeTask = mappedTasks.find(task => task.status === 'active');
+  const runtimeTeammates =
+    snapshot.swarm.teammates.length > 0
+      ? snapshot.swarm.teammates
+      : snapshot.swarm.teammateNames.map(createFallbackTeammateSummary);
 
-  const teammates = snapshot.swarm.teammateNames.map((name, index) => ({
-    id: `teammate-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-    name,
-    role: inferTeammateRole(name, index),
-    status:
-      waitingEdges.some(edge => edge.from === name || edge.to === name) ||
-      (index === 0 && activeTask)
-        ? 'working'
-        : 'idle',
-    avatarColor: AVATAR_COLORS[index % AVATAR_COLORS.length],
-    currentTask: index === 0 ? activeTask?.description : undefined,
-  })) satisfies SwarmTeammate[];
+  const mappedTasks = mapTasks(tasks, runtimeTeammates);
+  const teammates = runtimeTeammates.map((teammate, index) => {
+    const assignedTasks = mappedTasks.filter(task => task.assigneeId === teammate.id);
+    const activeAssignedTask = assignedTasks.find(task => task.status === 'active');
+    const pendingAssignedTask = assignedTasks.find(task => task.status === 'pending');
+    const latestIncomingEdge = waitingEdges.find(edge => participantMatches(edge.to, teammate));
+    const latestOutgoingEdge = waitingEdges.find(edge => participantMatches(edge.from, teammate));
+    const latestThread = threads.find(thread =>
+      thread.participants.some(participant => participantMatches(participant, teammate)),
+    );
+
+    let status: SwarmTeammate['status'] = 'idle';
+    let statusDetail: string | undefined;
+
+    if (latestIncomingEdge) {
+      status = 'speaking';
+      statusDetail = `Needs response to ${latestIncomingEdge.from}`;
+    } else if (latestOutgoingEdge) {
+      status = 'waiting';
+      statusDetail = `Waiting on ${latestOutgoingEdge.to}`;
+    } else if (activeAssignedTask || pendingAssignedTask || latestThread?.open) {
+      status = 'working';
+      statusDetail = activeAssignedTask
+        ? 'Executing assigned task'
+        : pendingAssignedTask
+          ? 'Assigned task queued'
+          : latestThread?.topic?.trim()
+            ? `Open thread: ${latestThread.topic.trim()}`
+            : 'Active in swarm';
+    }
+
+    const currentInstruction =
+      latestIncomingEdge?.body?.trim() ||
+      (latestThread &&
+      ['task', 'handoff', 'question'].includes(latestThread.lastKind) &&
+      latestThread.lastBody.trim()
+        ? latestThread.lastBody.trim()
+        : undefined);
+
+    return {
+      id: teammate.id,
+      name: teammate.name,
+      role: formatAgentType(teammate.agentType) || inferTeammateRole(teammate.name, index),
+      status,
+      avatarColor: resolveSwarmColor(teammate.color, index),
+      currentTask:
+        activeAssignedTask?.description ||
+        pendingAssignedTask?.description ||
+        latestThread?.topic?.trim() ||
+        undefined,
+      currentInstruction,
+      statusDetail,
+      threadTopic: latestThread?.topic?.trim() || undefined,
+      workspace: teammate.worktreePath?.trim() || teammate.cwd?.trim() || undefined,
+    };
+  }) satisfies SwarmTeammate[];
 
   return {
     activeTeam: snapshot.swarm.teamName || 'Swarm',
@@ -452,6 +588,8 @@ function createBaseSession(
     title: previous?.title || snapshot.sessionId.slice(0, 8),
     workspaceName: snapshot.cwd,
     status: mapRuntimeStatus(snapshot.status),
+    activeChannel: snapshot.activeChannel,
+    activeChannelUpdatedAt: snapshot.activeChannelUpdatedAt,
     permissionMode: snapshot.permissionMode,
     isBypassPermissionsModeAvailable: snapshot.isBypassPermissionsModeAvailable,
     isAutoModeAvailable: snapshot.isAutoModeAvailable,
@@ -872,6 +1010,15 @@ function createSystemRuntimeMessage(
   });
 }
 
+function summarizeTaskRuntimeLabel(task: RuntimeTaskSummary): string {
+  return task.title?.trim() || task.kind?.trim() || `Task ${task.id.slice(0, 8)}`;
+}
+
+function formatOwnerSuffix(owner?: string): string {
+  const trimmedOwner = owner?.trim();
+  return trimmedOwner ? ` @${trimmedOwner}` : '';
+}
+
 function eventLogFromRuntimeEvent(event: RuntimeEvent): EventLog | null {
   switch (event.type) {
     case 'session_started':
@@ -881,11 +1028,68 @@ function eventLogFromRuntimeEvent(event: RuntimeEvent): EventLog | null {
         'Session started.',
         event.timestamp,
       );
+    case 'session_updated':
+      return null;
     case 'task_updated':
       return createEventLog(
         `task-updated-${event.sessionId}-${event.task.id}-${event.timestamp}`,
         event.task.status.toLowerCase().includes('fail') ? 'error' : 'info',
         `${event.task.title || event.task.kind || 'Task'} → ${event.task.status}`,
+        event.timestamp,
+      );
+    case 'task_started':
+      return createEventLog(
+        `task-started-${event.sessionId}-${event.payload.task.id}-${event.timestamp}`,
+        'info',
+        `Task started: ${summarizeTaskRuntimeLabel(event.payload.task)}${formatOwnerSuffix(
+          event.payload.task.assigneeName || event.payload.task.owner,
+        )}.`,
+        event.timestamp,
+      );
+    case 'task_progress':
+      return createEventLog(
+        `task-progress-${event.sessionId}-${event.payload.task.id}-${event.timestamp}`,
+        'info',
+        event.payload.progressText?.trim() ||
+          event.payload.summary?.trim() ||
+          `Task in progress: ${summarizeTaskRuntimeLabel(event.payload.task)}${formatOwnerSuffix(
+            event.payload.task.assigneeName || event.payload.task.owner,
+          )}.`,
+        event.timestamp,
+      );
+    case 'task_completed':
+      return createEventLog(
+        `task-completed-${event.sessionId}-${event.payload.task.id}-${event.timestamp}`,
+        event.payload.task.status.toLowerCase().includes('fail') ? 'error' : 'info',
+        event.payload.summary?.trim() ||
+          `Task completed: ${summarizeTaskRuntimeLabel(event.payload.task)}${formatOwnerSuffix(
+            event.payload.task.assigneeName || event.payload.task.owner,
+          )}.`,
+        event.timestamp,
+      );
+    case 'tool_started':
+      return createEventLog(
+        `tool-started-${event.sessionId}-${event.payload.toolUseId}-${event.timestamp}`,
+        'info',
+        `Tool started: ${event.payload.toolName}${
+          event.payload.taskId ? ` · task ${event.payload.taskId}` : ''
+        }.`,
+        event.timestamp,
+      );
+    case 'tool_progress':
+      return createEventLog(
+        `tool-progress-${event.sessionId}-${event.payload.toolUseId}-${event.timestamp}`,
+        'info',
+        event.payload.summary?.trim() ||
+          `Tool running: ${event.payload.toolName}.`,
+        event.timestamp,
+      );
+    case 'tool_completed':
+      return createEventLog(
+        `tool-completed-${event.sessionId}-${event.payload.toolUseId}-${event.timestamp}`,
+        'info',
+        event.payload.summary?.trim() ||
+          `Tool completed: ${event.payload.toolName}.`,
         event.timestamp,
       );
     case 'swarm_updated':
@@ -895,6 +1099,30 @@ function eventLogFromRuntimeEvent(event: RuntimeEvent): EventLog | null {
         event.swarm.teamName
           ? `Swarm updated: ${event.swarm.teamName}.`
           : 'Swarm updated.',
+        event.timestamp,
+      );
+    case 'swarm_event':
+      return createEventLog(
+        `swarm-event-${event.sessionId}-${event.payload.kind}-${event.timestamp}`,
+        'info',
+        [
+          event.payload.swarm.teamName || 'Swarm',
+          event.payload.taskTitle?.trim() || event.payload.toolName?.trim() || event.payload.kind,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        event.timestamp,
+      );
+    case 'agent_event':
+      return createEventLog(
+        `agent-event-${event.sessionId}-${event.payload.kind}-${event.timestamp}`,
+        'info',
+        [
+          event.payload.agentName || event.payload.agentId || 'Agent',
+          event.payload.taskTitle?.trim() || event.payload.detail?.trim() || event.payload.kind,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         event.timestamp,
       );
     case 'model_switched':
@@ -1026,9 +1254,9 @@ export function applyRuntimeSessionEvent(
   event: RuntimeEvent,
 ): Session[] {
   let nextSessions = previousSessions;
+  const previousSession = previousSessions.find(session => session.id === sessionId);
 
   if (event.type === 'session_started' || event.type === 'session_updated') {
-    const previousSession = previousSessions.find(session => session.id === sessionId);
     const nextSession = createBaseSession(event.snapshot, previousSession, event.timestamp);
     const sessionMap = new Map(previousSessions.map(session => [session.id, session]));
     sessionMap.set(sessionId, {
@@ -1094,6 +1322,23 @@ export function applyRuntimeSessionEvent(
             updatedAt: event.timestamp,
           }
         : session,
+    );
+  }
+
+  if (
+    (event.type === 'session_started' || event.type === 'session_updated') &&
+    previousSession &&
+    previousSession.activeChannel !== event.snapshot.activeChannel
+  ) {
+    nextSessions = appendEventToSession(
+      nextSessions,
+      sessionId,
+      createEventLog(
+        `channel-claimed-${sessionId}-${event.timestamp}`,
+        'info',
+        `Canal activo: ${event.snapshot.activeChannel === 'web-ui' ? 'Web UI' : 'CLI'}.`,
+        event.timestamp,
+      ),
     );
   }
 

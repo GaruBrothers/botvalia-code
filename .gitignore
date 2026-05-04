@@ -9,9 +9,14 @@ coverage/
 .turbo/
 
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.tmp
 *.swp
 *.swo
+*.pid
+*.seed
 
 .claude/
 .botvalia/
@@ -19,5 +24,42 @@ coverage/
 .idea/
 .vscode/
 skills-lock.json
+
+# Secrets and local env overrides
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.test.example
+!.env.test.sample
+*.local
+*.secret
+*.secrets
+.npmrc
+
+# Certificates and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.csr
+
+# Local session/state artifacts
+server-sessions.json
+*.session.json
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+
+# Generated package/runtime artifacts
+*.tgz
 BotValia-CodeUI/.next/
 BotValia-CodeUI/.runtime-next/
+BotValia-CodeUI/.swc/
+BotValia-CodeUI/.vercel/
+BotValia-CodeUI/out/

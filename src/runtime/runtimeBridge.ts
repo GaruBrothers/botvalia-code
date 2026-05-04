@@ -161,20 +161,49 @@ export class RuntimeBridge {
             sessionId: request.sessionId,
           }
 
+        case 'claim_session':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'claim_session',
+            sessionId: request.sessionId,
+            channel: request.channel,
+            snapshot: this.runtimeService.claimSession(
+              request.sessionId,
+              request.channel,
+            ),
+          }
+
         case 'interrupt':
-          this.runtimeService.interrupt(request.sessionId)
+          this.runtimeService.interrupt(request.sessionId, request.channel)
           return {
             requestId: request.requestId,
             ok: true,
             method: 'interrupt',
             interrupted: true,
             sessionId: request.sessionId,
+            channel: request.channel,
+          }
+
+        case 'rename_session':
+          await this.runtimeService.renameSession(
+            request.sessionId,
+            request.title,
+          )
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'rename_session',
+            renamed: true,
+            sessionId: request.sessionId,
+            title: request.title,
           }
 
         case 'set_permission_mode':
           await this.runtimeService.setPermissionMode(
             request.sessionId,
             request.mode,
+            request.channel,
           )
           return {
             requestId: request.requestId,
@@ -182,6 +211,7 @@ export class RuntimeBridge {
             method: 'set_permission_mode',
             sessionId: request.sessionId,
             mode: request.mode,
+            channel: request.channel,
           }
 
         case 'subscribe_runtime':

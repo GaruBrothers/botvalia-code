@@ -248,6 +248,37 @@ import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { SANDBOX_NETWORK_ACCESS_TOOL_NAME } from 'src/cli/structuredIO.js';
 import { useFileHistorySnapshotInit } from 'src/hooks/useFileHistorySnapshotInit.js';
 import { SandboxPermissionRequest } from 'src/components/permissions/SandboxPermissionRequest.js';
+
+const HIDDEN_WELCOME_HERO_SYSTEM_SUBTYPES = new Set([
+  'api_metrics',
+  'compact_boundary',
+  'microcompact_boundary',
+  'thinking',
+  'status',
+  'api_retry',
+  'files_persisted',
+  'session_state_changed',
+  'task_started',
+  'task_progress',
+  'task_notification',
+  'post_turn_summary',
+  'hook_started',
+  'hook_progress',
+  'hook_response',
+  'elicitation_complete'
+]);
+
+const VISIBLE_WELCOME_HERO_SYSTEM_SUBTYPES = new Set([
+  'bridge_status',
+  'turn_duration',
+  'memory_saved',
+  'away_summary',
+  'agents_killed',
+  'scheduled_task_fire',
+  'permission_retry',
+  'stop_hook_summary',
+  'api_error'
+]);
 import { SandboxViolationExpandedView } from 'src/components/SandboxViolationExpandedView.js';
 import { useSettingsErrors } from 'src/hooks/notifs/useSettingsErrors.js';
 import { useSettings } from 'src/hooks/useSettings.js';
@@ -811,6 +842,7 @@ export function REPL({
   useSettingsErrors();
   const settings = useSettings();
   const hideBanner = settings.showWelcomeBanner === false;
+  const [hideTechnicalNoise, setHideTechnicalNoise] = useState(() => getGlobalConfig().shellTechnicalNoiseHidden ?? false);
   useRateLimitWarningNotification(mainLoopModel);
   useFastModeNotification();
   useDeprecationWarningNotification(mainLoopModel);
@@ -4543,6 +4575,19 @@ export function REPL({
   // surprise n/N on re-entry. Same exit resets [ dump mode — each ctrl+o
   // entry is a fresh instance.
   const inTranscript = screen === 'transcript' && virtualScrollActive;
+  const shellTranscriptShortcut = useShortcutDisplay('app:toggleTranscript', 'Global', 'ctrl+o');
+  const shellTasksShortcut = useShortcutDisplay('app:toggleTodos', 'Global', 'ctrl+t');
+  const shellNoiseShortcut = useShortcutDisplay('app:toggleTechnicalNoise', 'Global', 'ctrl+shift+h');
+  const toggleTechnicalNoise = useCallback(() => {
+    setHideTechnicalNoise(prev => {
+      const next = !prev;
+      saveGlobalConfig(current => ({
+        ...current,
+        shellTechnicalNoiseHidden: next
+      }));
+      return next;
+    });
+  }, []);
   useEffect(() => {
     if (!inTranscript) {
       setSearchQuery('');
@@ -4567,6 +4612,8 @@ export function REPL({
     setScreen,
     showAllInTranscript,
     setShowAllInTranscript,
+    hideTechnicalNoise,
+    onToggleTechnicalNoise: toggleTechnicalNoise,
     messageCount: messages.length,
     onEnterTranscript: handleEnterTranscript,
     onExitTranscript: handleExitTranscript,
@@ -4743,12 +4790,27 @@ export function REPL({
   const toolJsxCentered = isFullscreenEnvEnabled() && toolJSX?.isLocalJSXCommand === true;
   const centeredModal: React.ReactNode = toolJsxCentered ? toolJSX!.jsx : null;
   const hasActiveTaskSidebarWork = !!tasksV2?.some(task => task.status !== 'completed');
-  const hasVisiblePromptConversation = displayedMessages.some(message => {
+  const hasVisibleTranscriptContent = displayedMessages.some(message => {
     if (message.type === 'assistant') {
       return true;
     }
     if (message.type === 'user') {
       return !message.isMeta;
+    }
+    if (message.type === 'system') {
+      if (message.isMeta) {
+        return false;
+      }
+      if (message.subtype === 'local_command') {
+        return true;
+      }
+      if (message.subtype && HIDDEN_WELCOME_HERO_SYSTEM_SUBTYPES.has(message.subtype)) {
+        return false;
+      }
+      if (message.subtype && VISIBLE_WELCOME_HERO_SYSTEM_SUBTYPES.has(message.subtype)) {
+        return true;
+      }
+      return typeof message.content === 'string' && message.content.trim().length > 0 && message.level !== 'info';
     }
     if (message.type === 'attachment') {
       const attachment = message.attachment;
@@ -4756,12 +4818,18 @@ export function REPL({
     }
     return false;
   });
-  const showTaskSidebar = isFullscreenEnvEnabled() && screen === 'prompt' && !viewedAgentTask && !focusedInputDialog && !toolJSX?.isLocalJSXCommand && !!tasksV2?.length && transcriptCols >= 120 && (showExpandedTodos || hasActiveTaskSidebarWork);
-  const canShowWelcomeLogo = screen === 'prompt' && !hideBanner && !viewedAgentTask && !focusedInputDialog && !toolJSX && centeredModal == null && toolPermissionOverlay == null && !hasVisiblePromptConversation && !placeholderText && !showSpinner;
+  const hasLiveTaskSidebarState = isLoading || hasRunningTeammates || !!streamingThinking?.thinking?.trim() || streamingToolUses.length > 0 || !!spinnerMessage?.trim() || !!teamContext?.selfAgentName || Object.keys(teamContext?.teammates ?? {}).length > 0;
+  const showTaskSidebar = isFullscreenEnvEnabled() && screen === 'prompt' && !viewedAgentTask && !focusedInputDialog && !toolJSX?.isLocalJSXCommand && transcriptCols >= 120 && (showExpandedTodos || hasActiveTaskSidebarWork || hasLiveTaskSidebarState);
+  const canShowWelcomeLogo = screen === 'prompt' && !hideBanner && !viewedAgentTask && !focusedInputDialog && !toolJSX && centeredModal == null && toolPermissionOverlay == null && !hasVisibleTranscriptContent && !placeholderText && !showSpinner;
   const showWelcomeHero = isFullscreenEnvEnabled() && canShowWelcomeLogo;
   const landingWidth = Math.max(62, Math.min(transcriptCols - 4, 124));
-  const taskSidebar = showTaskSidebar ? <TaskSidebar tasks={tasksV2!} side="right" /> : null;
-  const promptMessagesView = <Messages messages={displayedMessages} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={isLoading} streamingText={isLoading && !viewedAgentTask ? visibleStreamingText : null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} unseenDivider={viewedAgentTask ? undefined : unseenDivider} scrollRef={isFullscreenEnvEnabled() ? scrollRef : undefined} trackStickyPrompt={isFullscreenEnvEnabled() ? true : undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner || !canShowWelcomeLogo} />;
+  const taskSidebar = showTaskSidebar ? <TaskSidebar tasks={tasksV2 ?? []} side="right" isLoading={isLoading || hasRunningTeammates} streamingThinking={streamingThinking} streamingToolUses={streamingToolUses} teamContext={teamContext ? {
+    teamName: teamContext.teamName,
+    selfAgentName: teamContext.selfAgentName,
+    isLeader: teamContext.isLeader,
+    teammates: teamContext.teammates
+  } : undefined} currentModel={mainLoopModel} cwd={getOriginalCwd()} streamMode={streamMode} spinnerMessage={spinnerMessage} quietMode={hideTechnicalNoise} transcriptShortcut={shellTranscriptShortcut} tasksShortcut={shellTasksShortcut} noiseShortcut={shellNoiseShortcut} /> : null;
+  const promptMessagesView = <Messages messages={displayedMessages} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={isLoading} streamingThinking={streamingThinking} streamingText={isLoading && !viewedAgentTask ? visibleStreamingText : null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} hideTechnicalNoise={hideTechnicalNoise} unseenDivider={viewedAgentTask ? undefined : unseenDivider} scrollRef={isFullscreenEnvEnabled() ? scrollRef : undefined} trackStickyPrompt={isFullscreenEnvEnabled() ? true : undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner || !canShowWelcomeLogo} />;
   const welcomeMessages = <Messages messages={[]} tools={tools} commands={commands} verbose={verbose} toolJSX={toolJSX} toolUseConfirmQueue={toolUseConfirmQueue} inProgressToolUseIDs={viewedTeammateTask ? viewedTeammateTask.inProgressToolUseIDs ?? new Set() : inProgressToolUseIDs} isMessageSelectorVisible={isMessageSelectorVisible} conversationId={conversationId} screen={screen} streamingToolUses={streamingToolUses} showAllInTranscript={showAllInTranscript} agentDefinitions={agentDefinitions} onOpenRateLimitOptions={handleOpenRateLimitOptions} isLoading={false} streamingText={null} isBriefOnly={viewedAgentTask ? false : isBriefOnly} unseenDivider={undefined} scrollRef={undefined} trackStickyPrompt={undefined} cursor={cursor} setCursor={setCursor} cursorNavRef={cursorNavRef} hideLogo={hideBanner} />;
   const scrollableContent = showWelcomeHero ? <Box flexDirection="column" width="100%" alignItems="center">
       {welcomeMessages}

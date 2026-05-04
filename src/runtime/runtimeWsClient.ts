@@ -7,12 +7,21 @@ import type {
   RuntimeProtocolRequest,
   RuntimeProtocolResponse,
 } from './protocol.js'
+import {
+  getRuntimeWebSocketAuthToken,
+  withRuntimeWebSocketAuthToken,
+} from './protocol.js'
 import type {
+  RuntimeSessionChannel,
   RuntimeSendMessageInput,
   RuntimeSessionDetail,
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './types.js'
+
+export type RuntimeWebSocketClientConfig = {
+  authToken?: string
+}
 
 type PendingRequest = {
   resolve: (value: RuntimeProtocolResponse) => void
@@ -31,8 +40,13 @@ export class RuntimeWebSocketClient {
   private readonly listeners = new Set<RuntimeProtocolEventListener>()
   private readonly pending = new Map<string, PendingRequest>()
 
-  constructor(url: string) {
-    this.url = url
+  constructor(url: string, config: RuntimeWebSocketClientConfig = {}) {
+    const resolvedAuthToken =
+      config.authToken || getRuntimeWebSocketAuthToken(url) || undefined
+
+    this.url = resolvedAuthToken
+      ? withRuntimeWebSocketAuthToken(url, resolvedAuthToken)
+      : url
   }
 
   async connect(): Promise<void> {
@@ -174,15 +188,53 @@ export class RuntimeWebSocketClient {
     }
   }
 
-  async interrupt(sessionId: RuntimeSessionId): Promise<void> {
+  async claimSession(
+    sessionId: RuntimeSessionId,
+    channel: RuntimeSessionChannel,
+  ): Promise<RuntimeSessionSnapshot> {
     const response = await this.sendRequest({
-      method: 'interrupt',
+      method: 'claim_session',
       sessionId,
+      channel,
     })
 
     if (!response.ok) {
       throw new Error(response.error)
     }
+
+    return response.snapshot
+  }
+
+  async interrupt(
+    sessionId: RuntimeSessionId,
+    channel?: RuntimeSessionChannel,
+  ): Promise<void> {
+    const response = await this.sendRequest({
+      method: 'interrupt',
+      sessionId,
+      channel,
+    })
+
+    if (!response.ok) {
+      throw new Error(response.error)
+    }
+  }
+
+  async renameSession(
+    sessionId: RuntimeSessionId,
+    title: string,
+  ): Promise<string> {
+    const response = await this.sendRequest({
+      method: 'rename_session',
+      sessionId,
+      title,
+    })
+
+    if (!response.ok) {
+      throw new Error(response.error)
+    }
+
+    return response.title
   }
 
   async subscribeRuntime(): Promise<string> {
