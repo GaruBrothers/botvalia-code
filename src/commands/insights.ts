@@ -1049,11 +1049,10 @@ async function loadCachedSessionMeta(
   const metaPath = join(getSessionMetaDir(), `${sessionId}.json`)
   try {
     const content = await readFile(metaPath, { encoding: 'utf-8' })
+    const parsed = jsonParse(content) as SessionMeta
     return {
-      ...(jsonParse(content) as SessionMeta),
-      project_path: sanitizeProjectPath(
-        ((jsonParse(content) as SessionMeta).project_path || '').toString(),
-      ),
+      ...parsed,
+      project_path: sanitizeProjectPath((parsed.project_path || '').toString()),
     }
   } catch {
     return null
@@ -1078,8 +1077,8 @@ async function saveSessionMeta(meta: SessionMeta): Promise<void> {
       2,
     ),
     {
-    encoding: 'utf-8',
-    mode: 0o600,
+      encoding: 'utf-8',
+      mode: 0o600,
     },
   )
 }
