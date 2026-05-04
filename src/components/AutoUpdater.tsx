@@ -174,7 +174,10 @@ export function AutoUpdater({
 
   // Check every 30 minutes
   useInterval(checkForUpdates, 30 * 60 * 1000);
-  const shouldShowDisabledState = autoUpdaterDisabledReason?.type === 'oss-safe' || autoUpdaterDisabledReason?.type === 'env';
+  const shouldShowDisabledState =
+    verbose &&
+    (autoUpdaterDisabledReason?.type === 'oss-safe' ||
+      autoUpdaterDisabledReason?.type === 'env');
   if (!shouldShowDisabledState && !autoUpdaterResult?.version && (!versions.global || !versions.latest)) {
     return null;
   }
