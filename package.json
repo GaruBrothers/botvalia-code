@@ -56,7 +56,7 @@
     "@anthropic-ai/claude-agent-sdk": "0.2.89",
     "@anthropic-ai/mcpb": "2.1.2",
     "@anthropic-ai/sandbox-runtime": "0.0.44",
-    "@anthropic-ai/sdk": "0.80.0",
+    "@anthropic-ai/sdk": "0.92.0",
     "@aws-sdk/client-bedrock-runtime": "3.1020.0",
     "@commander-js/extra-typings": "14.0.0",
     "@growthbook/growthbook": "1.6.5",
@@ -72,7 +72,7 @@
     "ajv": "8.18.0",
     "asciichart": "1.5.25",
     "auto-bind": "5.0.1",
-    "axios": "1.14.0",
+    "axios": "1.16.0",
     "bidi-js": "1.0.3",
     "chalk": "5.6.2",
     "chokidar": "5.0.0",
@@ -92,7 +92,7 @@
     "indent-string": "5.0.0",
     "ink": "6.8.0",
     "jsonc-parser": "3.3.1",
-    "lodash-es": "4.17.23",
+    "lodash-es": "4.18.1",
     "lru-cache": "11.2.7",
     "marked": "17.0.5",
     "p-map": "7.0.4",
@@ -122,6 +122,15 @@
     "color-diff-napi": "file:./shims/color-diff-napi",
     "modifiers-napi": "file:./shims/modifiers-napi",
     "url-handler-napi": "file:./shims/url-handler-napi"
+  },
+  "overrides": {
+    "@anthropic-ai/sdk": "0.92.0",
+    "@hono/node-server": "2.0.1",
+    "fast-xml-parser": "5.7.2",
+    "follow-redirects": "1.16.0",
+    "hono": "4.12.16",
+    "lodash-es": "4.18.1",
+    "tmp": "0.2.5"
   },
   "devDependencies": {
     "@types/bun": "1.3.13",

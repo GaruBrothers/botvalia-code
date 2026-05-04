@@ -590,14 +590,26 @@ function getLocalPathPatterns(): RegExp[] {
   const cwd = process.cwd().replace(/\\/g, '/')
   const escapedSlashCwd = escapeRegExp(cwd)
   const escapedBackslashCwd = escapeRegExp(cwd.replace(/\//g, '\\'))
-
-  return [
-    /C:\\Users\\/i,
-    /\/C:\/Users\//i,
-    /C:\/Users\//i,
+  const userHomeMatch = cwd.match(/^([A-Za-z]:\/Users\/[^/]+)(?:\/|$)/i)
+  const patterns = [
     new RegExp(escapedSlashCwd, 'i'),
     new RegExp(escapedBackslashCwd, 'i'),
   ]
+
+  if (userHomeMatch) {
+    const homePrefix = userHomeMatch[1]
+    const escapedSlashHomePrefix = escapeRegExp(homePrefix)
+    const escapedBackslashHomePrefix = escapeRegExp(
+      homePrefix.replace(/\//g, '\\'),
+    )
+    patterns.push(
+      new RegExp(`${escapedSlashHomePrefix}(?:/|$)`, 'i'),
+      new RegExp(`${escapedBackslashHomePrefix}(?:\\\\|$)`, 'i'),
+      new RegExp(`/${escapedSlashHomePrefix}(?:/|$)`, 'i'),
+    )
+  }
+
+  return patterns
 }
 
 function checkLocalPathLeaks(
@@ -754,19 +766,53 @@ function checkInsightsInternalGateStatic(): CheckResult {
 function checkLegacyCloudEndpoints(
   trackedTextFiles: Array<{ path: string; content: string }>,
 ): CheckResult {
-  const matches = trackedTextFiles
-    .filter(file => file.path !== 'scripts/security-preflight.ts')
-    .filter(file =>
-      LEGACY_CLOUD_ENDPOINT_PATTERNS.some(pattern => file.content.includes(pattern)),
-    )
-    .map(file => file.path)
+  const executableUrlPattern =
+    /(?:https?|wss):\/\/(?:api\.anthropic\.com|platform\.claude\.com|claude\.ai|mcp-proxy\.anthropic\.com)\b/i
+
+  const executableMatches = new Set<string>()
+  const compatMentions = new Set<string>()
+
+  for (const file of trackedTextFiles) {
+    if (file.path === 'scripts/security-preflight.ts') {
+      continue
+    }
+
+    const lines = file.content.split(/\r?\n/)
+    let fileHasCompatMention = false
+
+    for (const line of lines) {
+      if (!LEGACY_CLOUD_ENDPOINT_PATTERNS.some(pattern => line.includes(pattern))) {
+        continue
+      }
+
+      const trimmed = line.trim()
+      const isCommentOnly =
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('*') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('*/')
+
+      if (executableUrlPattern.test(line) && !isCommentOnly) {
+        executableMatches.add(file.path)
+        continue
+      }
+
+      fileHasCompatMention = true
+    }
+
+    if (fileHasCompatMention) {
+      compatMentions.add(file.path)
+    }
+  }
 
   return createResult(
     'legacy-cloud-endpoints',
-    matches.length === 0 ? 'pass' : 'warn',
-    matches.length === 0
-      ? 'No legacy Anthropic/Claude cloud endpoints found in tracked text files'
-      : `Legacy cloud endpoints still appear in tracked files: ${summarizeList(matches)}`,
+    executableMatches.size === 0 ? 'pass' : 'warn',
+    executableMatches.size === 0
+      ? compatMentions.size === 0
+        ? 'No legacy Anthropic/Claude cloud endpoints found in tracked text files'
+        : `No executable legacy cloud endpoints found; compatibility mentions remain in comments/labels: ${summarizeList([...compatMentions])}`
+      : `Executable legacy cloud endpoints remain in tracked code: ${summarizeList([...executableMatches])}${compatMentions.size > 0 ? `. Additional compatibility mentions remain in comments/labels: ${summarizeList([...compatMentions])}` : ''}`,
   )
 }
 

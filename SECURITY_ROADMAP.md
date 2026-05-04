@@ -30,8 +30,7 @@ The biggest security improvements now verifiably in place are:
 
 The main release blockers that still remain are:
 
-- `bun audit` still reports **16 vulnerabilities**: 1 high, 14 moderate, 1 low.
-- OAuth, MCP, and other cloud-oriented paths still reference Anthropic/Claude infrastructure in code.
+- OAuth, MCP, and other cloud-oriented paths still reference Anthropic/Claude infrastructure in executable code and compatibility layers.
 - Runtime auth is improved, but the bridge is not yet hardened with per-operation authorization beyond the WebSocket handshake and the runtime token still originates from a launch URL flow.
 - Public docs and product surface still contain legacy/Anthropic assumptions in various places.
 - There is still no dedicated private security contact or advisory workflow in-tree.
@@ -68,11 +67,12 @@ Observed results:
   - `transcriptEnabled: false`
   - `telemetryEnabled: false`
   - `updatesEnabled: false`
-- `bun audit` still reports:
-  - 16 vulnerabilities
-  - 1 high
-  - 14 moderate
-  - 1 low
+- `bun audit` now returns:
+  - no vulnerabilities found
+- `security:preflight` now reports:
+  - `local-path-leaks: pass`
+  - `legacy-cloud-endpoints: warn`
+  - `working-tree-cleanliness: pass` when the tree is clean
 
 ## Current Risk Snapshot
 
@@ -117,21 +117,21 @@ Observed results:
 
 Verified state:
 
-- `bun audit` still reports 16 vulnerabilities.
+- `bun audit` now returns no vulnerabilities on the current lockfile snapshot.
 - Direct runtime and developer dependencies in `package.json` are now pinned to explicit versions.
+- Targeted `overrides` are now present for high-value transitive packages.
 
 Why it matters:
 
-- Reproducibility is better than before, but still depends on transitive dependency review and continued lockfile discipline.
-- Transitive dependency drift remains broad.
-- At least one currently-reported finding is high severity.
+- Reproducibility is better than before, but still depends on continued lockfile discipline and intentional upgrades.
+- The current audit is clean, but future transitive drift can reintroduce risk if pins or overrides are relaxed carelessly.
 
 Current status:
 
 - Audit rerun: verified
 - Metadata cleanup: improved
 - Direct dependency pinning: improved
-- Audit remediation: pending
+- Current vulnerability set: resolved on this snapshot
 
 ### 2. Legacy external infrastructure references remain in code
 
@@ -191,7 +191,7 @@ Still pending:
 | Phase 0 | Public release freeze and cleanup | Partial | `.next` untracked, package metadata fixed, `SECURITY.md` added, release checklist added. Full doc/help/brand sanitization still pending. |
 | Phase 1 | Network egress and privacy hardening | Partial | Feedback, transcript share, telemetry, update checks, and release-note fetch are now OSS-safe by default. `NETWORK_EGRESS.md` exists, but legacy cloud/OAuth paths still exist in code. |
 | Phase 2 | Runtime and local IPC hardening | Partial | Runtime WebSocket now requires a per-runtime token at handshake. Token still rides in the runtime URL and there is no deeper auth model yet. |
-| Phase 3 | Dependency and supply-chain hardening | Partial | Direct dependency ranges are now pinned, but `bun audit` still reports 16 vulnerabilities and transitive review/remediation remain open. |
+| Phase 3 | Dependency and supply-chain hardening | Partial | Direct dependency ranges are pinned, targeted overrides are in place, and `bun audit` is currently clean. Ongoing lockfile discipline and future upgrade review still remain. |
 | Phase 4 | Product surface sanitization for OSS | Partial | Public package metadata is fixed, but docs/help/code surface still need a broader legacy-infrastructure cleanup. |
 | Phase 5 | Secure data handling and consent | Partial | Browser persistence now uses `sessionStorage`, not `localStorage`, for runtime metadata. Transcript export still relies on best-effort redaction and cloud endpoints remain in code. |
 | Phase 6 | Security assurance before public scale | Partial | `SECURITY.md`, `NETWORK_EGRESS.md`, `SECURITY_RELEASE_CHECKLIST.md`, `security:preflight`, and a baseline CI workflow now exist, but there is still no dedicated private inbox or advisory flow. |
@@ -257,15 +257,18 @@ Status: **partial**
 Resolved now:
 
 - Replace broad direct dependency wildcards in `package.json` with explicit versions aligned to the current lockfile snapshot.
+- Upgrade direct vulnerable dependencies such as `axios`, `@anthropic-ai/sdk`, and `lodash-es`.
+- Add targeted `overrides` for vulnerable transitive packages used through upstream SDKs.
+- Re-run `bun audit` until the current lockfile snapshot is clean.
 
 Still pending:
 
-- Remediate `bun audit` findings.
 - Add CI gates for:
   - dependency audit
   - generated-file policy
   - secret scanning
   - lockfile integrity
+- Keep verifying that the current override set is still necessary and remove it once upstream packages catch up.
 - Consider SBOM generation and signed release artifacts.
 
 ### Phase 4 - Product Surface Sanitization for OSS
@@ -323,11 +326,11 @@ Still pending:
 
 The next security sprint should focus on these items in order:
 
-1. Remediate `bun audit` findings and keep direct dependency ranges pinned.
-2. Sanitize remaining public docs/help/legacy endpoint assumptions.
-3. Decide whether the runtime token should move off the raw URL or gain stronger per-operation authorization semantics.
-4. Add CI security gates and lockfile/sbom policy.
-5. Establish a private vulnerability reporting path and advisory workflow.
+1. Sanitize remaining public docs/help/legacy endpoint assumptions.
+2. Decide whether the runtime token should move off the raw URL or gain stronger per-operation authorization semantics.
+3. Add CI security gates and lockfile/sbom policy.
+4. Establish a private vulnerability reporting path and advisory workflow.
+5. Periodically re-run `bun audit` and validate that overrides can be reduced instead of growing indefinitely.
 
 ## Current Open-Source Readiness Call
 
@@ -338,7 +341,7 @@ If the question is:
 The honest answer is:
 
 - **Yes, it is meaningfully safer than before and no longer exposes some of the most obvious accidental leaks by default.**
-- **No, it is still not ready to claim strong open-source security posture or production-grade hardening.**
+- **No, it is still not ready to claim strong open-source security posture or production-grade hardening, mainly because legacy cloud integration and product-surface sanitization still remain.**
 
 That is the line maintainers should communicate until Phase 3 and the remaining surface-sanitization work are complete.
 

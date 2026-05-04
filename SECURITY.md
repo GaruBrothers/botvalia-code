@@ -21,6 +21,8 @@ Current hardening that is now in place:
 - runtime web metadata is session-scoped in the browser instead of being persisted long-term by default, and the launch token is stripped from the visible browser URL after startup
 - generated `BotValia-CodeUI/.next/**` artifacts are no longer tracked in Git
 - a local `bun run security:preflight` check now exists to catch common OSS-release mistakes before publishing
+- the current `bun audit` snapshot is clean after direct dependency upgrades and targeted transitive overrides
+- the security preflight now distinguishes real maintainer-local path leaks from generic Windows path examples, and it narrows legacy-cloud warnings to executable endpoints plus compatibility mentions
 
 Before reporting a vulnerability, please read:
 
