@@ -1,3 +1,10 @@
+<!-- IA-SYSTEM-PROTECTION:BEGIN -->
+> **REGLA OBLIGATORIA PARA CUALQUIER IA**
+>
+> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+>
+> Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
+<!-- IA-SYSTEM-PROTECTION:END -->
 # Stable Versions
 
 Este archivo registra checkpoints estables por superficie para poder volver
@@ -66,3 +73,4 @@ Cuando se confirme un nuevo punto estable:
 2. mover el anterior a `Previous stable checkpoints`
 3. anotar en una línea qué quedó estable en ese commit
 4. si el `HEAD` de trabajo aún no fue etiquetado, dejarlo reflejado en `Current working head`
+

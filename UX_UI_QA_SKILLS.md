@@ -1,3 +1,10 @@
+<!-- IA-SYSTEM-PROTECTION:BEGIN -->
+> **REGLA OBLIGATORIA PARA CUALQUIER IA**
+>
+> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+>
+> Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
+<!-- IA-SYSTEM-PROTECTION:END -->
 # UX / UI / QA Skills
 
 This guide shows the cleanest current way to make specialist behavior activable in BotValia without changing core routing code.
@@ -120,3 +127,4 @@ Always mention what was validated, what was not validated, and remaining risk.
 - Choose a **skill** when the workflow is repeatable and deserves a slash command.
 - Choose a **profile file** when you only need to bias one session.
 - Keep private/local-only preferences in `CLAUDE.local.md`.
+

@@ -1,3 +1,10 @@
+<!-- IA-SYSTEM-PROTECTION:BEGIN -->
+> **REGLA OBLIGATORIA PARA CUALQUIER IA**
+>
+> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+>
+> Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
+<!-- IA-SYSTEM-PROTECTION:END -->
 # BotValia Desktop Plan
 
 ## Objetivo
@@ -382,3 +389,4 @@ y mover ahí el primer camino mínimo:
 - expose task/swarm state
 
 Ese sería el primer paso serio para que BotValia Desktop nazca bien.
+

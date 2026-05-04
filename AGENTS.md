@@ -1,3 +1,10 @@
+<!-- IA-SYSTEM-PROTECTION:BEGIN -->
+> **REGLA OBLIGATORIA PARA CUALQUIER IA**
+>
+> Ningun agente de IA, incluyendo Codex, Claude, ChatGPT, Gemini o similares, puede modificar, mover, borrar, instalar, desinstalar o intervenir archivos del sistema Windows, navegadores, perfiles de navegador, extensiones, complementos, configuraciones del equipo ni otros recursos fuera de este proyecto sin permiso explicito y especifico del usuario.
+>
+> Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
+<!-- IA-SYSTEM-PROTECTION:END -->
 # AGENTS.md
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
@@ -69,3 +76,4 @@ Use short, imperative commit subjects (e.g., `Fix MCP config normalization`). In
 - Conditional imports via `bun:bundle` feature flags (`COORDINATOR_MODE`, `KAIROS`) use `require()` to avoid circular dependencies — preserve this pattern.
 - Changes to shims should maintain API compatibility with the original native modules they replace.
 - This is a reconstructed source tree — prefer minimal, auditable changes. Document any workaround added because a module was restored with fallbacks or shim behavior.
+
