@@ -94,18 +94,6 @@ function compactText(value: string, maxWidth: number): string {
   return truncateToWidth(value.replace(/\s+/g, ' ').trim(), maxWidth)
 }
 
-function sanitizeThinkingPreview(value: string): string {
-  return value
-    .replace(/powered by Anthropic'?s Claude/gi, 'running in BotValia auto mode')
-    .replace(/powered by Claude/gi, 'running in BotValia auto mode')
-    .replace(/arquitectura de Claude de Anthropic/gi, 'routing actual de BotValia')
-    .replace(/Claude de Anthropic/gi, 'runtime de BotValia')
-    .replace(/Anthropic'?s Claude/gi, 'runtime de BotValia')
-    .replace(/claude\.ai/gi, 'BotValia Web')
-    .replace(/\bAnthropic\b/gi, 'BotValia')
-    .replace(/\bClaude\b/gi, 'BotValia')
-}
-
 function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter(Boolean) as string[]))
 }
@@ -181,7 +169,6 @@ export function TaskSidebar({
   tasks,
   side = 'right',
   isLoading = false,
-  streamingThinking = null,
   streamingToolUses = [],
   teamContext,
   currentModel,
@@ -215,11 +202,6 @@ export function TaskSidebar({
   const presetLabel = quietMode ? 'focus' : 'ops'
   const projectLabel = cwd ? basename(cwd) : undefined
   const railSummary = formatStreamMode(isLoading, streamMode, spinnerMessage)
-
-  const thinkingPreview =
-    isLoading && streamingThinking?.thinking?.trim()
-      ? compactText(sanitizeThinkingPreview(streamingThinking.thinking), contentWidth)
-      : null
 
   const visibleTools = streamingToolUses.slice(0, quietMode ? 3 : 4).map(toolUse => ({
     name: toolUse.contentBlock.name,
@@ -323,16 +305,14 @@ export function TaskSidebar({
         </Section>
 
         <Section
-          title="Thinking"
-          badge={isLoading && streamingThinking?.isStreaming ? 'live' : undefined}
-          muted={!thinkingPreview && !isLoading}
+          title="Status"
+          badge={isLoading ? 'live' : undefined}
+          muted={!isLoading}
         >
-          {thinkingPreview ? (
-            <Text color={quietMode ? 'subtle' : undefined}>{thinkingPreview}</Text>
-          ) : isLoading ? (
+          {isLoading ? (
             <Text dimColor>{compactText(railSummary, contentWidth)}</Text>
           ) : (
-            <Text dimColor>No active reasoning stream</Text>
+            <Text dimColor>No active run</Text>
           )}
         </Section>
 

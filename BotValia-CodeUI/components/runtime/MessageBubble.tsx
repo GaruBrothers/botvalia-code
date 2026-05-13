@@ -22,12 +22,10 @@ export function MessageBubble({ msg }: { msg: Message }) {
   const isSys = msg.role === "system";
   const isAssistantThinking =
     msg.role === "assistant" && msg.streamKind === "thinking";
+  if (isAssistantThinking) return null;
   const isAssistantStreamingResponse =
     msg.role === "assistant" && msg.streamKind === "response" && msg.isPending;
-  const assistantDisplayContent =
-    isAssistantThinking && (!msg.content.trim() || msg.content === 'Pensando...')
-      ? ''
-      : msg.content;
+  const assistantDisplayContent = msg.content;
 
   let Icon = Sparkles;
   if (isUser) Icon = User;
@@ -77,9 +75,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
                    : "You"
                  : isSys
                    ? "System"
-                   : isAssistantThinking
-                     ? "BotValia Code · thinking"
-                     : isAssistantStreamingResponse
+                   : isAssistantStreamingResponse
                        ? "BotValia Code · respondiendo"
                      : "BotValia Code"}
              </span>
@@ -97,13 +93,13 @@ export function MessageBubble({ msg }: { msg: Message }) {
                 tryParseCleanContent(msg.content)
              ) : (
                 <div className="markdown-body text-[13px] leading-6 space-y-3">
-                  {(isAssistantThinking || isAssistantStreamingResponse) && (
+                  {isAssistantStreamingResponse && (
                     <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-100 shadow-[0_0_24px_rgba(99,102,241,0.18)]">
                       <span className="relative flex h-2.5 w-2.5">
                         <span className="absolute inset-0 animate-ping rounded-full bg-indigo-300/60" />
                         <span className="relative h-2.5 w-2.5 rounded-full bg-indigo-200" />
                       </span>
-                      <span>{isAssistantThinking ? 'Thinking' : 'Streaming'}</span>
+                      <span>Streaming</span>
                       <div className="flex items-center gap-1">
                         {[0, 1, 2].map(index => (
                           <motion.span
@@ -117,11 +113,6 @@ export function MessageBubble({ msg }: { msg: Message }) {
                     </div>
                   )}
 
-                  {!assistantDisplayContent && isAssistantThinking ? (
-                    <div className="rounded-2xl border border-indigo-400/10 bg-indigo-500/5 px-4 py-2.5 text-[13px] text-indigo-100/80">
-                      BotValia Code está pensando y preparando la respuesta...
-                    </div>
-                  ) : (
                   <Markdown 
                     remarkPlugins={[remarkGfm]}
                     components={{
@@ -152,9 +143,8 @@ export function MessageBubble({ msg }: { msg: Message }) {
                   >
                     {tryParseCleanContent(assistantDisplayContent)}
                   </Markdown>
-                  )}
 
-                  {(isAssistantThinking || isAssistantStreamingResponse) && assistantDisplayContent && (
+                  {isAssistantStreamingResponse && assistantDisplayContent && (
                     <motion.span
                       aria-hidden="true"
                       animate={{ opacity: [0.25, 1, 0.25] }}

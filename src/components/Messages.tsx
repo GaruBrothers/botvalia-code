@@ -414,6 +414,7 @@ const MessagesImpl = ({
     }
     return false;
   }, [streamingThinking]);
+  const shouldRenderStreamingThinking = isStreamingThinkingVisible && streamingThinking && !isBriefOnly && !hideTechnicalNoise && verbose;
 
   // Find the last thinking block (message UUID + content index) for hiding past thinking in transcript mode
   // When streaming thinking is visible, use a special ID that won't match any completed thinking block
@@ -739,7 +740,7 @@ const MessagesImpl = ({
           </Box>
         </Box>}
 
-      {isStreamingThinkingVisible && streamingThinking && !isBriefOnly && !hideTechnicalNoise && <Box marginTop={1}>
+      {shouldRenderStreamingThinking && <Box marginTop={1}>
           <AssistantThinkingMessage param={{
         type: 'thinking',
         thinking: streamingThinking.thinking
