@@ -29,6 +29,7 @@ export type PromptCommand = {
   argNames?: string[]
   allowedTools?: string[]
   model?: string
+  maxOutputTokensOverride?: number
   source: SettingSource | 'builtin' | 'mcp' | 'plugin' | 'bundled'
   pluginInfo?: {
     pluginManifest: PluginManifest

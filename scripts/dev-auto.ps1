@@ -66,6 +66,29 @@ function Get-BunPath {
   return "bun"
 }
 
+function Get-GlobalSkillDirs {
+  $userHome = [Environment]::GetFolderPath("UserProfile")
+  $candidates = @(
+    (Join-Path $userHome ".botvalia\skills"),
+    (Join-Path $userHome ".claude\skills")
+  )
+
+  $dirs = @()
+  foreach ($candidate in $candidates) {
+    if (-not (Test-Path $candidate)) {
+      continue
+    }
+
+    try {
+      $dirs += (Resolve-Path $candidate).Path
+    } catch {
+      $dirs += $candidate
+    }
+  }
+
+  return @($dirs | Select-Object -Unique)
+}
+
 function First-NonEmpty {
   param([string[]]$Values)
   foreach ($value in $Values) {
@@ -1210,6 +1233,13 @@ if ($VersionOnly) {
 }
 
 if ($BareMode) {
+  if (-not (@($ExtraArgs) -contains "--add-dir")) {
+    $globalSkillDirs = Get-GlobalSkillDirs
+    if ($globalSkillDirs.Count -gt 0) {
+      $ExtraArgs = @("--add-dir") + $globalSkillDirs + @($ExtraArgs)
+    }
+  }
+
   $ExtraArgs = @("--bare") + @($ExtraArgs)
 }
 

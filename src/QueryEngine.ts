@@ -436,6 +436,7 @@ export class QueryEngine {
       shouldQuery,
       allowedTools,
       model: modelFromUserInput,
+      maxOutputTokensOverride,
       resultText,
     } = await processUserInput({
       input: prompt,
@@ -751,6 +752,7 @@ export class QueryEngine {
       primaryRouteSpec: effectivePrimaryRouteSpec,
       fallbackRouteSpecs: effectiveFallbackRouteSpecs,
       querySource: 'sdk',
+      maxOutputTokensOverride,
       maxTurns,
       taskBudget,
     })) {

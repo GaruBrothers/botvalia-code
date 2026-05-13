@@ -7,6 +7,7 @@ import {
   dirname,
   isAbsolute,
   join,
+  normalize,
   sep as pathSep,
   relative,
 } from 'path'
@@ -80,6 +81,19 @@ function uniquePaths(paths: string[]): string[] {
   return [...new Set(paths.filter(Boolean))]
 }
 
+function trimTrailingPathSeparators(dir: string): string {
+  const trimmed = dir.replace(/[\\/]+$/, '')
+  return trimmed.length > 0 ? trimmed : dir
+}
+
+function normalizePathForSkillComparison(dir: string): string {
+  let normalized = normalize(trimTrailingPathSeparators(dir))
+  if (process.platform === 'win32') {
+    normalized = normalized.replace(/\//g, '\\').toLowerCase()
+  }
+  return normalized
+}
+
 export function getLegacySkillsPaths(
   source: SettingSource | 'plugin',
   dir: 'skills' | 'commands',
@@ -111,10 +125,54 @@ export function getAllSkillsPaths(
 }
 
 export function getAdditionalDirectorySkillPaths(dir: string): string[] {
+  const normalizedDir = trimTrailingPathSeparators(dir)
+  const baseName = basename(normalizedDir)
+
+  if (baseName === 'skills') {
+    return uniquePaths([normalizedDir])
+  }
+
+  if (
+    baseName === PRIMARY_BOTVALIA_CONFIG_DIR ||
+    baseName === LEGACY_CLAUDE_CONFIG_DIR
+  ) {
+    return uniquePaths([join(normalizedDir, 'skills')])
+  }
+
   return uniquePaths([
-    join(dir, PRIMARY_BOTVALIA_CONFIG_DIR, 'skills'),
-    join(dir, LEGACY_CLAUDE_CONFIG_DIR, 'skills'),
+    join(normalizedDir, PRIMARY_BOTVALIA_CONFIG_DIR, 'skills'),
+    join(normalizedDir, LEGACY_CLAUDE_CONFIG_DIR, 'skills'),
   ])
+}
+
+function getAdditionalSkillsDirSource(
+  skillDir: string,
+  {
+    managedSkillsDirs,
+    userSkillsDirs,
+  }: {
+    managedSkillsDirs: string[]
+    userSkillsDirs: string[]
+  },
+): SettingSource {
+  const normalizedSkillDir = normalizePathForSkillComparison(skillDir)
+  if (
+    userSkillsDirs.some(
+      dir => normalizePathForSkillComparison(dir) === normalizedSkillDir,
+    )
+  ) {
+    return 'userSettings'
+  }
+
+  if (
+    managedSkillsDirs.some(
+      dir => normalizePathForSkillComparison(dir) === normalizedSkillDir,
+    )
+  ) {
+    return 'policySettings'
+  }
+
+  return 'projectSettings'
 }
 
 /**
@@ -711,29 +769,44 @@ export const getSkillDirCommands = memoize(
     const skillsLocked = isRestrictedToPluginOnly('skills')
     const projectSettingsEnabled =
       isSettingSourceEnabled('projectSettings') && !skillsLocked
+    const userSettingsEnabled =
+      isSettingSourceEnabled('userSettings') && !skillsLocked
+    const additionalSkillDirs = additionalDirs.flatMap(dir =>
+      getAdditionalDirectorySkillPaths(dir).map(skillDir => ({
+        skillDir,
+        source: getAdditionalSkillsDirSource(skillDir, {
+          managedSkillsDirs,
+          userSkillsDirs,
+        }),
+      })),
+    )
+    const enabledAdditionalSkillDirs = additionalSkillDirs.filter(
+      ({ source }) =>
+        source === 'policySettings'
+          ? !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_POLICY_SKILLS)
+          : source === 'userSettings'
+            ? userSettingsEnabled
+            : projectSettingsEnabled,
+    )
 
     // --bare: skip auto-discovery (managed/user/project dir walks + legacy
     // commands-dir). Load ONLY explicit --add-dir paths. Bundled skills
     // register separately. skillsLocked still applies — --bare is not a
     // policy bypass.
     if (isBareMode()) {
-      if (additionalDirs.length === 0 || !projectSettingsEnabled) {
+      if (enabledAdditionalSkillDirs.length === 0) {
         logForDebugging(
-          `[bare] Skipping skill dir discovery (${additionalDirs.length === 0 ? 'no --add-dir' : 'projectSettings disabled or skillsLocked'})`,
+          `[bare] Skipping skill dir discovery (${additionalDirs.length === 0 ? 'no --add-dir' : 'all explicit skill dirs disabled or unavailable'})`,
         )
         return []
       }
-      const additionalSkillsNested = await Promise.all(
-        additionalDirs.map(dir =>
-          Promise.all(
-            getAdditionalDirectorySkillPaths(dir).map(skillDir =>
-              loadSkillsFromSkillsDir(skillDir, 'projectSettings'),
-            ),
-          ),
+      const additionalSkills = await Promise.all(
+        enabledAdditionalSkillDirs.map(({ skillDir, source }) =>
+          loadSkillsFromSkillsDir(skillDir, source),
         ),
       )
       // No dedup needed — explicit dirs, user controls uniqueness.
-      return additionalSkillsNested.flat(2).map(s => s.skill)
+      return additionalSkills.flat().map(s => s.skill)
     }
 
     // Load from /skills/ directories, additional dirs, and legacy /commands/ in parallel
@@ -766,16 +839,12 @@ export const getSkillDirCommands = memoize(
             ),
           )
         : Promise.resolve([]),
-      projectSettingsEnabled
+      enabledAdditionalSkillDirs.length > 0
         ? Promise.all(
-            additionalDirs.map(dir =>
-              Promise.all(
-                getAdditionalDirectorySkillPaths(dir).map(skillDir =>
-                  loadSkillsFromSkillsDir(skillDir, 'projectSettings'),
-                ),
-              ),
+            enabledAdditionalSkillDirs.map(({ skillDir, source }) =>
+              loadSkillsFromSkillsDir(skillDir, source),
             ),
-          ).then(_ => _.map(entry => entry.flat()))
+          )
         : Promise.resolve([]),
       // Legacy commands-as-skills goes through markdownConfigLoader with
       // subdir='commands', which our agents-only guard there skips. Block

@@ -156,14 +156,11 @@ After writing, tell the user:
 `
 
 export function registerSkillifySkill(): void {
-  if (process.env.USER_TYPE !== 'ant') {
-    return
-  }
-
   registerBundledSkill({
     name: 'skillify',
+    aliases: ['create-skill'],
     description:
-      "Capture this session's repeatable process into a skill. Call at end of the process you want to capture with an optional description.",
+      "Turn a described or just-finished workflow into a reusable skill. Use it at the end of a process, or pass a short description of the skill you want to create.",
     allowedTools: [
       'Read',
       'Write',
@@ -173,6 +170,7 @@ export function registerSkillifySkill(): void {
       'AskUserQuestion',
       'Bash(mkdir:*)',
     ],
+    maxOutputTokensOverride: 4096,
     userInvocable: true,
     disableModelInvocation: true,
     argumentHint: '[description of the process you want to capture]',

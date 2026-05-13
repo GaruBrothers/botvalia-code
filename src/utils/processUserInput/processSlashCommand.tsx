@@ -387,6 +387,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     shouldQuery: messageShouldQuery,
     allowedTools,
     model,
+    maxOutputTokensOverride,
     effort,
     command: returnedCommand,
     resultText,
@@ -444,6 +445,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
       messages: [],
       shouldQuery: false,
       model,
+      maxOutputTokensOverride,
       nextInput,
       submitNextInput
     };
@@ -462,7 +464,8 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
       messages: [createSyntheticUserCaveatMessage(), ...newMessages],
       shouldQuery: messageShouldQuery,
       allowedTools,
-      model
+      model,
+      maxOutputTokensOverride
     };
   }
 
@@ -516,6 +519,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     shouldQuery: messageShouldQuery,
     allowedTools,
     model,
+    maxOutputTokensOverride,
     effort,
     resultText,
     nextInput,
@@ -862,6 +866,7 @@ async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCom
       })],
       shouldQuery: true,
       model: command.model,
+      maxOutputTokensOverride: command.maxOutputTokensOverride,
       effort: command.effort,
       command
     };
@@ -915,6 +920,7 @@ async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCom
     shouldQuery: true,
     allowedTools: additionalAllowedTools,
     model: command.model,
+    maxOutputTokensOverride: command.maxOutputTokensOverride,
     effort: command.effort,
     command
   };

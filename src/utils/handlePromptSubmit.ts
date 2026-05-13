@@ -68,6 +68,7 @@ type BaseExecutionParams = {
     mainLoopModel: string,
     onBeforeQuery?: (input: string, newMessages: Message[]) => Promise<boolean>,
     input?: string,
+    maxOutputTokensOverride?: number,
     effort?: EffortValue,
   ) => Promise<void>
   setAppState: (updater: (prev: AppState) => AppState) => void
@@ -441,6 +442,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
     let shouldQuery = false
     let allowedTools: string[] | undefined
     let model: string | undefined
+    let maxOutputTokensOverride: number | undefined
     let effort: EffortValue | undefined
     let nextInput: string | undefined
     let submitNextInput: boolean | undefined
@@ -515,6 +517,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
           shouldQuery = result.shouldQuery
           allowedTools = result.allowedTools
           model = result.model
+          maxOutputTokensOverride = result.maxOutputTokensOverride
           effort = result.effort
           nextInput = result.nextInput
           submitNextInput = result.submitNextInput
@@ -567,6 +570,7 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
             : mainLoopModel,
           shouldCallBeforeQuery ? onBeforeQuery : undefined,
           primaryInput,
+          maxOutputTokensOverride,
           effort,
         )
       } else {

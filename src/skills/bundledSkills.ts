@@ -20,6 +20,7 @@ export type BundledSkillDefinition = {
   argumentHint?: string
   allowedTools?: string[]
   model?: string
+  maxOutputTokensOverride?: number
   disableModelInvocation?: boolean
   userInvocable?: boolean
   isEnabled?: () => boolean
@@ -82,6 +83,7 @@ export function registerBundledSkill(definition: BundledSkillDefinition): void {
     argumentHint: definition.argumentHint,
     whenToUse: definition.whenToUse,
     model: definition.model,
+    maxOutputTokensOverride: definition.maxOutputTokensOverride,
     disableModelInvocation: definition.disableModelInvocation ?? false,
     userInvocable: definition.userInvocable ?? true,
     contentLength: 0, // Not applicable for bundled skills

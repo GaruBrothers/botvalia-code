@@ -276,10 +276,22 @@ export default class App extends PureComponent<Props, State> {
       return;
     }
 
+    // Exit paths can call setRawMode(false) more than once (for example
+    // Ctrl+C -> handleExit() followed by React unmount cleanup). Once the
+    // counter reaches zero, further disables are a no-op.
+    if (this.rawModeEnabledCount === 0) {
+      return;
+    }
+
     // Disable raw mode only when no components left that are using it
     if (--this.rawModeEnabledCount === 0) {
       this.props.stdout.write(DISABLE_MODIFY_OTHER_KEYS);
       this.props.stdout.write(DISABLE_KITTY_KEYBOARD);
+      // Disable mouse tracking before returning control to the shell.
+      // Without this, some terminals can keep emitting SGR mouse reports
+      // for a brief window after Ctrl+C, which shows up as garbled bytes
+      // when the user moves the mouse at the prompt.
+      this.props.stdout.write(DISABLE_MOUSE_TRACKING);
       // Disable terminal focus reporting (DECSET 1004)
       this.props.stdout.write(DFE);
       // Disable bracketed paste mode
@@ -404,6 +416,13 @@ export default class App extends PureComponent<Props, State> {
     // keyboard protocol terminals (Ghostty, iTerm2, kitty, WezTerm)
   };
   handleExit = (error?: Error): void => {
+    if (this.props.stdout.isTTY) {
+      // Best-effort early cutoff for mouse reports on Ctrl+C / exit. The
+      // Ink-level unmount path also disables tracking synchronously, but
+      // sending it here closes the race where the shell regains focus just
+      // before the full teardown finishes.
+      this.props.stdout.write(DISABLE_MOUSE_TRACKING);
+    }
     if (this.isRawModeSupported()) {
       this.handleSetRawMode(false);
     }

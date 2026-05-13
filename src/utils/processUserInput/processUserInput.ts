@@ -72,6 +72,7 @@ export type ProcessUserInputBaseResult = {
   shouldQuery: boolean
   allowedTools?: string[]
   model?: string
+  maxOutputTokensOverride?: number
   effort?: EffortValue
   // Output text for non-interactive mode (e.g., forked commands)
   // When set, this is used as the result in -p mode instead of empty string

@@ -631,6 +631,19 @@ const externalTips: Tip[] = [
       return config.numStartups > 5
     },
   },
+  {
+    id: 'skillify',
+    content: async () =>
+      'Use /skillify or /create-skill to turn a workflow into a reusable skill',
+    cooldownSessions: 15,
+    async isRelevant() {
+      if (process.env.USER_TYPE === 'ant') {
+        return false
+      }
+      const config = getGlobalConfig()
+      return config.numStartups > 3
+    },
+  },
 ]
 const internalOnlyTips: Tip[] =
   process.env.USER_TYPE === 'ant'
@@ -640,13 +653,6 @@ const internalOnlyTips: Tip[] =
           content: async () =>
             '[ANT-ONLY] Use "IMPORTANT:" prefix for must-follow rules in the project instruction file (CLAUDE.md)',
           cooldownSessions: 30,
-          isRelevant: async () => true,
-        },
-        {
-          id: 'skillify',
-          content: async () =>
-            '[ANT-ONLY] Use /skillify at the end of a workflow to turn it into a reusable skill',
-          cooldownSessions: 15,
           isRelevant: async () => true,
         },
       ]
