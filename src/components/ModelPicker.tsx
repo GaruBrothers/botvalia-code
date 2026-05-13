@@ -425,6 +425,7 @@ export function ModelPicker({
             defaultFocusValue={resolvedFocusedValue}
             options={selectOptions}
             disableSelection={!selectionArmed}
+            showScrollIndicators={false}
             onChange={handleSelect}
             onFocus={handleFocus}
             onCancel={handleCancel}
