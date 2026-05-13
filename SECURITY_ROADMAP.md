@@ -7,7 +7,7 @@
 <!-- IA-SYSTEM-PROTECTION:END -->
 # BotValia Code Security Roadmap
 
-Last updated: 2026-05-03  
+Last updated: 2026-05-13  
 Repository: `botvalia-code`
 
 ## Executive Summary
@@ -18,70 +18,70 @@ The biggest security improvements now verifiably in place are:
 
 - `BotValia-CodeUI/.next/**` is no longer tracked in Git.
 - The local runtime WebSocket now requires a **per-runtime auth token** at connection time.
-- The runtime web UI no longer persists runtime URL, ownership metadata, and drafts in `localStorage`; that data now lives in `sessionStorage` and scopes out the token-bearing query string.
+- Runtime `web-ui` mutations now require a **short-lived per-session lease** in addition to the authenticated WebSocket.
+- The runtime web UI no longer owns long-term session metadata; browser storage is now limited to session-scoped launch connection material while lifecycle metadata persists in runtime sidecar records.
 - The runtime launch token is no longer shown in the visible browser URL after the runtime web UI boots, and `/runtime` user-facing output now prints a sanitized launch URL.
+- Session lifecycle metadata (`title`, `archived`, `pinned`, `notes`, event history, model override) now persists in local runtime sidecar records shared by CLI and Web UI.
 - Feedback submission, transcript sharing, nonessential telemetry, background update checks, and changelog fetches are now **disabled by default** in OSS mode unless users explicitly opt in.
 - Internal `/insights` remote collection and upload paths are now **disabled by default** in OSS mode unless maintainers explicitly opt in with internal env configuration.
 - Public package metadata now points to the BotValia repository instead of the legacy upstream project.
 - Direct `package.json` dependencies and devDependencies that previously used broad wildcard ranges were pinned to concrete versions from the current lockfile snapshot.
 - A repo-level [SECURITY.md](./SECURITY.md) now exists.
 - Maintainer-facing release docs now exist in [NETWORK_EGRESS.md](./NETWORK_EGRESS.md) and [SECURITY_RELEASE_CHECKLIST.md](./SECURITY_RELEASE_CHECKLIST.md).
-- A local `bun run security:preflight` check and a baseline GitHub Actions security-preflight workflow now exist.
+- A local `bun run security:preflight` check plus `/security audit` and `/runtime security` now exist.
 
 The main release blockers that still remain are:
 
 - OAuth, MCP, and other cloud-oriented paths still reference legacy provider infrastructure in executable code and compatibility layers.
-- Runtime auth is improved, but the bridge is not yet hardened with per-operation authorization beyond the WebSocket handshake and the runtime token still originates from a launch URL flow.
+- Runtime auth is materially better, but the launch flow still originates from a tokenized local URL and the security target remains single-user desktop rather than multi-tenant isolation.
 - Public docs and product surface still contain legacy provider assumptions in various places.
 - There is still no dedicated private security contact or advisory workflow in-tree.
 
 ## What Was Verified In This Update
 
-The statements in this document were checked directly against the current working tree on 2026-05-03.
+The statements in this document were checked directly against the current working tree on 2026-05-13.
 
 Validation executed:
 
 - `bun run version`
 - `bun run security:preflight`
-- `git ls-files "BotValia-CodeUI/.next/**"`
-- `cd BotValia-CodeUI && npx tsc --noEmit`
-- `bun audit`
 - Runtime auth smoke test:
   - authenticated client can connect with the generated runtime URL
   - unauthenticated client is rejected when the token is omitted
-- OSS-safe defaults smoke test:
-  - feedback disabled by default
-  - transcript sharing disabled by default
-  - telemetry disabled by default
-  - update checks disabled by default
+- Runtime lease smoke test:
+  - `create_session` issues a lease for the `web-ui` actor
+  - mutating without `leaseId` fails with `unauthorized`
+  - taking over the session from another client invalidates the old lease with `channel_conflict`
+  - archive/restore/pin/model override continue to work with the fresh lease
 
 Observed results:
 
-- `git ls-files "BotValia-CodeUI/.next/**"` returned no tracked files.
-- `BotValia-CodeUI` typecheck passed.
-- `security:preflight` passed.
+- `security:preflight` passed with `16 pass / 2 warn / 0 fail`.
 - Runtime auth smoke returned:
-  - `runtimeAuthWorks: true`
-- OSS-safe default smoke returned:
-  - `feedbackEnabled: false`
-  - `transcriptEnabled: false`
-  - `telemetryEnabled: false`
-  - `updatesEnabled: false`
-- `bun audit` now returns:
-  - no vulnerabilities found
-- `security:preflight` now reports:
-  - `local-path-leaks: pass`
-  - `legacy-cloud-endpoints: warn`
-  - `working-tree-cleanliness: pass` when the tree is clean
+  - authenticated client connected successfully
+  - unauthenticated client was rejected when the token was removed
+- Runtime lease smoke returned:
+  - missing lease -> `[unauthorized]`
+  - stale lease after takeover -> `[channel_conflict]`
+  - archive/restore/pin/model override succeeded with the fresh lease
+- `security:preflight` warnings remain limited to:
+  - `legacy-cloud-endpoints`
+  - `working-tree-cleanliness` when the tree contains local edits
 
 ## Current Risk Snapshot
 
 ### Verified improvements
 
 - Runtime WS handshake auth now exists in:
+- Runtime per-session lease auth now exists in:
   - `src/runtime/protocol.ts`
+  - `src/runtime/runtimeBridge.ts`
+  - `src/runtime/runtimeService.ts`
+  - `src/runtime/sessionRuntime.ts`
   - `src/runtime/runtimeWsServer.ts`
   - `src/runtime/runtimeWsClient.ts`
+- Runtime sidecar persistence now exists in:
+  - `src/runtime/runtimeSessionStore.ts`
 - OSS-safe network defaults now exist in:
   - `src/utils/nonEssentialEgress.ts`
   - `src/components/Feedback.tsx`
@@ -95,7 +95,6 @@ Observed results:
 - Runtime web persistence was reduced and normalized in:
   - `BotValia-CodeUI/hooks/useRuntimeInspector.ts`
   - `BotValia-CodeUI/lib/runtime-client.ts`
-  - `BotValia-CodeUI/lib/runtime-session-ownership.ts`
   - `BotValia-CodeUI/lib/runtime-browser-storage.ts`
   - `BotValia-CodeUI/lib/runtime-url.ts`
 - Public metadata/packaging cleanup is visible in:
@@ -107,7 +106,8 @@ Observed results:
 - OAuth constants and MCP/cloud flows still target legacy provider-operated domains in files such as:
   - `src/constants/oauth.ts`
   - bridge and auth pathways under `src/bridge/` and `src/utils/auth*`
-- Runtime bridge auth is still only as strong as secrecy of the generated URL/token.
+- Runtime bridge still depends on a tokenized local launch flow even though session mutations now have stronger per-session auth.
+- The security target is still local single-user desktop use, not a remote or shared-host trust model.
 - Direct dependency pinning is improved, but audit remediation and transitive-dependency review are still open.
 - Public docs and some UX/help paths still need a full OSS identity and infrastructure pass.
 
@@ -151,25 +151,27 @@ Current status:
 - Safe-by-default egress posture: improved
 - Full external-surface sanitization: pending
 
-### 3. Runtime bridge auth is improved, but not yet final-form
+### 3. Runtime bridge auth is improved, but still intentionally local-first
 
 Verified state:
 
 - `src/runtime/runtimeWsServer.ts` generates and validates a per-runtime token in the WebSocket URL.
 - `src/runtime/runtimeWsClient.ts` understands the authenticated runtime URL.
-- Browser storage scope strips the token-bearing query string before persisting ownership metadata.
+- `src/runtime/runtimeService.ts` and `src/runtime/sessionRuntime.ts` now enforce short-lived `leaseId` checks for `web-ui` mutations.
+- Browser storage scope strips the token-bearing query string before persisting connection metadata.
 - User-facing `/runtime` output now prints a sanitized launch URL rather than echoing the full tokenized launch string.
 
 Why it still matters:
 
 - The runtime token still travels in a URL.
 - A local process that gains the runtime URL during the lifetime of the session can still use the bridge.
-- Authorization is still primarily connection-level, not a richer per-operation or per-session trust model.
+- The trust model is explicitly local single-user, not multi-user or remote-host hardened.
 
 Current status:
 
 - Handshake auth: resolved for this phase
-- Stronger runtime trust model: pending
+- Per-session mutation authorization: resolved for this phase
+- Stronger non-URL launch/auth model: pending
 
 ### 4. Public OSS posture is better, but not fully sanitized
 
@@ -190,10 +192,10 @@ Still pending:
 |---|---|---|---|
 | Phase 0 | Public release freeze and cleanup | Partial | `.next` untracked, package metadata fixed, `SECURITY.md` added, release checklist added. Full doc/help/brand sanitization still pending. |
 | Phase 1 | Network egress and privacy hardening | Partial | Feedback, transcript share, telemetry, update checks, and release-note fetch are now OSS-safe by default. `NETWORK_EGRESS.md` exists, but legacy cloud/OAuth paths still exist in code. |
-| Phase 2 | Runtime and local IPC hardening | Partial | Runtime WebSocket now requires a per-runtime token at handshake. Token still rides in the runtime URL and there is no deeper auth model yet. |
+| Phase 2 | Runtime and local IPC hardening | Partial | Runtime WebSocket requires a per-runtime token and `web-ui` mutations now require a session lease. Token still rides in the launch flow and the target remains local single-user. |
 | Phase 3 | Dependency and supply-chain hardening | Partial | Direct dependency ranges are pinned, targeted overrides are in place, and `bun audit` is currently clean. Ongoing lockfile discipline and future upgrade review still remain. |
 | Phase 4 | Product surface sanitization for OSS | Partial | Public package metadata is fixed, but docs/help/code surface still need a broader legacy-infrastructure cleanup. |
-| Phase 5 | Secure data handling and consent | Partial | Browser persistence now uses `sessionStorage`, not `localStorage`, for runtime metadata. Transcript export still relies on best-effort redaction and cloud endpoints remain in code. |
+| Phase 5 | Secure data handling and consent | Partial | Browser persistence now uses session-scoped launch storage only, while lifecycle metadata persists in local runtime sidecars. Transcript export still relies on best-effort redaction and cloud endpoints remain in code. |
 | Phase 6 | Security assurance before public scale | Partial | `SECURITY.md`, `NETWORK_EGRESS.md`, `SECURITY_RELEASE_CHECKLIST.md`, `security:preflight`, and a baseline CI workflow now exist, but there is still no dedicated private inbox or advisory flow. |
 
 ## Phase-by-Phase Detail
@@ -242,11 +244,11 @@ Status: **partial**
 Resolved now:
 
 - WebSocket connections to the local runtime require the generated runtime token.
-- Browser-side runtime persistence no longer stores the token-bearing URL in `localStorage`.
+- `web-ui` mutation requests now require a short-lived per-session lease.
+- Browser-side runtime persistence no longer stores long-lived session metadata; browser state is limited to session-scoped launch connection data.
 
 Still pending:
 
-- Decide whether mutation requests should also require stronger channel/session authorization semantics.
 - Consider auth rotation, shorter-lived secrets, or non-URL transport for the token.
 - Harden any future remote/browser embedding path that might expose the runtime URL.
 
@@ -309,6 +311,7 @@ Resolved now:
 - A repo-level `SECURITY.md` exists and points to this roadmap.
 - Maintainer-facing docs now include `NETWORK_EGRESS.md` and `SECURITY_RELEASE_CHECKLIST.md`.
 - A local `security:preflight` command now exercises key OSS-safe checks.
+- `/security audit` and `/runtime security` surface that same gate from the product.
 - A baseline GitHub Actions workflow now runs the preflight on `push` and `pull_request`.
 
 Still pending:
@@ -327,7 +330,7 @@ Still pending:
 The next security sprint should focus on these items in order:
 
 1. Sanitize remaining public docs/help/legacy endpoint assumptions.
-2. Decide whether the runtime token should move off the raw URL or gain stronger per-operation authorization semantics.
+2. Decide whether the runtime token should move off the raw URL now that per-operation authorization semantics already exist.
 3. Add CI security gates and lockfile/sbom policy.
 4. Establish a private vulnerability reporting path and advisory workflow.
 5. Periodically re-run `bun audit` and validate that overrides can be reduced instead of growing indefinitely.

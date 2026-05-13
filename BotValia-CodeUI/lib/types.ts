@@ -11,6 +11,15 @@ export type PermissionMode =
   | 'bubble';
 export type RuntimeSessionChannel = 'cli' | 'web-ui';
 
+export interface RuntimeChannelOwner {
+  channel: RuntimeSessionChannel;
+  clientId?: string;
+  leaseId?: string;
+  claimedAt: string;
+  leaseExpiresAt?: string;
+  takeoverAt?: string;
+}
+
 export interface AgentTask {
   id: string;
   description: string;
@@ -90,6 +99,8 @@ export interface EventLog {
   timestamp: string;
   type: 'info' | 'warn' | 'error';
   message: string;
+  source?: string;
+  eventType?: string;
 }
 
 export interface Session {
@@ -99,8 +110,11 @@ export interface Session {
   title?: string;
   workspaceName: string;
   status: SessionStatus;
+  hasLiveRuntime?: boolean;
   activeChannel: RuntimeSessionChannel;
   activeChannelUpdatedAt: string;
+  channelOwner?: RuntimeChannelOwner | null;
+  leaseExpiresAt?: string;
   permissionMode: PermissionMode;
   isBypassPermissionsModeAvailable: boolean;
   isAutoModeAvailable: boolean;

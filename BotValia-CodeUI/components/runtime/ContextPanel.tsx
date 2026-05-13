@@ -66,8 +66,8 @@ export function ContextPanel({
   onRename?: (sessionId: string, title: string) => Promise<void>;
   onArchive?: (sessionId: string) => Promise<void>;
   onRestore?: (sessionId: string) => Promise<void>;
-  onTogglePin?: (sessionId: string) => void;
-  onUpdateNotes?: (sessionId: string, notes: string) => void;
+  onTogglePin?: (sessionId: string) => Promise<void>;
+  onUpdateNotes?: (sessionId: string, notes: string) => Promise<void>;
   onClaimSession?: (sessionId?: string | null) => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<TabId>("ahora");
@@ -85,6 +85,10 @@ export function ContextPanel({
   const canUpdateNotes = Boolean(onUpdateNotes);
   const activeChannelLabel = session.activeChannel === "web-ui" ? "Web UI" : "CLI";
   const channelTime = new Date(session.activeChannelUpdatedAt).toLocaleTimeString();
+  const ownerClient = session.channelOwner?.clientId || "none";
+  const leaseLabel = session.leaseExpiresAt
+    ? new Date(session.leaseExpiresAt).toLocaleTimeString()
+    : "n/a";
 
   return (
     <div className="flex h-full w-full flex-col bg-transparent">
@@ -152,10 +156,17 @@ export function ContextPanel({
                   <InfoCard label="Sesion" value={session.id} />
                   <InfoCard label="Modelo" value={session.model} accent />
                   <InfoCard
+                    label="Worker runtime"
+                    value={session.hasLiveRuntime ? "attached" : "persisted-only"}
+                    accent={Boolean(session.hasLiveRuntime)}
+                  />
+                  <InfoCard
                     label="Canal activo"
                     value={`${activeChannelLabel} · ${channelTime}`}
                     accent={session.activeChannel === "web-ui"}
                   />
+                  <InfoCard label="Owner client" value={ownerClient} />
+                  <InfoCard label="Lease vence" value={leaseLabel} />
                   <InfoCard
                     label="Modo"
                     value={formatPermissionModeLabel(session.permissionMode)}
@@ -188,7 +199,7 @@ export function ContextPanel({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => onTogglePin?.(session.id)}
+                      onClick={() => void onTogglePin?.(session.id)}
                     className="h-8 border-white/[0.08] bg-white/[0.03] text-gray-300 hover:bg-white/[0.08]"
                   >
                     {session.pinned ? (
@@ -247,7 +258,7 @@ export function ContextPanel({
                   <textarea
                     value={draftNotes}
                     onChange={event => setDraftNotes(event.target.value)}
-                    onBlur={() => onUpdateNotes?.(session.id, draftNotes)}
+                    onBlur={() => void onUpdateNotes?.(session.id, draftNotes)}
                     className="min-h-28 w-full rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-indigo-500/40"
                     placeholder="Notas operativas, contexto o preferencias de esta sesion..."
                   />

@@ -1349,6 +1349,12 @@ export function REPL({
       abortControllerRef.current?.abort('interrupt');
     },
     setPermissionMode: mode => runtimeSetPermissionModeRef.current(mode),
+    setSessionModel: model => {
+      setAppState(prev => ({
+        ...prev,
+        mainLoopModelForSession: model
+      }));
+    },
     initialStatus: 'idle'
   }));
   useEffect(() => {

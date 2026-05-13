@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto'
+import { randomBytes, randomUUID } from 'crypto'
 import type { AddressInfo } from 'net'
 import { WebSocket, WebSocketServer } from 'ws'
 import {
@@ -91,7 +91,7 @@ export async function startRuntimeWebSocketServer(
   })
 
   server.on('connection', socket => {
-    const bridge = new RuntimeBridge(runtimeService)
+    const bridge = new RuntimeBridge(runtimeService, randomUUID())
     const unsubscribe = bridge.onEvent(event => {
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(serializeMessage(event))
@@ -108,6 +108,7 @@ export async function startRuntimeWebSocketServer(
             JSON.stringify({
               requestId: 'unknown',
               ok: false,
+              code: 'validation_error',
               error: 'No pude parsear el mensaje JSON del cliente runtime.',
             }),
           )
@@ -121,6 +122,7 @@ export async function startRuntimeWebSocketServer(
             JSON.stringify({
               requestId: 'unknown',
               ok: false,
+              code: 'validation_error',
               error: 'El mensaje no cumple el contrato RuntimeProtocolRequest.',
             }),
           )

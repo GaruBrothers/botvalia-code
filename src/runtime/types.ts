@@ -10,6 +10,7 @@ import type {
 
 export type RuntimeSessionId = string
 export type RuntimeSessionChannel = 'cli' | 'web-ui'
+export type RuntimeLeaseId = string
 
 export type RuntimeSessionStatus =
   | 'idle'
@@ -124,12 +125,30 @@ export type RuntimeSwarmEventPayload = {
   toolName?: string
 }
 
+export type RuntimeSessionChannelOwner = {
+  channel: RuntimeSessionChannel
+  clientId?: string
+  leaseId?: RuntimeLeaseId
+  claimedAt: string
+  leaseExpiresAt?: string
+  takeoverAt?: string
+}
+
 export type RuntimeSessionSnapshot = {
   sessionId: RuntimeSessionId
   cwd: string
+  title: string
+  isArchived: boolean
+  isPinned: boolean
+  notes?: string
+  createdAt: string
+  updatedAt: string
   status: RuntimeSessionStatus
+  hasLiveRuntime: boolean
   activeChannel: RuntimeSessionChannel
   activeChannelUpdatedAt: string
+  channelOwner: RuntimeSessionChannelOwner | null
+  leaseExpiresAt?: string
   permissionMode: PermissionMode
   isBypassPermissionsModeAvailable: boolean
   isAutoModeAvailable: boolean
@@ -140,13 +159,63 @@ export type RuntimeSessionSnapshot = {
   swarm: RuntimeSwarmSummary
 }
 
+export type RuntimeMessageBlock =
+  | {
+      type: 'text' | 'markdown'
+      text: string
+    }
+  | {
+      type: 'thinking' | 'redacted_thinking'
+      text: string
+    }
+  | {
+      type: 'tool_use'
+      toolUseId?: string
+      toolName?: string
+      text: string
+      inputPreview?: string
+    }
+  | {
+      type: 'tool_result'
+      toolUseId?: string
+      text: string
+    }
+  | {
+      type: 'attachment_reference'
+      attachmentType?: string
+      path?: string
+      text: string
+    }
+  | {
+      type: 'json'
+      text: string
+    }
+
 export type RuntimeMessageSummary = {
   uuid: string
   timestamp: string
   type: Message['type']
   label: string
   text: string
+  blocks: RuntimeMessageBlock[]
   isMeta?: boolean
+}
+
+export type RuntimeSessionEventSeverity = 'info' | 'warn' | 'error'
+
+export type RuntimeSessionEventRecord = {
+  id: string
+  timestamp: string
+  source: 'runtime' | 'service' | 'session-store'
+  severity: RuntimeSessionEventSeverity
+  eventType: string
+  message: string
+}
+
+export type RuntimeModelOption = {
+  value: ModelSetting
+  label: string
+  description: string
 }
 
 export type RuntimeSessionDetail = {
@@ -155,6 +224,7 @@ export type RuntimeSessionDetail = {
   tasks: RuntimeTaskSummary[]
   swarmThreads: SwarmThreadSummary[]
   swarmWaitingEdges: SwarmWaitingEdge[]
+  events: RuntimeSessionEventRecord[]
 }
 
 export type RuntimeSendMessageInput = {
@@ -171,6 +241,7 @@ export type RuntimeSessionConfig = {
   getMessages?: () => readonly Message[]
   submitMessage?: (input: RuntimeSendMessageInput) => Promise<void>
   setPermissionMode?: (mode: PermissionMode) => Promise<void> | void
+  setSessionModel?: (model: ModelSetting) => Promise<void> | void
   interrupt?: () => void
   initialStatus?: RuntimeSessionStatus
   initialActiveChannel?: RuntimeSessionChannel
@@ -224,32 +295,97 @@ export function toRuntimeTaskSummary(task: TaskState): RuntimeTaskSummary {
   }
 }
 
+function toRuntimeMessageBlocks(blocks: unknown[]): RuntimeMessageBlock[] {
+  return blocks.flatMap(block => {
+    if (!block || typeof block !== 'object') {
+      return []
+    }
+
+    const candidate = block as {
+      type?: unknown
+      text?: unknown
+      thinking?: unknown
+      id?: unknown
+      name?: unknown
+      input?: unknown
+      tool_use_id?: unknown
+      content?: unknown
+      path?: unknown
+    }
+
+    if (typeof candidate.text === 'string') {
+      const type =
+        candidate.type === 'text' || candidate.type === 'markdown'
+          ? candidate.type
+          : 'markdown'
+      return [{ type, text: candidate.text }]
+    }
+
+    if (typeof candidate.thinking === 'string') {
+      return [
+        {
+          type:
+            candidate.type === 'redacted_thinking'
+              ? 'redacted_thinking'
+              : 'thinking',
+          text: candidate.thinking,
+        },
+      ]
+    }
+
+    if (candidate.type === 'tool_use') {
+      return [
+        {
+          type: 'tool_use',
+          toolUseId: typeof candidate.id === 'string' ? candidate.id : undefined,
+          toolName:
+            typeof candidate.name === 'string' ? candidate.name : undefined,
+          inputPreview:
+            candidate.input === undefined
+              ? undefined
+              : JSON.stringify(candidate.input),
+          text:
+            typeof candidate.name === 'string'
+              ? `[tool_use] ${candidate.name}`
+              : '[tool_use]',
+        },
+      ]
+    }
+
+    if (candidate.type === 'tool_result') {
+      return [
+        {
+          type: 'tool_result',
+          toolUseId:
+            typeof candidate.tool_use_id === 'string'
+              ? candidate.tool_use_id
+              : undefined,
+          text:
+            typeof candidate.content === 'string'
+              ? candidate.content
+              : candidate.content === undefined
+                ? '[tool_result]'
+                : JSON.stringify(candidate.content),
+        },
+      ]
+    }
+
+    if (typeof candidate.type === 'string') {
+      return [{ type: 'markdown', text: `[${candidate.type}]` }]
+    }
+
+    return []
+  })
+}
+
 function summarizeContentBlocks(blocks: unknown[]): string {
-  return blocks
+  return toRuntimeMessageBlocks(blocks)
     .map(block => {
-      if (!block || typeof block !== 'object') {
-        return ''
+      if ('toolName' in block && block.toolName) {
+        return block.text
       }
 
-      const candidate = block as {
-        type?: unknown
-        text?: unknown
-        thinking?: unknown
-      }
-
-      if (typeof candidate.text === 'string') {
-        return candidate.text
-      }
-
-      if (typeof candidate.thinking === 'string') {
-        return '[thinking]'
-      }
-
-      if (typeof candidate.type === 'string') {
-        return `[${candidate.type}]`
-      }
-
-      return ''
+      return block.text
     })
     .filter(Boolean)
     .join('\n')
@@ -304,6 +440,31 @@ export function toRuntimeMessageSummary(message: Message): RuntimeMessageSummary
     type: message.type,
     label,
     text: summarizeMessageText(message),
+    blocks:
+      message.type === 'user'
+        ? typeof message.message.content === 'string'
+          ? [{ type: 'markdown', text: message.message.content }]
+          : toRuntimeMessageBlocks(message.message.content)
+        : message.type === 'assistant'
+          ? toRuntimeMessageBlocks(message.message.content)
+          : message.type === 'system'
+            ? [{ type: 'markdown', text: message.content || message.message || '' }]
+            : message.type === 'attachment'
+              ? [
+                  {
+                    type: 'attachment_reference',
+                    attachmentType: message.attachment.type,
+                    path: message.path,
+                    text:
+                      message.attachment.message ||
+                      message.attachment.stdout ||
+                      message.attachment.stderr ||
+                      message.path ||
+                      message.attachment.type ||
+                      '',
+                  },
+                ]
+              : [{ type: 'json', text: JSON.stringify(message.data) }],
     isMeta: message.isMeta,
   }
 }
@@ -311,18 +472,34 @@ export function toRuntimeMessageSummary(message: Message): RuntimeMessageSummary
 export function createRuntimeSessionSnapshot(params: {
   sessionId: RuntimeSessionId
   cwd: string
+  title: string
+  isArchived: boolean
+  isPinned: boolean
+  notes?: string
+  createdAt: string
+  updatedAt: string
   status: RuntimeSessionStatus
+  hasLiveRuntime?: boolean
   activeChannel: RuntimeSessionChannel
   activeChannelUpdatedAt: string
+  channelOwner: RuntimeSessionChannelOwner | null
   appState: AppState
   messages: readonly Message[]
 }): RuntimeSessionSnapshot {
   const {
     sessionId,
     cwd,
+    title,
+    isArchived,
+    isPinned,
+    notes,
+    createdAt,
+    updatedAt,
     status,
+    hasLiveRuntime = true,
     activeChannel,
     activeChannelUpdatedAt,
+    channelOwner,
     appState,
     messages,
   } = params
@@ -343,9 +520,18 @@ export function createRuntimeSessionSnapshot(params: {
   return {
     sessionId,
     cwd,
+    title,
+    isArchived,
+    isPinned,
+    notes,
+    createdAt,
+    updatedAt,
     status,
+    hasLiveRuntime,
     activeChannel,
     activeChannelUpdatedAt,
+    channelOwner,
+    leaseExpiresAt: channelOwner?.leaseExpiresAt,
     permissionMode: appState.toolPermissionContext.mode,
     isBypassPermissionsModeAvailable:
       appState.toolPermissionContext.isBypassPermissionsModeAvailable,
@@ -369,6 +555,7 @@ export function createRuntimeSessionDetail(params: {
   tasks: RuntimeTaskSummary[]
   swarmThreads?: SwarmThreadSummary[]
   swarmWaitingEdges?: SwarmWaitingEdge[]
+  events?: RuntimeSessionEventRecord[]
 }): RuntimeSessionDetail {
   return {
     snapshot: params.snapshot,
@@ -376,5 +563,6 @@ export function createRuntimeSessionDetail(params: {
     tasks: params.tasks,
     swarmThreads: params.swarmThreads ?? [],
     swarmWaitingEdges: params.swarmWaitingEdges ?? [],
+    events: params.events ?? [],
   }
 }

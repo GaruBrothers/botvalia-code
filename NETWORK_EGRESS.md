@@ -1,6 +1,6 @@
 # Network Egress Inventory
 
-Last updated: 2026-05-03
+Last updated: 2026-05-13
 
 This document is a practical inventory of network and transport surfaces that matter when reviewing BotValia Code for an OSS-safe posture.
 
@@ -18,6 +18,7 @@ Current high-level posture:
 
 - local runtime bridge is bound to `127.0.0.1`
 - runtime WebSocket connections require a per-runtime auth token
+- runtime `web-ui` mutations require a short-lived per-session lease in addition to the socket token
 - nonessential egress is blocked by default for feedback, transcript sharing, telemetry, and update checks
 - internal `/insights` export/upload and remote collection are blocked by default unless maintainers opt in with internal env configuration
 - some legacy and cloud-facing integrations still exist in code and must be reviewed before any public release
@@ -37,13 +38,16 @@ Current behavior:
 - binds to `127.0.0.1` by default
 - uses a per-runtime token
 - rejects unauthenticated WebSocket handshakes
+- `claim_session` returns a short-lived `leaseId` for `web-ui`
+- mutating calls from `web-ui` require that lease and fail when it expires or a different client takes over
 - carries session state, transcript inspection, mutation requests, and runtime events
 
 Risk notes:
 
-- auth token is still URL-derived rather than a stronger channel-binding model
+- auth token is still URL-derived rather than a non-URL launch/auth model
 - local malware or another local user context on the same machine may still be relevant depending on the environment
 - the token is now removed from the visible browser URL after boot and no longer printed in normal `/runtime` user-facing output, but it still exists in the launch flow itself
+- session leases do not make the bridge multi-user safe; they simply tighten local single-user ownership semantics
 
 Release stance:
 
@@ -198,16 +202,18 @@ Release stance:
 Primary files:
 
 - [BotValia-CodeUI/hooks/useRuntimeInspector.ts](./BotValia-CodeUI/hooks/useRuntimeInspector.ts)
-- [BotValia-CodeUI/lib/runtime-session-ownership.ts](./BotValia-CodeUI/lib/runtime-session-ownership.ts)
+- [src/runtime/runtimeSessionStore.ts](./src/runtime/runtimeSessionStore.ts)
 
 Current behavior:
 
-- runtime metadata is now session-scoped rather than long-term local persistence by default
 - launch-time runtime token data is cleared from the visible browser URL after boot and kept in session-scoped browser state instead
+- session lifecycle metadata now persists in project-local runtime sidecar files managed by the backend/runtime service
+- leases are intentionally not persisted across restart
 
 Why it matters:
 
-- this reduces accidental retention of local runtime URLs and session ownership hints
+- this reduces accidental retention of local runtime URLs in the browser
+- it also prevents the browser from becoming the long-term source of truth for ownership and notes/title state
 - it is a privacy control, even though it is not itself network egress
 
 ## Practical Release Rules

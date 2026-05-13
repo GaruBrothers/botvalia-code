@@ -7,7 +7,7 @@
 <!-- IA-SYSTEM-PROTECTION:END -->
 # Security Policy
 
-Last updated: 2026-05-03
+Last updated: 2026-05-13
 
 ## Current Project Status
 
@@ -16,11 +16,14 @@ This repository is still an experimental and reconstructed codebase. It is **not
 Current hardening that is now in place:
 
 - runtime WebSocket connections require a per-runtime auth token
+- runtime WebSocket mutations coming from `web-ui` now require a short-lived per-session `leaseId`
 - nonessential feedback, transcript sharing, telemetry, and background update checks are disabled by default in the OSS posture unless users opt in
 - internal `/insights` export and remote collection paths are disabled by default in the OSS posture unless maintainers opt in with explicit internal env configuration
-- runtime web metadata is session-scoped in the browser instead of being persisted long-term by default, and the launch token is stripped from the visible browser URL after startup
+- runtime session metadata (`title`, `archived`, `pinned`, `notes`, model override, event history) is now persisted in project-local runtime sidecar records instead of browser-owned session state
+- the browser only keeps runtime connection material in session scope, and the launch token is stripped from the visible browser URL after startup
 - generated `BotValia-CodeUI/.next/**` artifacts are no longer tracked in Git
 - a local `bun run security:preflight` check now exists to catch common OSS-release mistakes before publishing
+- `/security audit` and `/runtime security` now surface that same preflight from product UX
 - the current `bun audit` snapshot is clean after direct dependency upgrades and targeted transitive overrides
 - the security preflight now distinguishes real maintainer-local path leaks from generic Windows path examples, and it narrows legacy-cloud warnings to executable endpoints plus compatibility mentions
 
@@ -33,9 +36,26 @@ Before reporting a vulnerability, please read:
 Maintainers should also run:
 
 - `bun run security:preflight`
+- `bun run version`
 
 That roadmap is the source of truth for what is currently verified as resolved, partially resolved, or still pending.
 The egress inventory explains what still talks to the network and why. The release checklist is the maintainer-facing gate for deciding whether a snapshot should ship at all.
+
+## Threat Model Boundaries
+
+Current explicit target:
+
+- local desktop / single-user usage on the same machine
+
+Current non-goals for security claims:
+
+- multi-tenant isolation
+- remote shared runtime hosting
+- browser-to-cloud trust guarantees
+
+Important current limitation:
+
+- a persisted runtime session record is not the same thing as a live worker. Old sessions can be inspected and mutated as local records, but message execution still requires a live runtime session behind that record.
 
 ## Supported Versions
 
@@ -100,6 +120,8 @@ High-value areas in this repo include:
 
 - `src/runtime/`
 - `BotValia-CodeUI/`
+- `src/runtime/runtimeSessionStore.ts`
+- `src/runtime/securityAudit.ts`
 - `src/components/Feedback*`
 - `src/utils/telemetry/`
 - `src/constants/oauth.ts`

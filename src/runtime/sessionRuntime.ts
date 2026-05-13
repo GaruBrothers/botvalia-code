@@ -1,4 +1,6 @@
+import { randomUUID } from 'crypto'
 import type { Message } from '../types/message.js'
+import type { ModelSetting } from '../utils/model/model.js'
 import {
   RuntimeEventBus,
   type RuntimeEvent,
@@ -7,10 +9,13 @@ import {
 } from './events.js'
 import {
   createRuntimeSessionSnapshot,
+  type RuntimeLeaseId,
   type RuntimeAgentEventPayload,
   type RuntimeSessionChannel,
+  type RuntimeSessionChannelOwner,
   type RuntimeSwarmEventPayload,
   toRuntimeTaskSummary,
+  type RuntimeSessionEventRecord,
   type RuntimeSendMessageInput,
   type RuntimeSessionConfig,
   type RuntimeSessionSnapshot,
@@ -21,6 +26,13 @@ import {
   type RuntimeToolEventPayload,
 } from './types.js'
 import type { PermissionMode } from '../types/permissions.js'
+import {
+  readRuntimeSessionRecordSync,
+  writeRuntimeSessionRecord,
+} from './runtimeSessionStore.js'
+import { RuntimeProtocolError } from './runtimeErrors.js'
+
+const WEB_UI_LEASE_DURATION_MS = 5 * 60 * 1000
 
 export class SessionRuntime {
   readonly sessionId: string
@@ -37,21 +49,59 @@ export class SessionRuntime {
   private activeTools = new Map<string, RuntimeToolEventPayload>()
   private activeChannel: RuntimeSessionChannel
   private activeChannelUpdatedAt: string
+  private channelOwner: RuntimeSessionChannelOwner | null
+  private title: string
+  private isArchived: boolean
+  private isPinned: boolean
+  private notes?: string
+  private createdAt: string
+  private updatedAt: string
+  private eventHistory: RuntimeSessionEventRecord[]
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(config: RuntimeSessionConfig) {
+    const now = new Date().toISOString()
+    const persistedRecord = readRuntimeSessionRecordSync(
+      config.sessionId,
+      config.cwd,
+    )
+
     this.config = config
     this.sessionId = config.sessionId
     this.cwd = config.cwd
     this.status = config.initialStatus ?? 'idle'
     this.activeChannel = config.initialActiveChannel ?? 'cli'
-    this.activeChannelUpdatedAt = new Date().toISOString()
+    this.activeChannelUpdatedAt =
+      persistedRecord?.snapshot.activeChannelUpdatedAt ?? now
+    this.channelOwner = null
+    this.title = persistedRecord?.snapshot.title || config.sessionId.slice(0, 8)
+    this.isArchived = persistedRecord?.snapshot.isArchived ?? false
+    this.isPinned = persistedRecord?.snapshot.isPinned ?? false
+    this.notes = persistedRecord?.snapshot.notes
+    this.createdAt = persistedRecord?.snapshot.createdAt ?? now
+    this.updatedAt = persistedRecord?.snapshot.updatedAt ?? now
+    this.eventHistory = persistedRecord?.events ?? []
 
     this.emit({
       type: 'session_started',
       sessionId: this.sessionId,
       snapshot: this.getSnapshot(),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     })
+    this.schedulePersist()
+
+    const persistedSessionModel =
+      persistedRecord?.snapshot.mainLoopModelForSession ?? null
+    if (persistedSessionModel && this.config.setSessionModel) {
+      void Promise.resolve()
+        .then(() =>
+          this.setSessionModel(
+            persistedSessionModel,
+            'restored from persisted runtime session metadata',
+          ),
+        )
+        .catch(() => {})
+    }
   }
 
   getMessages(): readonly Message[] {
@@ -66,9 +116,17 @@ export class SessionRuntime {
     return createRuntimeSessionSnapshot({
       sessionId: this.sessionId,
       cwd: this.cwd,
+      title: this.title,
+      isArchived: this.isArchived,
+      isPinned: this.isPinned,
+      notes: this.notes,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
       status: this.status,
+      hasLiveRuntime: true,
       activeChannel: this.activeChannel,
       activeChannelUpdatedAt: this.activeChannelUpdatedAt,
+      channelOwner: this.channelOwner,
       appState: this.config.getAppState(),
       messages: this.getMessages(),
     })
@@ -88,6 +146,7 @@ export class SessionRuntime {
 
   emit(event: RuntimeEvent): void {
     this.eventBus.emit(event)
+    this.recordRuntimeEvent(event)
   }
 
   setStatus(status: RuntimeSessionStatus): void {
@@ -96,23 +155,93 @@ export class SessionRuntime {
   }
 
   claimActiveChannel(channel: RuntimeSessionChannel): boolean {
-    if (this.activeChannel === channel) {
+    const previousOwner = this.channelOwner
+    const shouldClearOwner =
+      channel !== 'web-ui' && previousOwner?.channel === 'web-ui'
+
+    if (this.activeChannel === channel && !shouldClearOwner) {
       return false
     }
 
     this.activeChannel = channel
     this.activeChannelUpdatedAt = new Date().toISOString()
+    this.updatedAt = this.activeChannelUpdatedAt
+    if (shouldClearOwner) {
+      this.channelOwner = null
+    }
     this.refreshSnapshot()
     return true
   }
 
+  claimWebUiLease(
+    clientId: string,
+    leaseDurationMs = WEB_UI_LEASE_DURATION_MS,
+  ): RuntimeSessionChannelOwner {
+    const claimedAt = new Date().toISOString()
+    const leaseId: RuntimeLeaseId = randomUUID()
+    const leaseExpiresAt = new Date(
+      Date.now() + leaseDurationMs,
+    ).toISOString()
+    const takeoverAt =
+      this.channelOwner?.clientId &&
+      this.channelOwner.clientId !== clientId
+        ? claimedAt
+        : this.channelOwner?.takeoverAt
+
+    this.activeChannel = 'web-ui'
+    this.activeChannelUpdatedAt = claimedAt
+    this.updatedAt = claimedAt
+    this.channelOwner = {
+      channel: 'web-ui',
+      clientId,
+      leaseId,
+      claimedAt,
+      leaseExpiresAt,
+      takeoverAt,
+    }
+    this.refreshSnapshot()
+    return this.channelOwner
+  }
+
+  authorizeWebMutation(clientId: string, leaseId?: string): void {
+    if (
+      !this.channelOwner ||
+      this.channelOwner.channel !== 'web-ui' ||
+      this.channelOwner.clientId !== clientId
+    ) {
+      throw new RuntimeProtocolError(
+        'channel_conflict',
+        'La Web UI ya no tiene ownership vigente de esta sesión. Vuelve a reclamar el canal antes de mutarla.',
+      )
+    }
+
+    if (
+      this.channelOwner.leaseExpiresAt &&
+      Date.parse(this.channelOwner.leaseExpiresAt) <= Date.now()
+    ) {
+      throw new RuntimeProtocolError(
+        'lease_expired',
+        'El lease de la Web UI expiró. Reclama la sesión otra vez para seguir mutándola.',
+      )
+    }
+
+    if (!leaseId || this.channelOwner.leaseId !== leaseId) {
+      throw new RuntimeProtocolError(
+        'unauthorized',
+        'La mutación llegó sin un lease válido para la sesión runtime activa.',
+      )
+    }
+  }
+
   refreshSnapshot(): void {
+    this.updatedAt = new Date().toISOString()
     this.emit({
       type: 'session_updated',
       sessionId: this.sessionId,
       snapshot: this.getSnapshot(),
-      timestamp: new Date().toISOString(),
+      timestamp: this.updatedAt,
     })
+    this.schedulePersist()
   }
 
   emitMessageDelta(delta: string): void {
@@ -362,18 +491,75 @@ export class SessionRuntime {
       source: 'session-runtime',
     }
     this.activeTools.clear()
+    this.updatedAt = new Date().toISOString()
     this.emit({
       type: 'error',
       sessionId: this.sessionId,
       error: error instanceof Error ? error.message : String(error),
-      timestamp: new Date().toISOString(),
+      timestamp: this.updatedAt,
     })
     this.emit({
       type: 'session_updated',
       sessionId: this.sessionId,
       snapshot: this.getSnapshot(),
-      timestamp: new Date().toISOString(),
+      timestamp: this.updatedAt,
     })
+  }
+
+  async rename(title: string): Promise<void> {
+    this.title = title.trim() || this.title
+    this.updatedAt = new Date().toISOString()
+    this.refreshSnapshot()
+  }
+
+  async setArchived(isArchived: boolean): Promise<void> {
+    this.isArchived = isArchived
+    this.updatedAt = new Date().toISOString()
+    this.refreshSnapshot()
+  }
+
+  async setPinned(isPinned: boolean): Promise<void> {
+    this.isPinned = isPinned
+    this.updatedAt = new Date().toISOString()
+    this.refreshSnapshot()
+  }
+
+  async setNotes(notes: string): Promise<void> {
+    this.notes = notes.trim() || undefined
+    this.updatedAt = new Date().toISOString()
+    this.refreshSnapshot()
+  }
+
+  async setSessionModel(
+    model: ModelSetting,
+    reason = 'runtime session model override updated',
+  ): Promise<void> {
+    if (!this.config.setSessionModel) {
+      throw new Error(
+        'SessionRuntime aún no tiene setSessionModel conectado al motor real.',
+      )
+    }
+
+    await this.config.setSessionModel(model)
+    this.updatedAt = new Date().toISOString()
+    this.emitModelSwitched(model || 'auto', reason)
+    this.refreshSnapshot()
+  }
+
+  getEventHistory(): RuntimeSessionEventRecord[] {
+    return [...this.eventHistory]
+  }
+
+  recordServiceEvent(
+    eventType: string,
+    message: string,
+    severity: RuntimeSessionEventRecord['severity'] = 'info',
+  ): void {
+    this.eventHistory = [
+      this.buildEventRecord('service', severity, eventType, message),
+      ...this.eventHistory,
+    ].slice(0, 200)
+    this.schedulePersist()
   }
 
   async submit(input: RuntimeSendMessageInput): Promise<void> {
@@ -438,5 +624,121 @@ export class SessionRuntime {
       snapshot: this.getSnapshot(),
       timestamp: new Date().toISOString(),
     })
+  }
+
+  private recordRuntimeEvent(event: RuntimeEvent): void {
+    const nextRecord = this.toEventRecord(event)
+    if (!nextRecord) {
+      return
+    }
+
+    this.eventHistory = [nextRecord, ...this.eventHistory].slice(0, 200)
+    this.schedulePersist()
+  }
+
+  private toEventRecord(
+    event: RuntimeEvent,
+  ): RuntimeSessionEventRecord | null {
+    switch (event.type) {
+      case 'session_started':
+        return this.buildEventRecord('runtime', 'info', event.type, 'Session started.')
+      case 'task_started':
+        return this.buildEventRecord(
+          'runtime',
+          'info',
+          event.type,
+          `Task started: ${event.payload.task.title || event.payload.task.kind || event.payload.task.id}.`,
+          event.timestamp,
+        )
+      case 'task_completed':
+        return this.buildEventRecord(
+          'runtime',
+          event.payload.task.status.toLowerCase().includes('fail') ? 'error' : 'info',
+          event.type,
+          event.payload.summary?.trim() ||
+            `Task completed: ${event.payload.task.title || event.payload.task.kind || event.payload.task.id}.`,
+          event.timestamp,
+        )
+      case 'tool_started':
+        return this.buildEventRecord(
+          'runtime',
+          'info',
+          event.type,
+          `Tool started: ${event.payload.toolName}.`,
+          event.timestamp,
+        )
+      case 'tool_completed':
+        return this.buildEventRecord(
+          'runtime',
+          'info',
+          event.type,
+          event.payload.summary?.trim() || `Tool completed: ${event.payload.toolName}.`,
+          event.timestamp,
+        )
+      case 'model_switched':
+        return this.buildEventRecord(
+          'runtime',
+          'warn',
+          event.type,
+          `Model switched to ${event.model}.`,
+          event.timestamp,
+        )
+      case 'permission_mode_changed':
+        return this.buildEventRecord(
+          'runtime',
+          'info',
+          event.type,
+          `Permission mode changed to ${event.mode}.`,
+          event.timestamp,
+        )
+      case 'interrupted':
+        return this.buildEventRecord(
+          'runtime',
+          'warn',
+          event.type,
+          'Execution interrupted.',
+          event.timestamp,
+        )
+      case 'error':
+        return this.buildEventRecord(
+          'runtime',
+          'error',
+          event.type,
+          event.error,
+          event.timestamp,
+        )
+      default:
+        return null
+    }
+  }
+
+  private buildEventRecord(
+    source: RuntimeSessionEventRecord['source'],
+    severity: RuntimeSessionEventRecord['severity'],
+    eventType: string,
+    message: string,
+    timestamp = new Date().toISOString(),
+  ): RuntimeSessionEventRecord {
+    return {
+      id: `${eventType}-${this.sessionId}-${Date.parse(timestamp) || Date.now()}`,
+      timestamp,
+      source,
+      severity,
+      eventType,
+      message,
+    }
+  }
+
+  private schedulePersist(): void {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer)
+    }
+
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      void writeRuntimeSessionRecord(this.getSnapshot(), this.eventHistory).catch(
+        () => {},
+      )
+    }, 75)
   }
 }

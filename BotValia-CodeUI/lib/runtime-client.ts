@@ -1,4 +1,5 @@
 import type {
+  RuntimeModelOption,
   RuntimeSessionChannel,
   RuntimeProtocolEvent,
   RuntimeProtocolMessage,
@@ -41,6 +42,7 @@ export type BrowserRuntimeClientConfig = {
 export class BrowserRuntimeClient {
   private readonly url: string;
   private socket: WebSocket | null = null;
+  private clientId: string | null = null;
   private readonly listeners = new Set<RuntimeProtocolEventListener>();
   private readonly connectionListeners = new Set<RuntimeConnectionListener>();
   private readonly pending = new Map<string, PendingRequest>();
@@ -79,6 +81,13 @@ export class BrowserRuntimeClient {
         pending.cleanup();
         pending.resolve(parsed);
         return;
+      }
+
+      if (
+        (parsed.type === 'runtime_bootstrap' || parsed.type === 'session_bootstrap') &&
+        parsed.clientId
+      ) {
+        this.clientId = parsed.clientId;
       }
 
       for (const listener of this.listeners) {
@@ -185,6 +194,10 @@ export class BrowserRuntimeClient {
     return response.sessions;
   }
 
+  getClientId(): string | null {
+    return this.clientId;
+  }
+
   async getSessionDetail(
     sessionId: RuntimeSessionId,
   ): Promise<RuntimeSessionDetail | null> {
@@ -206,10 +219,12 @@ export class BrowserRuntimeClient {
   async sendMessage(
     sessionId: RuntimeSessionId,
     input: RuntimeSendMessageInput,
+    leaseId?: string,
   ): Promise<void> {
     const response = await this.sendRequest({
       method: 'send_message',
       sessionId,
+      leaseId,
       input,
     });
 
@@ -224,7 +239,12 @@ export class BrowserRuntimeClient {
   async claimSession(
     sessionId: RuntimeSessionId,
     channel: RuntimeSessionChannel,
-  ): Promise<RuntimeSessionSnapshot> {
+  ): Promise<{
+    clientId: string;
+    leaseId: string | null;
+    leaseExpiresAt: string | null;
+    snapshot: RuntimeSessionSnapshot;
+  }> {
     const response = await this.sendRequest({
       method: 'claim_session',
       sessionId,
@@ -238,16 +258,24 @@ export class BrowserRuntimeClient {
       throw new Error('La respuesta runtime no coincide con claim_session.');
     }
 
-    return response.snapshot;
+    this.clientId = response.clientId;
+    return {
+      clientId: response.clientId,
+      leaseId: response.leaseId,
+      leaseExpiresAt: response.leaseExpiresAt,
+      snapshot: response.snapshot,
+    };
   }
 
   async interrupt(
     sessionId: RuntimeSessionId,
+    leaseId?: string,
     channel?: RuntimeSessionChannel,
   ): Promise<void> {
     const response = await this.sendRequest({
       method: 'interrupt',
       sessionId,
+      leaseId,
       channel,
     });
 
@@ -259,10 +287,41 @@ export class BrowserRuntimeClient {
     }
   }
 
-  async renameSession(sessionId: RuntimeSessionId, title: string): Promise<string> {
+  async createSession(input: {
+    title: string;
+    cwd: string;
+    notes?: string;
+  }): Promise<{
+    clientId: string;
+    leaseId: string | null;
+    leaseExpiresAt: string | null;
+    session: RuntimeSessionSnapshot;
+  }> {
+    const response = await this.sendRequest({
+      method: 'create_session',
+      ...input,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'create_session') {
+      throw new Error('La respuesta runtime no coincide con create_session.');
+    }
+
+    this.clientId = response.clientId;
+    return response;
+  }
+
+  async renameSession(
+    sessionId: RuntimeSessionId,
+    title: string,
+    leaseId?: string,
+  ): Promise<string> {
     const response = await this.sendRequest({
       method: 'rename_session',
       sessionId,
+      leaseId,
       title,
     });
 
@@ -276,14 +335,126 @@ export class BrowserRuntimeClient {
     return response.title;
   }
 
+  async archiveSession(
+    sessionId: RuntimeSessionId,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'archive_session',
+      sessionId,
+      leaseId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'archive_session') {
+      throw new Error('La respuesta runtime no coincide con archive_session.');
+    }
+
+    return response.snapshot;
+  }
+
+  async unarchiveSession(
+    sessionId: RuntimeSessionId,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'unarchive_session',
+      sessionId,
+      leaseId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'unarchive_session') {
+      throw new Error('La respuesta runtime no coincide con unarchive_session.');
+    }
+
+    return response.snapshot;
+  }
+
+  async pinSession(
+    sessionId: RuntimeSessionId,
+    pinned: boolean,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'pin_session',
+      sessionId,
+      leaseId,
+      pinned,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'pin_session') {
+      throw new Error('La respuesta runtime no coincide con pin_session.');
+    }
+
+    return response.snapshot;
+  }
+
+  async updateSessionNotes(
+    sessionId: RuntimeSessionId,
+    notes: string,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'update_session_notes',
+      sessionId,
+      leaseId,
+      notes,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'update_session_notes') {
+      throw new Error(
+        'La respuesta runtime no coincide con update_session_notes.',
+      );
+    }
+
+    return response.snapshot;
+  }
+
+  async setSessionModel(
+    sessionId: RuntimeSessionId,
+    model: string | null,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'set_session_model',
+      sessionId,
+      leaseId,
+      model,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'set_session_model') {
+      throw new Error(
+        'La respuesta runtime no coincide con set_session_model.',
+      );
+    }
+
+    return response.snapshot;
+  }
+
   async setPermissionMode(
     sessionId: RuntimeSessionId,
     mode: PermissionMode,
+    leaseId?: string,
     channel?: RuntimeSessionChannel,
   ): Promise<PermissionMode> {
     const response = await this.sendRequest({
       method: 'set_permission_mode',
       sessionId,
+      leaseId,
       mode,
       channel,
     });
@@ -300,6 +471,41 @@ export class BrowserRuntimeClient {
     return response.mode;
   }
 
+  async listModels(): Promise<RuntimeModelOption[]> {
+    const response = await this.sendRequest({
+      method: 'list_models',
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'list_models') {
+      throw new Error('La respuesta runtime no coincide con list_models.');
+    }
+
+    return response.models;
+  }
+
+  async getSessionEvents(
+    sessionId: RuntimeSessionId,
+  ): Promise<RuntimeSessionDetail['events']> {
+    const response = await this.sendRequest({
+      method: 'get_session_events',
+      sessionId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (response.method !== 'get_session_events') {
+      throw new Error(
+        'La respuesta runtime no coincide con get_session_events.',
+      );
+    }
+
+    return response.events;
+  }
+
   async subscribeRuntime(): Promise<string> {
     const response = await this.sendRequest({
       method: 'subscribe_runtime',
@@ -312,6 +518,7 @@ export class BrowserRuntimeClient {
       throw new Error('La respuesta runtime no coincide con subscribe_runtime.');
     }
 
+    this.clientId = response.clientId;
     return response.subscriptionId;
   }
 
@@ -328,6 +535,7 @@ export class BrowserRuntimeClient {
       throw new Error('La respuesta runtime no coincide con subscribe_session.');
     }
 
+    this.clientId = response.clientId;
     return response.subscriptionId;
   }
 

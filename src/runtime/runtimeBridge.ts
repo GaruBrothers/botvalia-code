@@ -12,18 +12,24 @@ import {
   type RuntimeService,
 } from './runtimeService.js'
 import type { RuntimeEventUnsubscribe } from './events.js'
+import { toRuntimeProtocolError } from './runtimeErrors.js'
 
 type BridgeSubscription = {
   unsubscribe: RuntimeEventUnsubscribe
 }
 
 export class RuntimeBridge {
+  private readonly clientId: string
   private readonly runtimeService: RuntimeService
   private readonly listeners = new Set<RuntimeProtocolEventListener>()
   private readonly subscriptions = new Map<string, BridgeSubscription>()
 
-  constructor(runtimeService: RuntimeService = createRuntimeService()) {
+  constructor(
+    runtimeService: RuntimeService = createRuntimeService(),
+    clientId: string = randomUUID(),
+  ) {
     this.runtimeService = runtimeService
+    this.clientId = clientId
   }
 
   onEvent(
@@ -70,6 +76,7 @@ export class RuntimeBridge {
     this.registerSubscription(subscriptionId, unsubscribe)
     this.emit({
       type: 'runtime_bootstrap',
+      clientId: this.clientId,
       subscriptionId,
       sessions: this.runtimeService.listSessions(),
       timestamp: new Date().toISOString(),
@@ -101,6 +108,7 @@ export class RuntimeBridge {
     this.registerSubscription(subscriptionId, unsubscribe)
     this.emit({
       type: 'session_bootstrap',
+      clientId: this.clientId,
       subscriptionId,
       session,
       timestamp: new Date().toISOString(),
@@ -152,7 +160,11 @@ export class RuntimeBridge {
           }
 
         case 'send_message':
-          await this.runtimeService.sendMessage(request.sessionId, request.input)
+          await this.runtimeService.sendMessage(request.sessionId, request.input, {
+            channel: 'web-ui',
+            clientId: this.clientId,
+            leaseId: request.leaseId,
+          })
           return {
             requestId: request.requestId,
             ok: true,
@@ -161,21 +173,154 @@ export class RuntimeBridge {
             sessionId: request.sessionId,
           }
 
-        case 'claim_session':
+        case 'create_session': {
+          const created = await this.runtimeService.createSession(request, {
+            channel: 'web-ui',
+            clientId: this.clientId,
+          })
           return {
             requestId: request.requestId,
             ok: true,
-            method: 'claim_session',
-            sessionId: request.sessionId,
-            channel: request.channel,
-            snapshot: this.runtimeService.claimSession(
+            method: 'create_session',
+            clientId: this.clientId,
+            leaseId: created.leaseId,
+            leaseExpiresAt: created.leaseExpiresAt,
+            session: created.session,
+          }
+        }
+
+        case 'claim_session':
+          {
+            const claimed = await this.runtimeService.claimSession(
               request.sessionId,
               request.channel,
+              {
+                channel: 'web-ui',
+                clientId: this.clientId,
+              },
+            )
+            return {
+              requestId: request.requestId,
+              ok: true,
+              method: 'claim_session',
+              sessionId: request.sessionId,
+              clientId: this.clientId,
+              leaseId: claimed.leaseId,
+              leaseExpiresAt: claimed.leaseExpiresAt,
+              channel: request.channel,
+              snapshot: claimed.snapshot,
+            }
+          }
+
+        case 'archive_session':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'archive_session',
+            sessionId: request.sessionId,
+            archived: true,
+            snapshot: await this.runtimeService.archiveSession(request.sessionId, {
+              channel: 'web-ui',
+              clientId: this.clientId,
+              leaseId: request.leaseId,
+            }),
+          }
+
+        case 'unarchive_session':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'unarchive_session',
+            sessionId: request.sessionId,
+            archived: false,
+            snapshot: await this.runtimeService.unarchiveSession(request.sessionId, {
+              channel: 'web-ui',
+              clientId: this.clientId,
+              leaseId: request.leaseId,
+            }),
+          }
+
+        case 'pin_session':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'pin_session',
+            sessionId: request.sessionId,
+            pinned: request.pinned,
+            snapshot: await this.runtimeService.pinSession(
+              request.sessionId,
+              request.pinned,
+              {
+                channel: 'web-ui',
+                clientId: this.clientId,
+                leaseId: request.leaseId,
+              },
             ),
           }
 
+        case 'update_session_notes':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'update_session_notes',
+            sessionId: request.sessionId,
+            notes: request.notes,
+            snapshot: await this.runtimeService.updateSessionNotes(
+              request.sessionId,
+              request.notes,
+              {
+                channel: 'web-ui',
+                clientId: this.clientId,
+                leaseId: request.leaseId,
+              },
+            ),
+          }
+
+        case 'set_session_model':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'set_session_model',
+            sessionId: request.sessionId,
+            model: request.model,
+            snapshot: await this.runtimeService.setSessionModel(
+              request.sessionId,
+              request.model,
+              {
+                channel: 'web-ui',
+                clientId: this.clientId,
+                leaseId: request.leaseId,
+              },
+            ),
+          }
+
+        case 'list_models':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'list_models',
+            models: this.runtimeService.listModels(),
+          }
+
+        case 'get_session_events':
+          return {
+            requestId: request.requestId,
+            ok: true,
+            method: 'get_session_events',
+            sessionId: request.sessionId,
+            events: await this.runtimeService.getSessionEvents(request.sessionId),
+          }
+
         case 'interrupt':
-          this.runtimeService.interrupt(request.sessionId, request.channel)
+          this.runtimeService.interrupt(
+            request.sessionId,
+            {
+              channel: 'web-ui',
+              clientId: this.clientId,
+              leaseId: request.leaseId,
+            },
+            request.channel,
+          )
           return {
             requestId: request.requestId,
             ok: true,
@@ -186,32 +331,46 @@ export class RuntimeBridge {
           }
 
         case 'rename_session':
-          await this.runtimeService.renameSession(
-            request.sessionId,
-            request.title,
-          )
-          return {
-            requestId: request.requestId,
-            ok: true,
-            method: 'rename_session',
-            renamed: true,
-            sessionId: request.sessionId,
-            title: request.title,
+          {
+            const snapshot = await this.runtimeService.renameSession(
+              request.sessionId,
+              request.title,
+              {
+                channel: 'web-ui',
+                clientId: this.clientId,
+                leaseId: request.leaseId,
+              },
+            )
+            return {
+              requestId: request.requestId,
+              ok: true,
+              method: 'rename_session',
+              renamed: true,
+              sessionId: request.sessionId,
+              title: snapshot.title,
+            }
           }
 
         case 'set_permission_mode':
-          await this.runtimeService.setPermissionMode(
-            request.sessionId,
-            request.mode,
-            request.channel,
-          )
-          return {
-            requestId: request.requestId,
-            ok: true,
-            method: 'set_permission_mode',
-            sessionId: request.sessionId,
-            mode: request.mode,
-            channel: request.channel,
+          {
+            const snapshot = await this.runtimeService.setPermissionMode(
+              request.sessionId,
+              request.mode,
+              {
+                channel: 'web-ui',
+                clientId: this.clientId,
+                leaseId: request.leaseId,
+              },
+              request.channel,
+            )
+            return {
+              requestId: request.requestId,
+              ok: true,
+              method: 'set_permission_mode',
+              sessionId: request.sessionId,
+              mode: snapshot.permissionMode,
+              channel: request.channel,
+            }
           }
 
         case 'subscribe_runtime':
@@ -219,6 +378,7 @@ export class RuntimeBridge {
             requestId: request.requestId,
             ok: true,
             method: 'subscribe_runtime',
+            clientId: this.clientId,
             subscriptionId: this.createRuntimeSubscription(),
           }
 
@@ -227,6 +387,7 @@ export class RuntimeBridge {
             requestId: request.requestId,
             ok: true,
             method: 'subscribe_session',
+            clientId: this.clientId,
             subscriptionId: this.createSessionSubscription(request.sessionId),
           }
 
@@ -240,10 +401,12 @@ export class RuntimeBridge {
           }
       }
     } catch (error) {
+      const runtimeError = toRuntimeProtocolError(error)
       return {
         requestId: request.requestId,
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        code: runtimeError.code,
+        error: runtimeError.message,
       }
     }
   }

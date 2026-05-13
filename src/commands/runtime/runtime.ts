@@ -14,12 +14,30 @@ import {
   getRuntimeWebSocketAuthToken,
   RUNTIME_WS_AUTH_TOKEN_QUERY_PARAM,
 } from '../../runtime/protocol.js'
+import {
+  formatSecurityPreflightAudit,
+  runSecurityPreflightAudit,
+} from '../../runtime/securityAudit.js'
+import type {
+  RuntimeModelOption,
+  RuntimeSessionSnapshot,
+} from '../../runtime/types.js'
 import { openBrowser } from '../../utils/browser.js'
+import { getCwd } from '../../utils/cwd.js'
 
 const HELP_TEXT = [
   '/runtime inicia o muestra el bridge local para BotValia Desktop.',
   '/runtime start [puerto] inicia el server WebSocket local.',
   '/runtime status muestra el estado actual.',
+  '/runtime sessions lista sesiones vivas y persistidas.',
+  '/runtime create ["titulo"] [--cwd path] [--notes "texto"] crea un record local de sesión.',
+  '/runtime archive <session-id> archiva una sesión.',
+  '/runtime restore <session-id> restaura una sesión archivada.',
+  '/runtime pin <session-id> [on|off] fija o desfija una sesión.',
+  '/runtime model list muestra los modelos válidos para sesiones.',
+  '/runtime model get <session-id> muestra el override de modelo actual.',
+  '/runtime model set <session-id> <modelo|default> actualiza el override por sesión.',
+  '/runtime security ejecuta el preflight OSS local.',
   '/runtime ui inicia la app web BotValia-CodeUI conectada al runtime local.',
   '/runtime open inicia la app web y abre la URL conectada al runtime actual.',
   '/runtime stop apaga el server local.',
@@ -43,8 +61,12 @@ function parsePort(rawPort?: string): number | undefined {
   return port
 }
 
+function getRuntimeService() {
+  return getGlobalRuntimeService()
+}
+
 function getSessionCount(): number {
-  return getGlobalRuntimeService().listSessions().length
+  return getRuntimeService().listSessions().length
 }
 
 function buildInspectorLaunchUrl(
@@ -86,6 +108,136 @@ function sanitizeInspectorLaunchUrl(launchUrl: string): string {
   return url.toString()
 }
 
+function tokenizeArgs(rawArgs: string): string[] {
+  const matches = rawArgs.match(/"([^"]*)"|'([^']*)'|[^\s]+/g)
+  if (!matches) {
+    return []
+  }
+
+  return matches.map(token => {
+    if (
+      (token.startsWith('"') && token.endsWith('"')) ||
+      (token.startsWith("'") && token.endsWith("'"))
+    ) {
+      return token.slice(1, -1)
+    }
+
+    return token
+  })
+}
+
+function resolveSession(sessionIdOrPrefix: string): RuntimeSessionSnapshot {
+  const sessions = getRuntimeService().listSessions()
+  const exact = sessions.find(session => session.sessionId === sessionIdOrPrefix)
+  if (exact) {
+    return exact
+  }
+
+  const matches = sessions.filter(session =>
+    session.sessionId.startsWith(sessionIdOrPrefix),
+  )
+
+  if (matches.length === 1) {
+    return matches[0]
+  }
+
+  if (matches.length > 1) {
+    throw new Error(
+      `El id ${sessionIdOrPrefix} es ambiguo. Coincide con ${matches.length} sesiones.`,
+    )
+  }
+
+  throw new Error(`No existe una sesión con id ${sessionIdOrPrefix}.`)
+}
+
+function formatOwner(snapshot: RuntimeSessionSnapshot): string {
+  if (!snapshot.channelOwner) {
+    return 'none'
+  }
+
+  const owner = snapshot.channelOwner
+  if (owner.channel !== 'web-ui') {
+    return owner.channel
+  }
+
+  const clientId = owner.clientId ? owner.clientId.slice(0, 8) : 'unknown'
+  return `${owner.channel}:${clientId}`
+}
+
+function formatSessionLine(snapshot: RuntimeSessionSnapshot, index: number): string {
+  const stateBits = [
+    snapshot.hasLiveRuntime ? 'live' : 'persisted',
+    snapshot.isArchived ? 'archived' : 'active',
+    snapshot.isPinned ? 'pinned' : 'unpinned',
+    snapshot.status,
+  ]
+
+  return [
+    `${index + 1}. ${snapshot.title}`,
+    `id=${snapshot.sessionId}`,
+    `cwd=${snapshot.cwd}`,
+    `state=${stateBits.join('/')}`,
+    `channel=${snapshot.activeChannel}`,
+    `owner=${formatOwner(snapshot)}`,
+    `model=${snapshot.mainLoopModelForSession ?? snapshot.mainLoopModel ?? 'default'}`,
+    `updated=${snapshot.updatedAt}`,
+  ].join(' | ')
+}
+
+function formatSessions(sessions: RuntimeSessionSnapshot[]): string {
+  if (sessions.length === 0) {
+    return 'No hay sesiones runtime vivas ni persistidas.'
+  }
+
+  return sessions.map(formatSessionLine).join('\n')
+}
+
+function parseCreateArgs(tokens: string[]): {
+  title: string
+  cwd: string
+  notes?: string
+} {
+  const positional: string[] = []
+  let cwd = getCwd()
+  let notes: string | undefined
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]
+
+    if (token === '--cwd') {
+      const value = tokens[index + 1]
+      if (!value) {
+        throw new Error('Falta el valor para --cwd.')
+      }
+      cwd = value
+      index += 1
+      continue
+    }
+
+    if (token === '--notes') {
+      const value = tokens[index + 1]
+      if (!value) {
+        throw new Error('Falta el valor para --notes.')
+      }
+      notes = value
+      index += 1
+      continue
+    }
+
+    positional.push(token)
+  }
+
+  const title =
+    positional.join(' ').trim() ||
+    `Session ${new Date().toISOString().replace('T', ' ').slice(0, 16)}`
+
+  return {
+    title,
+    cwd,
+    notes,
+  }
+}
+
 function formatRuntimeStatus(): string {
   const runtimeStatus = getRuntimeServerStatus()
   const inspectorStatus = getRuntimeInspectorServerStatus()
@@ -98,7 +250,7 @@ function formatRuntimeStatus(): string {
     )
     lines.push(`Host runtime: ${runtimeStatus.server.host}`)
     lines.push(`Puerto runtime: ${runtimeStatus.server.port}`)
-    lines.push(`Sesiones activas: ${getSessionCount()}`)
+    lines.push(`Sesiones conocidas: ${getSessionCount()}`)
   } else if (runtimeStatus.status === 'starting') {
     lines.push('Bridge runtime iniciando.')
   } else if (runtimeStatus.status === 'failed') {
@@ -131,14 +283,26 @@ function formatRuntimeStatus(): string {
   return lines.join('\n')
 }
 
+function formatModelOptions(models: RuntimeModelOption[]): string {
+  if (models.length === 0) {
+    return 'No hay modelos publicados por el runtime actual.'
+  }
+
+  return models
+    .map(model => `${model.value}: ${model.label} - ${model.description}`)
+    .join('\n')
+}
+
 export const call: LocalCommandCall = async args => {
   try {
     const trimmedArgs = args.trim()
-    const [subcommand = '', portArg] = trimmedArgs.split(/\s+/).filter(Boolean)
+    const tokens = tokenizeArgs(trimmedArgs)
+    const [subcommand = '', ...rest] = tokens
     const normalizedSubcommand = subcommand.toLowerCase()
+    const runtimeService = getRuntimeService()
 
     if (!trimmedArgs || normalizedSubcommand === 'start') {
-      const requestedPort = parsePort(portArg)
+      const requestedPort = parsePort(rest[0])
       const wasRunning = getRuntimeServerStatus()
       const server = await ensureRuntimeServer({
         port: requestedPort,
@@ -158,7 +322,7 @@ export const call: LocalCommandCall = async args => {
           `URL: ${sanitizeRuntimeWebSocketUrl(server.url)}`,
           `Host: ${server.host}`,
           `Puerto: ${server.port}`,
-          `Sesiones activas: ${getSessionCount()}`,
+          `Sesiones conocidas: ${getSessionCount()}`,
           'Conecta una app desktop o cliente local a esa URL por WebSocket.',
         ].join('\n'),
       }
@@ -168,6 +332,160 @@ export const call: LocalCommandCall = async args => {
       return {
         type: 'text',
         value: formatRuntimeStatus(),
+      }
+    }
+
+    if (normalizedSubcommand === 'sessions') {
+      return {
+        type: 'text',
+        value: formatSessions(runtimeService.listSessions()),
+      }
+    }
+
+    if (normalizedSubcommand === 'create') {
+      const created = await runtimeService.createSession(parseCreateArgs(rest), {
+        channel: 'cli',
+      })
+
+      return {
+        type: 'text',
+        value: [
+          'Sesión runtime persistida creada.',
+          formatSessionLine(created.session, 0),
+          created.session.hasLiveRuntime
+            ? 'Worker vivo: sí.'
+            : 'Worker vivo: no. Este record todavía no procesa prompts hasta que exista un runtime activo para esa sesión.',
+        ].join('\n'),
+      }
+    }
+
+    if (normalizedSubcommand === 'archive') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new Error('Uso: /runtime archive <session-id>')
+      }
+
+      const session = resolveSession(sessionId)
+      const snapshot = await runtimeService.archiveSession(session.sessionId, {
+        channel: 'cli',
+      })
+      return {
+        type: 'text',
+        value: `Sesión archivada.\n${formatSessionLine(snapshot, 0)}`,
+      }
+    }
+
+    if (
+      normalizedSubcommand === 'restore' ||
+      normalizedSubcommand === 'unarchive'
+    ) {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new Error('Uso: /runtime restore <session-id>')
+      }
+
+      const session = resolveSession(sessionId)
+      const snapshot = await runtimeService.unarchiveSession(session.sessionId, {
+        channel: 'cli',
+      })
+      return {
+        type: 'text',
+        value: `Sesión restaurada.\n${formatSessionLine(snapshot, 0)}`,
+      }
+    }
+
+    if (normalizedSubcommand === 'pin') {
+      const sessionId = rest[0]
+      if (!sessionId) {
+        throw new Error('Uso: /runtime pin <session-id> [on|off]')
+      }
+
+      const session = resolveSession(sessionId)
+      const requestedState = rest[1]?.toLowerCase()
+      const pinned =
+        requestedState === 'on'
+          ? true
+          : requestedState === 'off'
+            ? false
+            : !session.isPinned
+
+      const snapshot = await runtimeService.pinSession(
+        session.sessionId,
+        pinned,
+        {
+          channel: 'cli',
+        },
+      )
+
+      return {
+        type: 'text',
+        value: `${pinned ? 'Sesión fijada.' : 'Sesión desfijada.'}\n${formatSessionLine(snapshot, 0)}`,
+      }
+    }
+
+    if (normalizedSubcommand === 'model') {
+      const action = rest[0]?.toLowerCase()
+
+      if (!action || action === 'list') {
+        return {
+          type: 'text',
+          value: formatModelOptions(runtimeService.listModels()),
+        }
+      }
+
+      if (action === 'get') {
+        const sessionId = rest[1]
+        if (!sessionId) {
+          throw new Error('Uso: /runtime model get <session-id>')
+        }
+
+        const session = resolveSession(sessionId)
+        return {
+          type: 'text',
+          value: [
+            `Sesión: ${session.title}`,
+            `id: ${session.sessionId}`,
+            `override: ${session.mainLoopModelForSession ?? 'default'}`,
+            `runtime actual: ${session.mainLoopModel ?? 'default'}`,
+          ].join('\n'),
+        }
+      }
+
+      if (action === 'set') {
+        const sessionId = rest[1]
+        const rawModel = rest.slice(2).join(' ').trim()
+        if (!sessionId || !rawModel) {
+          throw new Error('Uso: /runtime model set <session-id> <modelo|default>')
+        }
+
+        const session = resolveSession(sessionId)
+        const snapshot = await runtimeService.setSessionModel(
+          session.sessionId,
+          rawModel === 'default' ? null : rawModel,
+          {
+            channel: 'cli',
+          },
+        )
+
+        return {
+          type: 'text',
+          value: [
+            'Modelo de sesión actualizado.',
+            `Sesión: ${snapshot.title}`,
+            `Override: ${snapshot.mainLoopModelForSession ?? 'default'}`,
+            `Runtime actual: ${snapshot.mainLoopModel ?? 'default'}`,
+          ].join('\n'),
+        }
+      }
+
+      throw new Error(`Subcomando de modelo desconocido: ${rest[0]}`)
+    }
+
+    if (normalizedSubcommand === 'security') {
+      const audit = runSecurityPreflightAudit()
+      return {
+        type: 'text',
+        value: formatSecurityPreflightAudit(audit),
       }
     }
 
@@ -185,7 +503,7 @@ export const call: LocalCommandCall = async args => {
         value: [
           `BotValia-CodeUI lista en ${visibleInspectorUrl}`,
           `Runtime WebSocket: ${sanitizeRuntimeWebSocketUrl(runtimeServer.url)}`,
-          `Sesiones activas: ${getSessionCount()}`,
+          `Sesiones conocidas: ${getSessionCount()}`,
         ].join('\n'),
       }
     }
@@ -207,7 +525,7 @@ export const call: LocalCommandCall = async args => {
             ? `Inspector visual abierto en ${visibleInspectorUrl}`
             : `Inspector visual listo en ${visibleInspectorUrl}`,
           `Runtime WebSocket: ${sanitizeRuntimeWebSocketUrl(runtimeServer.url)}`,
-          `Sesiones activas: ${getSessionCount()}`,
+          `Sesiones conocidas: ${getSessionCount()}`,
           opened
             ? 'Se abrió el navegador por defecto.'
             : 'No pude abrir el navegador automáticamente; abre esa URL manualmente.',

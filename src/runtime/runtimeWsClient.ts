@@ -6,18 +6,23 @@ import type {
   RuntimeProtocolMessage,
   RuntimeProtocolRequest,
   RuntimeProtocolResponse,
+  RuntimeProtocolSuccessResponse,
 } from './protocol.js'
 import {
   getRuntimeWebSocketAuthToken,
   withRuntimeWebSocketAuthToken,
 } from './protocol.js'
 import type {
-  RuntimeSessionChannel,
+  RuntimeModelOption,
   RuntimeSendMessageInput,
+  RuntimeSessionChannel,
   RuntimeSessionDetail,
+  RuntimeSessionEventRecord,
   RuntimeSessionId,
   RuntimeSessionSnapshot,
 } from './types.js'
+import type { PermissionMode } from '../types/permissions.js'
+import type { ModelSetting } from '../utils/model/model.js'
 
 export type RuntimeWebSocketClientConfig = {
   authToken?: string
@@ -28,15 +33,41 @@ type PendingRequest = {
   reject: (error: Error) => void
 }
 
+type RuntimeProtocolRequestInput = RuntimeProtocolRequest extends infer Request
+  ? Request extends { requestId: string }
+    ? Omit<Request, 'requestId'>
+    : never
+  : never
+
 function isProtocolResponse(
   value: RuntimeProtocolMessage,
 ): value is RuntimeProtocolResponse {
   return 'requestId' in value
 }
 
+function assertSuccess(
+  response: RuntimeProtocolResponse,
+): asserts response is RuntimeProtocolSuccessResponse {
+  if (!response.ok) {
+    const code = 'code' in response ? response.code : 'runtime_error'
+    const message = 'error' in response ? response.error : 'Unknown runtime error.'
+    throw new Error(`[${code}] ${message}`)
+  }
+}
+
+function assertMethod<M extends RuntimeProtocolSuccessResponse['method']>(
+  response: RuntimeProtocolSuccessResponse,
+  method: M,
+): asserts response is Extract<RuntimeProtocolSuccessResponse, { method: M }> {
+  if (response.method !== method) {
+    throw new Error(`La respuesta runtime no coincide con ${method}.`)
+  }
+}
+
 export class RuntimeWebSocketClient {
   private readonly url: string
   private socket: WebSocket | null = null
+  private clientId: string | null = null
   private readonly listeners = new Set<RuntimeProtocolEventListener>()
   private readonly pending = new Map<string, PendingRequest>()
 
@@ -71,6 +102,13 @@ export class RuntimeWebSocketClient {
         return
       }
 
+      if (
+        (parsed.type === 'runtime_bootstrap' || parsed.type === 'session_bootstrap') &&
+        parsed.clientId
+      ) {
+        this.clientId = parsed.clientId
+      }
+
       for (const listener of this.listeners) {
         listener(parsed)
       }
@@ -100,6 +138,10 @@ export class RuntimeWebSocketClient {
     })
   }
 
+  getClientId(): string | null {
+    return this.clientId
+  }
+
   onEvent(listener: RuntimeProtocolEventListener): () => void {
     this.listeners.add(listener)
 
@@ -109,7 +151,7 @@ export class RuntimeWebSocketClient {
   }
 
   private async sendRequest(
-    request: Omit<RuntimeProtocolRequest, 'requestId'>,
+    request: RuntimeProtocolRequestInput,
   ): Promise<RuntimeProtocolResponse> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       throw new Error('El cliente runtime WebSocket no está conectado.')
@@ -136,10 +178,8 @@ export class RuntimeWebSocketClient {
       method: 'list_sessions',
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
-
+    assertSuccess(response)
+    assertMethod(response, 'list_sessions')
     return response.sessions
   }
 
@@ -151,10 +191,8 @@ export class RuntimeWebSocketClient {
       sessionId,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
-
+    assertSuccess(response)
+    assertMethod(response, 'get_session')
     return response.session
   }
 
@@ -166,75 +204,239 @@ export class RuntimeWebSocketClient {
       sessionId,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
-
+    assertSuccess(response)
+    assertMethod(response, 'get_session_detail')
     return response.detail
+  }
+
+  async createSession(input: {
+    title: string
+    cwd: string
+    notes?: string
+  }): Promise<{
+    clientId: string
+    leaseId: string | null
+    leaseExpiresAt: string | null
+    session: RuntimeSessionSnapshot
+  }> {
+    const response = await this.sendRequest({
+      method: 'create_session',
+      ...input,
+    })
+
+    assertSuccess(response)
+    assertMethod(response, 'create_session')
+    this.clientId = response.clientId
+
+    return {
+      clientId: response.clientId,
+      leaseId: response.leaseId,
+      leaseExpiresAt: response.leaseExpiresAt,
+      session: response.session,
+    }
   }
 
   async sendMessage(
     sessionId: RuntimeSessionId,
     input: RuntimeSendMessageInput,
+    leaseId?: string,
   ): Promise<void> {
     const response = await this.sendRequest({
       method: 'send_message',
       sessionId,
+      leaseId,
       input,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
+    assertSuccess(response)
+    assertMethod(response, 'send_message')
   }
 
   async claimSession(
     sessionId: RuntimeSessionId,
     channel: RuntimeSessionChannel,
-  ): Promise<RuntimeSessionSnapshot> {
+  ): Promise<{
+    clientId: string
+    leaseId: string | null
+    leaseExpiresAt: string | null
+    snapshot: RuntimeSessionSnapshot
+  }> {
     const response = await this.sendRequest({
       method: 'claim_session',
       sessionId,
       channel,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
+    assertSuccess(response)
+    assertMethod(response, 'claim_session')
+    this.clientId = response.clientId
 
-    return response.snapshot
+    return {
+      clientId: response.clientId,
+      leaseId: response.leaseId,
+      leaseExpiresAt: response.leaseExpiresAt,
+      snapshot: response.snapshot,
+    }
   }
 
   async interrupt(
     sessionId: RuntimeSessionId,
+    leaseId?: string,
     channel?: RuntimeSessionChannel,
   ): Promise<void> {
     const response = await this.sendRequest({
       method: 'interrupt',
       sessionId,
+      leaseId,
       channel,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
+    assertSuccess(response)
+    assertMethod(response, 'interrupt')
   }
 
   async renameSession(
     sessionId: RuntimeSessionId,
     title: string,
+    leaseId?: string,
   ): Promise<string> {
     const response = await this.sendRequest({
       method: 'rename_session',
       sessionId,
+      leaseId,
       title,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
-
+    assertSuccess(response)
+    assertMethod(response, 'rename_session')
     return response.title
+  }
+
+  async archiveSession(
+    sessionId: RuntimeSessionId,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'archive_session',
+      sessionId,
+      leaseId,
+    })
+
+    assertSuccess(response)
+    if (response.method !== 'archive_session') {
+      throw new Error('La respuesta runtime no coincide con archive_session.')
+    }
+    return response.snapshot
+  }
+
+  async unarchiveSession(
+    sessionId: RuntimeSessionId,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'unarchive_session',
+      sessionId,
+      leaseId,
+    })
+
+    assertSuccess(response)
+    if (response.method !== 'unarchive_session') {
+      throw new Error('La respuesta runtime no coincide con unarchive_session.')
+    }
+    return response.snapshot
+  }
+
+  async pinSession(
+    sessionId: RuntimeSessionId,
+    pinned: boolean,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'pin_session',
+      sessionId,
+      leaseId,
+      pinned,
+    })
+
+    assertSuccess(response)
+    assertMethod(response, 'pin_session')
+    return response.snapshot
+  }
+
+  async updateSessionNotes(
+    sessionId: RuntimeSessionId,
+    notes: string,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'update_session_notes',
+      sessionId,
+      leaseId,
+      notes,
+    })
+
+    assertSuccess(response)
+    assertMethod(response, 'update_session_notes')
+    return response.snapshot
+  }
+
+  async setSessionModel(
+    sessionId: RuntimeSessionId,
+    model: ModelSetting,
+    leaseId?: string,
+  ): Promise<RuntimeSessionSnapshot> {
+    const response = await this.sendRequest({
+      method: 'set_session_model',
+      sessionId,
+      leaseId,
+      model,
+    })
+
+    assertSuccess(response)
+    assertMethod(response, 'set_session_model')
+    return response.snapshot
+  }
+
+  async listModels(): Promise<RuntimeModelOption[]> {
+    const response = await this.sendRequest({
+      method: 'list_models',
+    })
+
+    assertSuccess(response)
+    assertMethod(response, 'list_models')
+    return response.models
+  }
+
+  async getSessionEvents(
+    sessionId: RuntimeSessionId,
+  ): Promise<RuntimeSessionEventRecord[]> {
+    const response = await this.sendRequest({
+      method: 'get_session_events',
+      sessionId,
+    })
+
+    assertSuccess(response)
+    assertMethod(response, 'get_session_events')
+    return response.events
+  }
+
+  async setPermissionMode(
+    sessionId: RuntimeSessionId,
+    mode: PermissionMode,
+    leaseId?: string,
+    channel?: RuntimeSessionChannel,
+  ): Promise<PermissionMode> {
+    const response = await this.sendRequest({
+      method: 'set_permission_mode',
+      sessionId,
+      mode,
+      leaseId,
+      channel,
+    })
+
+    assertSuccess(response)
+    assertMethod(response, 'set_permission_mode')
+    return response.mode
   }
 
   async subscribeRuntime(): Promise<string> {
@@ -242,10 +444,14 @@ export class RuntimeWebSocketClient {
       method: 'subscribe_runtime',
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
+    assertSuccess(response)
+    if (response.method !== 'subscribe_runtime') {
+      throw new Error(
+        'La respuesta runtime no coincide con subscribe_runtime.',
+      )
     }
 
+    this.clientId = response.clientId
     return response.subscriptionId
   }
 
@@ -255,10 +461,14 @@ export class RuntimeWebSocketClient {
       sessionId,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
+    assertSuccess(response)
+    if (response.method !== 'subscribe_session') {
+      throw new Error(
+        'La respuesta runtime no coincide con subscribe_session.',
+      )
     }
 
+    this.clientId = response.clientId
     return response.subscriptionId
   }
 
@@ -268,10 +478,8 @@ export class RuntimeWebSocketClient {
       subscriptionId,
     })
 
-    if (!response.ok) {
-      throw new Error(response.error)
-    }
-
+    assertSuccess(response)
+    assertMethod(response, 'unsubscribe')
     return response.unsubscribed
   }
 

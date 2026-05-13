@@ -39,6 +39,7 @@ Runnable TypeScript source tree for the BotValia CLI, reconstructed from public 
 $ bun install       # Install dependencies
 $ bun run dev:auto  # Start CLI with Auto (All)
 $ bun run version   # Verify version number
+$ bun run security:preflight  # Run the local OSS security gate
 ```
 
 ## Current OSS Status
@@ -55,7 +56,30 @@ What this means in practice:
 - do **not** market the repository as security-hardened or release-grade yet
 - use the current branch on a best-effort basis while following [SECURITY.md](./SECURITY.md) for risk context
 - run `bun run security:preflight` before redistributing snapshots or treating a branch as OSS-shareable
+- use `/security audit` or `/runtime security` inside the CLI when you want the same gate from product UX
 - use [NETWORK_EGRESS.md](./NETWORK_EGRESS.md) and [SECURITY_RELEASE_CHECKLIST.md](./SECURITY_RELEASE_CHECKLIST.md) as the maintainer-facing release gate
+
+Current runtime/session posture:
+
+- the local runtime bridge is loopback-bound and token-gated at WebSocket handshake time
+- every `web-ui` session mutation now requires a short-lived per-session `leaseId` returned by `claim_session`
+- session metadata such as `title`, `archived`, `pinned`, `notes`, `model override`, and event history now persist in project-local runtime sidecar records instead of browser-owned metadata
+- `create_session` creates a persisted local session record immediately, but that record does **not** imply a live worker yet; prompts still require a live runtime session
+- runtime detail payloads now expose structured message blocks plus per-session event history for old and live sessions
+
+## Runtime Sessions
+
+The runtime bridge and BotValia-CodeUI now share one backend source of truth for session lifecycle:
+
+- `/runtime sessions`, `/runtime create`, `/runtime archive`, `/runtime restore`, `/runtime pin`, and `/runtime model ...` operate on the same runtime/session store used by the web inspector
+- web ownership is explicit: `claim_session` returns a short-lived lease, and a second claimant invalidates the previous lease
+- session metadata is persisted locally in project session storage as runtime sidecar files; leases do not survive restart
+- transcript detail is richer than before and includes structured blocks for markdown/text/tool output plus session events
+- attachment handling in this OSS posture is still limited to local references and existing artifacts; remote upload flows are intentionally out of scope for now
+
+Current limitation to keep in mind:
+
+- the backend already supports per-session model overrides and model listing, but the web UI selector is still conservative and not fully promoted as a first-class editing control yet
 
 ### Free Routing Modes
 

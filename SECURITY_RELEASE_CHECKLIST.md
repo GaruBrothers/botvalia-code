@@ -1,6 +1,6 @@
 # Security Release Checklist
 
-Last updated: 2026-05-03
+Last updated: 2026-05-13
 
 This checklist is meant for maintainers preparing a public or semi-public release of BotValia Code.
 
@@ -80,20 +80,22 @@ Use [NETWORK_EGRESS.md](./NETWORK_EGRESS.md) as the inventory.
 
 - [ ] `Blocked` if the runtime WebSocket no longer requires authentication
 - [ ] `Blocked` if the runtime bridge binds to non-loopback by default
-- [ ] `Needs explicit release note` if auth remains query-token based rather than stronger per-request authorization
-- [ ] `Pass` if it stays on `127.0.0.1` and enforces a token at connection time
+- [ ] `Needs explicit release note` if auth still relies on a tokenized launch URL even though per-session authorization exists
+- [ ] `Pass` if it stays on `127.0.0.1`, enforces a token at connection time, and keeps session mutation auth turned on
 
 ### 3.2 Session mutation controls
 
-- [ ] `Needs explicit release note` if any local client that knows the token can still read or mutate sessions without finer authorization
+- [ ] `Blocked` if `web-ui` mutations no longer require a valid session lease
+- [ ] `Needs explicit release note` if any local client that knows the token can still mutate sessions without a lease or explicit active-channel takeover
 - [ ] `Pass` only for local single-user posture, not as a multi-user security claim
 
 ## Phase 4. Browser and UI Privacy
 
 ### 4.1 Local persistence
 
-- [ ] `Blocked` if runtime URLs, ownership data, or session metadata are persisted longer than necessary in the browser by default
-- [ ] `Pass` if runtime web metadata is session-scoped by default
+- [ ] `Blocked` if runtime URLs or token-bearing launch data persist longer than necessary in browser storage
+- [ ] `Blocked` if session lifecycle metadata silently falls back to browser-owned persistence again
+- [ ] `Pass` if browser storage stays session-scoped and lifecycle metadata lives in the backend/runtime store
 
 ### 4.2 UI/CLI channel ownership
 
@@ -131,8 +133,10 @@ Run a final pass before publishing:
 
 - [ ] `bun run version` succeeds
 - [ ] `bun run security:preflight` succeeds
+- [ ] `/security audit` and `/runtime security` still reflect the same preflight outcome
 - [ ] `security-preflight` CI workflow still passes on the candidate branch
 - [ ] runtime bridge still boots and rejects unauthenticated connections
+- [ ] runtime lease checks still reject missing/stale leases after a takeover
 - [ ] nonessential egress defaults are still off in OSS posture
 - [ ] tracked generated artifacts are not reintroduced
 - [ ] docs still match actual code behavior
@@ -144,7 +148,7 @@ For this project's current maturity, a snapshot should not be called "secure for
 - no obvious secret exposure in tracked content
 - no tracked generated UI artifacts with local leakage
 - nonessential egress remains default-off
-- runtime bridge remains loopback-only and token-gated
+- runtime bridge remains loopback-only, token-gated, and lease-gated for `web-ui` mutations
 - dependency audit findings are reviewed
 - public docs honestly describe limitations
 

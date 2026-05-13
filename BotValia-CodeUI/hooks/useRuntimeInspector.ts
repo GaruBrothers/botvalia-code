@@ -11,17 +11,6 @@ import {
   mergeSnapshotsIntoSessions,
 } from '@/lib/runtime-mappers';
 import {
-  applyRuntimeSessionOwnership,
-  createSessionDraft,
-  getNextVisibleSessionId,
-  readRuntimeSessionOwnershipStore,
-  stripDraftSessions,
-  updateSessionDraft,
-  upsertSessionDraft,
-  upsertSessionOwnershipMetadata,
-  writeRuntimeSessionOwnershipStore,
-} from '@/lib/runtime-session-ownership';
-import {
   readBrowserStorage,
   removeBrowserStorage,
   writeBrowserStorage,
@@ -61,8 +50,8 @@ type UseRuntimeInspectorResult = {
   renameSession: (sessionId: string, newTitle: string) => Promise<void>;
   archiveSession: (sessionId: string) => Promise<void>;
   restoreSession: (sessionId: string) => Promise<void>;
-  togglePinnedSession: (sessionId: string) => void;
-  updateSessionNotes: (sessionId: string, notes: string) => void;
+  togglePinnedSession: (sessionId: string) => Promise<void>;
+  updateSessionNotes: (sessionId: string, notes: string) => Promise<void>;
   cyclePermissionMode: () => Promise<void>;
   toggleAutoRefresh: () => void;
   dismissNotice: () => void;
@@ -105,11 +94,21 @@ function readInitialRuntimeConfig(): {
   };
 }
 
+type SessionLease = {
+  leaseId: string;
+  leaseExpiresAt?: string | null;
+};
+
+function isLeaseExpired(leaseExpiresAt?: string | null): boolean {
+  if (!leaseExpiresAt) {
+    return false;
+  }
+
+  return Date.parse(leaseExpiresAt) <= Date.now();
+}
+
 export function useRuntimeInspector(): UseRuntimeInspectorResult {
   const [initialRuntimeConfig] = useState(readInitialRuntimeConfig);
-  const ownershipStoreRef = useRef(
-    readRuntimeSessionOwnershipStore(initialRuntimeConfig.runtimeUrl),
-  );
   const [globalState, setGlobalState] = useState<GlobalRuntimeState>(() => ({
     isReady: false,
     isSocketConnected: false,
@@ -120,15 +119,20 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       ? undefined
       : 'Falta la URL runtime en la pantalla actual.',
   }));
-  const [sessions, setSessions] = useState<Session[]>(() =>
-    applyRuntimeSessionOwnership([], ownershipStoreRef.current),
-  );
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionIdState] = useState<string | null>(null);
   const [notice, setNotice] = useState<RuntimeNotice | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [connectionVersion, setConnectionVersion] = useState(0);
 
+  const selectedSession = useMemo(
+    () => sessions.find(session => session.id === selectedSessionId) || null,
+    [sessions, selectedSessionId],
+  );
+
   const clientRef = useRef<BrowserRuntimeClient | null>(null);
+  const clientIdRef = useRef<string | null>(null);
+  const sessionLeasesRef = useRef<Map<string, SessionLease>>(new Map());
   const runtimeSubscriptionIdRef = useRef<string | null>(null);
   const sessionSubscriptionIdRef = useRef<string | null>(null);
   const selectedSessionIdRef = useRef<string | null>(null);
@@ -140,31 +144,6 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   const eventUnsubscribeRef = useRef<(() => void) | null>(null);
   const connectionUnsubscribeRef = useRef<(() => void) | null>(null);
   const handleProtocolEventRef = useRef<(event: RuntimeProtocolEvent) => void>(() => {});
-
-  const selectedSession = useMemo(
-    () => sessions.find(session => session.id === selectedSessionId) || null,
-    [sessions, selectedSessionId],
-  );
-
-  const applyOwnedSessions = (runtimeSessions: Session[]) =>
-    applyRuntimeSessionOwnership(runtimeSessions, ownershipStoreRef.current);
-
-  const commitRuntimeSessions = (
-    updater: (runtimeSessions: Session[]) => Session[],
-  ) => {
-    setSessions(previous => applyOwnedSessions(updater(stripDraftSessions(previous))));
-  };
-
-  const commitOwnershipStore = (
-    nextStore: ReturnType<typeof readRuntimeSessionOwnershipStore>,
-    baseSessions: Session[] = stripDraftSessions(sessions),
-  ) => {
-    ownershipStoreRef.current = nextStore;
-    writeRuntimeSessionOwnershipStore(runtimeUrlRef.current, nextStore);
-    const nextSessions = applyRuntimeSessionOwnership(baseSessions, nextStore);
-    setSessions(nextSessions);
-    return nextSessions;
-  };
 
   const pushNotice = (kind: NoticeKind, message: string) => {
     setNotice({
@@ -189,6 +168,22 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     setRuntimeError(error instanceof Error ? error.message : fallbackMessage);
   };
 
+  const upsertSessionLease = (
+    sessionId: string,
+    leaseId: string | null,
+    leaseExpiresAt: string | null,
+  ) => {
+    if (!leaseId) {
+      sessionLeasesRef.current.delete(sessionId);
+      return;
+    }
+
+    sessionLeasesRef.current.set(sessionId, {
+      leaseId,
+      leaseExpiresAt,
+    });
+  };
+
   const clearPendingSessionRefresh = () => {
     if (sessionRefreshTimerRef.current !== null) {
       window.clearTimeout(sessionRefreshTimerRef.current);
@@ -196,11 +191,15 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     }
   };
 
+  const commitSessions = (updater: (previous: Session[]) => Session[]) => {
+    setSessions(previous => updater(previous));
+  };
+
   const loadSessionDetail = async (
     sessionId: string | null,
     client: BrowserRuntimeClient | null = clientRef.current,
   ): Promise<void> => {
-    if (!client || !sessionId || ownershipStoreRef.current.drafts[sessionId]) {
+    if (!client || !sessionId) {
       return;
     }
 
@@ -209,7 +208,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       return;
     }
 
-    commitRuntimeSessions(previous => mergeDetailIntoSessions(previous, detail));
+    commitSessions(previous => mergeDetailIntoSessions(previous, detail));
   };
 
   const scheduleSessionDetailRefresh = (sessionId: string | null) => {
@@ -234,6 +233,8 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
 
     const client = clientRef.current;
     clientRef.current = null;
+    clientIdRef.current = null;
+    sessionLeasesRef.current.clear();
 
     eventUnsubscribeRef.current?.();
     eventUnsubscribeRef.current = null;
@@ -277,22 +278,11 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       const snapshots = await client.listSessions();
       let nextSelectedId: string | null = null;
 
-      commitRuntimeSessions(previous => mergeSnapshotsIntoSessions(previous, snapshots));
+      commitSessions(previous => mergeSnapshotsIntoSessions(previous, snapshots));
       setSelectedSessionIdState(previousSelectedId => {
-        if (
-          previousSelectedId &&
-          ownershipStoreRef.current.drafts[previousSelectedId]
-        ) {
-          nextSelectedId = previousSelectedId;
-          return previousSelectedId;
-        }
-
         if (snapshots.length === 0) {
-          nextSelectedId =
-            applyRuntimeSessionOwnership([], ownershipStoreRef.current).find(
-              session => !session.archived,
-            )?.id || null;
-          return nextSelectedId;
+          nextSelectedId = null;
+          return null;
         }
 
         if (
@@ -369,12 +359,50 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     try {
       await client.connect();
       runtimeSubscriptionIdRef.current = await client.subscribeRuntime();
+      clientIdRef.current = client.getClientId();
       await refresh(client);
       setConnectionVersion(previous => previous + 1);
     } catch (error) {
       await disconnectClient();
       throw error;
     }
+  };
+
+  const ensureWebLease = async (
+    sessionId: string,
+    client: BrowserRuntimeClient,
+  ): Promise<string | undefined> => {
+    const currentSession =
+      sessions.find(candidate => candidate.id === sessionId) ||
+      null;
+
+    if (
+      currentSession?.channelOwner?.clientId &&
+      clientIdRef.current &&
+      currentSession.channelOwner.clientId === clientIdRef.current &&
+      currentSession.channelOwner.leaseId &&
+      !isLeaseExpired(currentSession.channelOwner.leaseExpiresAt)
+    ) {
+      upsertSessionLease(
+        sessionId,
+        currentSession.channelOwner.leaseId,
+        currentSession.channelOwner.leaseExpiresAt,
+      );
+      return currentSession.channelOwner.leaseId;
+    }
+
+    const cachedLease = sessionLeasesRef.current.get(sessionId);
+    if (cachedLease && !isLeaseExpired(cachedLease.leaseExpiresAt)) {
+      return cachedLease.leaseId;
+    }
+
+    const claimed = await client.claimSession(sessionId, 'web-ui');
+    clientIdRef.current = claimed.clientId;
+    upsertSessionLease(sessionId, claimed.leaseId, claimed.leaseExpiresAt);
+    commitSessions(previous =>
+      mergeSnapshotsIntoSessions(previous, [claimed.snapshot], claimed.snapshot.updatedAt),
+    );
+    return claimed.leaseId || undefined;
   };
 
   useEffect(() => {
@@ -394,24 +422,17 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
 
   useEffect(() => {
     handleProtocolEventRef.current = event => {
+      if (event.clientId) {
+        clientIdRef.current = event.clientId;
+      }
+
       if (event.type === 'runtime_bootstrap') {
-        commitRuntimeSessions(previous =>
+        commitSessions(previous =>
           mergeSnapshotsIntoSessions(previous, event.sessions, event.timestamp),
         );
         setSelectedSessionIdState(previousSelectedId => {
-          if (
-            previousSelectedId &&
-            ownershipStoreRef.current.drafts[previousSelectedId]
-          ) {
-            return previousSelectedId;
-          }
-
           if (event.sessions.length === 0) {
-            return (
-              applyRuntimeSessionOwnership([], ownershipStoreRef.current).find(
-                session => !session.archived,
-              )?.id || null
-            );
+            return null;
           }
 
           if (
@@ -427,21 +448,21 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       }
 
       if (event.type === 'session_bootstrap') {
-        commitRuntimeSessions(previous =>
+        commitSessions(previous =>
           mergeSnapshotsIntoSessions(previous, [event.session], event.timestamp),
         );
         return;
       }
 
       if (event.type === 'runtime_registry_event') {
-        commitRuntimeSessions(previous => applyRuntimeRegistryEvent(previous, event.event));
+        commitSessions(previous => applyRuntimeRegistryEvent(previous, event.event));
         if (selectedSessionIdRef.current === event.event.sessionId) {
           scheduleSessionDetailRefresh(event.event.sessionId);
         }
         return;
       }
 
-      commitRuntimeSessions(previous =>
+      commitSessions(previous =>
         applyRuntimeSessionEvent(previous, event.sessionId, event.event),
       );
 
@@ -517,7 +538,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       !clientRef.current ||
       !selectedSessionId ||
       connectionVersion === 0 ||
-      selectedSession?.isDraft
+      selectedSession?.hasLiveRuntime === false
     ) {
       return;
     }
@@ -560,9 +581,8 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     return () => {
       cancelled = true;
     };
-    // The session subscription lifecycle is keyed only by connection and selected session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionVersion, selectedSession?.isDraft, selectedSessionId]);
+  }, [connectionVersion, selectedSession?.hasLiveRuntime, selectedSessionId]);
 
   useEffect(() => {
     if (!globalState.autoRefresh || connectionVersion === 0) {
@@ -576,7 +596,6 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     }, 8_000);
 
     return () => window.clearInterval(timer);
-    // The periodic refresh intentionally follows the current autoRefresh/connection state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionVersion, globalState.autoRefresh]);
 
@@ -584,18 +603,31 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     const client = clientRef.current;
     const sessionId = selectedSessionIdRef.current;
     const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!client || !sessionId || !session || session.isDraft) {
+    if (!client || !sessionId || !session) {
       pushNotice('warn', 'Selecciona una sesión activa antes de enviar un mensaje.');
       return;
     }
 
-    commitRuntimeSessions(previous => appendOptimisticMessage(previous, sessionId, text));
+    if (session.hasLiveRuntime === false) {
+      pushNotice(
+        'warn',
+        'Esta sesión ya está persistida en backend, pero todavía no tiene un worker runtime vivo para recibir mensajes.',
+      );
+      return;
+    }
+
+    const leaseId = await ensureWebLease(sessionId, client);
+    commitSessions(previous => appendOptimisticMessage(previous, sessionId, text));
 
     try {
-      await client.sendMessage(sessionId, {
-        text,
-        channel: 'web-ui',
-      });
+      await client.sendMessage(
+        sessionId,
+        {
+          text,
+          channel: 'web-ui',
+        },
+        leaseId,
+      );
       scheduleSessionDetailRefresh(sessionId);
     } catch (error) {
       await refresh(client);
@@ -609,26 +641,32 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     const client = clientRef.current;
     const sessionId = sessionIdOverride ?? selectedSessionIdRef.current;
     const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!client || !sessionId || !session || session.isDraft) {
+    if (!client || !sessionId || !session) {
       pushNotice(
         'warn',
-        'Selecciona una sesion runtime activa antes de tomar control desde la web.',
+        'Selecciona una sesión runtime antes de tomar control desde la web.',
       );
       return;
     }
 
     try {
-      const snapshot = await client.claimSession(sessionId, 'web-ui');
-      commitRuntimeSessions(previous =>
-        mergeSnapshotsIntoSessions(previous, [snapshot], snapshot.activeChannelUpdatedAt),
+      const claimed = await client.claimSession(sessionId, 'web-ui');
+      clientIdRef.current = claimed.clientId;
+      upsertSessionLease(sessionId, claimed.leaseId, claimed.leaseExpiresAt);
+      commitSessions(previous =>
+        mergeSnapshotsIntoSessions(
+          previous,
+          [claimed.snapshot],
+          claimed.snapshot.updatedAt,
+        ),
       );
-      pushNotice('info', 'La Web UI tomo control de esta sesion.');
+      pushNotice('info', 'La Web UI tomó control de esta sesión.');
       scheduleSessionDetailRefresh(sessionId);
     } catch (error) {
       setRuntimeError(
         error instanceof Error
           ? error.message
-          : 'No pude tomar control de la sesion desde la UI.',
+          : 'No pude tomar control de la sesión desde la UI.',
       );
     }
   };
@@ -638,7 +676,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     const trimmedText = text.trim();
 
     if (!trimmedName || !trimmedText) {
-      pushNotice('warn', 'La instruccion directa necesita agente y contenido.');
+      pushNotice('warn', 'La instrucción directa necesita agente y contenido.');
       return;
     }
 
@@ -649,12 +687,21 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     const client = clientRef.current;
     const sessionId = selectedSessionIdRef.current;
     const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!client || !sessionId || !session || session.isDraft) {
+    if (!client || !sessionId || !session) {
+      return;
+    }
+
+    if (session.hasLiveRuntime === false) {
+      pushNotice(
+        'warn',
+        'Esta sesión existe, pero no hay un worker runtime vivo para interrumpir.',
+      );
       return;
     }
 
     try {
-      await client.interrupt(sessionId, 'web-ui');
+      const leaseId = await ensureWebLease(sessionId, client);
+      await client.interrupt(sessionId, leaseId, 'web-ui');
       scheduleSessionDetailRefresh(sessionId);
     } catch (error) {
       setRuntimeError(
@@ -669,7 +716,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     const client = clientRef.current;
     const sessionId = selectedSessionIdRef.current;
     const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!client || !sessionId || !session || session.isDraft) {
+    if (!client || !sessionId || !session) {
       pushNotice('warn', 'Selecciona una sesión activa antes de cambiar el modo.');
       return;
     }
@@ -680,19 +727,20 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     });
 
     try {
-      await client.setPermissionMode(sessionId, nextMode, 'web-ui');
-      commitRuntimeSessions(previous =>
+      const leaseId = await ensureWebLease(sessionId, client);
+      const mode = await client.setPermissionMode(sessionId, nextMode, leaseId, 'web-ui');
+      commitSessions(previous =>
         previous.map(candidate =>
           candidate.id === sessionId
             ? {
                 ...candidate,
-                permissionMode: nextMode,
+                permissionMode: mode,
                 updatedAt: new Date().toISOString(),
               }
             : candidate,
         ),
       );
-      pushNotice('info', `Modo cambiado a ${nextMode}.`);
+      pushNotice('info', `Modo cambiado a ${mode}.`);
     } catch (error) {
       setRuntimeError(
         error instanceof Error
@@ -703,142 +751,166 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   };
 
   const createSession = async (title: string, workspacePath: string) => {
-    const trimmedTitle = title.trim();
-    const trimmedWorkspacePath = workspacePath.trim();
-    if (!trimmedTitle) {
-      pushNotice('warn', 'El borrador necesita al menos un titulo.');
-      return;
-    }
-
-    const draft = createSessionDraft({
-      title: trimmedTitle,
-      workspacePath: trimmedWorkspacePath,
-    });
-    const nextStore = upsertSessionDraft(ownershipStoreRef.current, draft);
-    commitOwnershipStore(nextStore);
-    setSelectedSessionIdState(draft.id);
-    pushNotice(
-      'warn',
-      'Borrador creado en la UI. El runtime actual todavia no expone create_session para lanzar un worker real desde browser.',
-    );
-  };
-
-  const renameSession = async (sessionId: string, newTitle: string) => {
-    const trimmedTitle = newTitle.trim();
-    if (!trimmedTitle) {
-      pushNotice('warn', 'El nombre de la sesion no puede quedar vacio.');
-      return;
-    }
-
-    const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!session) {
-      pushNotice('warn', 'No encontre la sesion que intentabas renombrar.');
-      return;
-    }
-
-    if (session.isDraft) {
-      const nextStore = updateSessionDraft(ownershipStoreRef.current, sessionId, {
-        title: trimmedTitle,
-      });
-      commitOwnershipStore(nextStore);
-      pushNotice('info', 'Borrador renombrado en esta UI.');
-      return;
-    }
-
-    const nextStore = upsertSessionOwnershipMetadata(
-      ownershipStoreRef.current,
-      sessionId,
-      { customTitle: trimmedTitle },
-    );
-    commitOwnershipStore(nextStore);
-
     const client = clientRef.current;
     if (!client) {
-      pushNotice(
-        'warn',
-        'Nombre guardado solo en esta UI/browser. No hay conexion runtime activa para persistirlo en backend.',
-      );
+      pushNotice('warn', 'Necesitas una conexión runtime activa para crear una sesión.');
+      return;
+    }
+
+    const trimmedTitle = title.trim();
+    const trimmedWorkspacePath = workspacePath.trim();
+    if (!trimmedTitle || !trimmedWorkspacePath) {
+      pushNotice('warn', 'La nueva sesión necesita título y workspace.');
       return;
     }
 
     try {
-      await client.renameSession(sessionId, trimmedTitle);
-      pushNotice('info', 'Nombre de sesion guardado en runtime y UI.');
-    } catch (error) {
+      const created = await client.createSession({
+        title: trimmedTitle,
+        cwd: trimmedWorkspacePath,
+      });
+      clientIdRef.current = created.clientId;
+      upsertSessionLease(created.session.sessionId, created.leaseId, created.leaseExpiresAt);
+      commitSessions(previous =>
+        mergeSnapshotsIntoSessions(previous, [created.session], created.session.updatedAt),
+      );
+      setSelectedSessionIdState(created.session.sessionId);
       pushNotice(
-        'warn',
-        `Nombre guardado solo en esta UI/browser. Backend runtime sin soporte completo o error: ${
-          error instanceof Error ? error.message : 'rename_session no disponible'
-        }`,
+        created.session.hasLiveRuntime
+          ? 'info'
+          : 'warn',
+        created.session.hasLiveRuntime
+          ? 'Sesión creada en backend.'
+          : 'Sesión creada y persistida en backend. Aún falta adjuntarle un worker runtime vivo para ejecutar prompts.',
+      );
+      await loadSessionDetail(created.session.sessionId, client);
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error
+          ? error.message
+          : 'No pude crear la nueva sesión runtime.',
+      );
+    }
+  };
+
+  const renameSession = async (sessionId: string, newTitle: string) => {
+    const client = clientRef.current;
+    if (!client) {
+      pushNotice('warn', 'No hay conexión runtime activa para renombrar la sesión.');
+      return;
+    }
+
+    const trimmedTitle = newTitle.trim();
+    if (!trimmedTitle) {
+      pushNotice('warn', 'El nombre de la sesión no puede quedar vacío.');
+      return;
+    }
+
+    try {
+      const leaseId = await ensureWebLease(sessionId, client);
+      await client.renameSession(sessionId, trimmedTitle, leaseId);
+      await loadSessionDetail(sessionId, client);
+      pushNotice('info', 'Nombre de sesión guardado en backend.');
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error
+          ? error.message
+          : 'No pude renombrar la sesión.',
       );
     }
   };
 
   const archiveSession = async (sessionId: string) => {
-    const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!session) {
+    const client = clientRef.current;
+    if (!client) {
+      pushNotice('warn', 'No hay conexión runtime activa para archivar la sesión.');
       return;
     }
 
-    const nextStore = session.isDraft
-      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { archived: true })
-      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, {
-          archived: true,
-        });
-    const nextSessions = commitOwnershipStore(nextStore);
-
-    if (selectedSessionIdRef.current === sessionId) {
-      setSelectedSessionIdState(getNextVisibleSessionId(nextSessions, sessionId));
+    try {
+      const leaseId = await ensureWebLease(sessionId, client);
+      const snapshot = await client.archiveSession(sessionId, leaseId);
+      commitSessions(previous =>
+        mergeSnapshotsIntoSessions(previous, [snapshot], snapshot.updatedAt),
+      );
+      if (selectedSessionIdRef.current === sessionId) {
+        setSelectedSessionIdState(
+          sessions.find(candidate => candidate.id !== sessionId && !candidate.archived)?.id ||
+            null,
+        );
+      }
+      pushNotice('info', 'Sesión archivada en backend.');
+      await loadSessionDetail(sessionId, client);
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error ? error.message : 'No pude archivar la sesión.',
+      );
     }
-
-    pushNotice(
-      session.isDraft ? 'info' : 'warn',
-      session.isDraft
-        ? 'Borrador archivado en la UI.'
-        : 'Sesion archivada en la UI. El runtime/CLI actual todavia no expone archive_session.',
-    );
   };
 
   const restoreSession = async (sessionId: string) => {
-    const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!session) {
+    const client = clientRef.current;
+    if (!client) {
+      pushNotice('warn', 'No hay conexión runtime activa para restaurar la sesión.');
       return;
     }
 
-    const nextStore = session.isDraft
-      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { archived: false })
-      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, {
-          archived: false,
-        });
-    commitOwnershipStore(nextStore);
-    pushNotice('info', 'Sesion restaurada en la UI.');
+    try {
+      const leaseId = await ensureWebLease(sessionId, client);
+      const snapshot = await client.unarchiveSession(sessionId, leaseId);
+      commitSessions(previous =>
+        mergeSnapshotsIntoSessions(previous, [snapshot], snapshot.updatedAt),
+      );
+      pushNotice('info', 'Sesión restaurada en backend.');
+      await loadSessionDetail(sessionId, client);
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error ? error.message : 'No pude restaurar la sesión.',
+      );
+    }
   };
 
-  const togglePinnedSession = (sessionId: string) => {
+  const togglePinnedSession = async (sessionId: string) => {
+    const client = clientRef.current;
     const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!session) {
+    if (!client || !session) {
       return;
     }
 
-    const nextPinned = !session.pinned;
-    const nextStore = session.isDraft
-      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { pinned: nextPinned })
-      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, {
-          pinned: nextPinned,
-        });
-    commitOwnershipStore(nextStore);
+    try {
+      const leaseId = await ensureWebLease(sessionId, client);
+      const snapshot = await client.pinSession(sessionId, !session.pinned, leaseId);
+      commitSessions(previous =>
+        mergeSnapshotsIntoSessions(previous, [snapshot], snapshot.updatedAt),
+      );
+      await loadSessionDetail(sessionId, client);
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error ? error.message : 'No pude fijar la sesión.',
+      );
+    }
   };
 
-  const updateSessionNotes = (sessionId: string, notes: string) => {
-    const session = sessions.find(candidate => candidate.id === sessionId);
-    if (!session) {
+  const updateSessionNotes = async (sessionId: string, notes: string) => {
+    const client = clientRef.current;
+    if (!client) {
       return;
     }
 
-    const nextStore = session.isDraft
-      ? updateSessionDraft(ownershipStoreRef.current, sessionId, { notes })
-      : upsertSessionOwnershipMetadata(ownershipStoreRef.current, sessionId, { notes });
-    commitOwnershipStore(nextStore);
+    try {
+      const leaseId = await ensureWebLease(sessionId, client);
+      const snapshot = await client.updateSessionNotes(sessionId, notes, leaseId);
+      commitSessions(previous =>
+        mergeSnapshotsIntoSessions(previous, [snapshot], snapshot.updatedAt),
+      );
+      await loadSessionDetail(sessionId, client);
+    } catch (error) {
+      setRuntimeError(
+        error instanceof Error
+          ? error.message
+          : 'No pude guardar las notas de la sesión.',
+      );
+    }
   };
 
   const toggleAutoRefresh = () => {
@@ -859,7 +931,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
   const reportPendingFeature = (feature: string) => {
     pushNotice(
       'warn',
-      `${feature} todavía depende de backend/runtime. Ya quedó mapeado en ROADMAP.md para fases siguientes.`,
+      `${feature} todavía depende de un worker runtime vivo o de una integración adicional del backend.`,
     );
   };
 

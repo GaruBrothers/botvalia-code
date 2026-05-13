@@ -585,11 +585,14 @@ function createBaseSession(
     id: snapshot.sessionId,
     shortId: snapshot.sessionId.slice(0, 8),
     projectName: getBasename(snapshot.cwd),
-    title: previous?.title || snapshot.sessionId.slice(0, 8),
+    title: snapshot.title || previous?.title || snapshot.sessionId.slice(0, 8),
     workspaceName: snapshot.cwd,
     status: mapRuntimeStatus(snapshot.status),
+    hasLiveRuntime: snapshot.hasLiveRuntime,
     activeChannel: snapshot.activeChannel,
     activeChannelUpdatedAt: snapshot.activeChannelUpdatedAt,
+    channelOwner: snapshot.channelOwner,
+    leaseExpiresAt: snapshot.leaseExpiresAt,
     permissionMode: snapshot.permissionMode,
     isBypassPermissionsModeAvailable: snapshot.isBypassPermissionsModeAvailable,
     isAutoModeAvailable: snapshot.isAutoModeAvailable,
@@ -599,7 +602,9 @@ function createBaseSession(
     events: previous?.events || [],
     startedAt: previous?.startedAt || timestamp,
     updatedAt: timestamp,
-    archived: previous?.archived || false,
+    archived: snapshot.isArchived ?? previous?.archived ?? false,
+    pinned: snapshot.isPinned ?? previous?.pinned ?? false,
+    notes: snapshot.notes ?? previous?.notes,
     messageCount: snapshot.messageCount,
     taskCount: snapshot.taskCount,
     rawSnapshot: snapshot,
@@ -619,12 +624,14 @@ export function mergeSnapshotsIntoSessions(
   updatedAt?: string,
 ): Session[] {
   const previousMap = new Map(previousSessions.map(session => [session.id, session]));
+  for (const snapshot of snapshots) {
+    previousMap.set(
+      snapshot.sessionId,
+      createBaseSession(snapshot, previousMap.get(snapshot.sessionId), updatedAt),
+    );
+  }
 
-  const merged = snapshots.map(snapshot =>
-    createBaseSession(snapshot, previousMap.get(snapshot.sessionId), updatedAt),
-  );
-
-  return sortSessions(merged);
+  return sortSessions([...previousMap.values()]);
 }
 
 export function applyDetailToSession(
@@ -699,6 +706,17 @@ export function applyDetailToSession(
   return {
     ...base,
     messages: mergedMessages,
+    events:
+      detail.events.length > 0
+        ? detail.events.map(event => ({
+            id: event.id,
+            timestamp: event.timestamp,
+            type: event.severity,
+            message: event.message,
+            source: event.source,
+            eventType: event.eventType,
+          }))
+        : base.events,
     swarm: createSwarmState(
       detail.snapshot,
       detail.tasks,

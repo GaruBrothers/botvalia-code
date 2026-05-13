@@ -11,42 +11,57 @@ Este roadmap refleja la integración real entre `BotValia-CodeUI`, el runtime ac
 
 ## Estado actual
 
-La UI web nueva ya quedó conectada al runtime real para estas capacidades existentes hoy en el backend:
+El runtime y `BotValia-CodeUI` ya comparten un backend real para lifecycle, ownership y lectura rica de sesiones.
+
+Capacidades backend disponibles hoy:
 
 - `list_sessions`
+- `get_session`
 - `get_session_detail`
-- `send_message`
+- `create_session`
 - `claim_session`
+- `send_message`
 - `interrupt`
 - `rename_session`
+- `archive_session`
+- `unarchive_session`
+- `pin_session`
+- `update_session_notes`
+- `set_session_model`
+- `list_models`
+- `get_session_events`
 - `set_permission_mode`
 - `subscribe_runtime`
 - `subscribe_session`
 - `unsubscribe`
 
-También está consumiendo lo que ya expone el runtime en lectura:
+Datos ya expuestos por snapshot/detail:
 
-- `sessionId`, `cwd`, `status`, `messageCount`, `taskCount`
+- `title`, `isArchived`, `isPinned`, `notes`
+- `createdAt`, `updatedAt`
+- `hasLiveRuntime`
+- `activeChannel`, `channelOwner`, `leaseExpiresAt`
 - `mainLoopModel`, `mainLoopModelForSession`
-- `swarm.teamName`, `swarm.isLeader`, `swarm.teammateNames`
-- `tasks`
-- `swarmThreads`
-- `swarmWaitingEdges`
-- eventos live de runtime y de sesión
+- `tasks`, `swarmThreads`, `swarmWaitingEdges`
+- transcript por bloques estructurados
+- historial de eventos por sesión
 
 Además, hoy ya existe en producto:
 
-- topbar y shell nuevos de `BotValia-CodeUI` corriendo sobre el runtime real
-- placeholder de `thinking` en vivo en web
-- thinking incremental cuando el runtime emite `thinking_delta`
-- reemplazo limpio de `thinking` por respuesta final cuando llega el assistant message
-- `Shift+Tab` en la UI web para ciclar modo de ejecución
-- mensaje de sistema `Auto cancelado por el usuario.` al interrumpir desde la UI
-- transcript más compacto en altura para mostrar más conversación en pantalla
-- task rail lateral en CLI cuando el flujo expone tareas enumeradas o trabajo en curso
-- rail operativo en CLI con secciones `Tasks`, `Thinking`, `Tools`, `Agents` y `Context`
-- canal activo visible por sesión (`CLI` / `Web UI`) y takeover explícito desde la web
-- `/model audit` y `/model update` como comandos reales de producto
+- shell web nueva corriendo sobre el runtime real
+- takeover explícito de sesión desde Web UI con lease corto y visible
+- mutaciones `web-ui` protegidas por `leaseId` por sesión, no sólo por handshake del socket
+- metadata de sesión persistida del lado backend/runtime en vez de persistencia local del browser
+- `/runtime sessions`, `/runtime create`, `/runtime archive`, `/runtime restore`, `/runtime pin`, `/runtime model ...`
+- `/runtime security` y `/security audit` usando el mismo gate local de `security:preflight`
+- thinking, tools, tasks y eventos live visibles desde la UI actual
+
+Limitaciones vigentes:
+
+- `create_session` crea un record persistido local de inmediato, pero no levanta por sí solo un worker vivo
+- una sesión persistida sin worker puede leerse, renombrarse, archivarse, fijarse y cambiar de modelo, pero no aceptar `send_message`
+- el selector visual de modelo en la web todavía no está promovido como edición completa aunque el backend/protocolo ya lo soportan
+- attachments remotos siguen fuera de alcance; la postura actual se limita a referencias locales/artefactos existentes
 
 Y hoy el routing de modelos funciona así:
 
@@ -78,173 +93,105 @@ Archivos base:
 
 ## Fase 1
 
-Objetivo: paridad funcional de lifecycle de sesión desde la UI.
+Objetivo: backend real para lifecycle de sesión.
 
-Ya existe hoy:
-- `rename_session`
-- drafts locales de sesión en browser
-- metadata visual local por sesión
-  - `title`
-  - `archived`
-  - `pinned`
-  - `notes`
+Estado:
+- completado para rename/create/archive/restore/pin/notes
 
-Pendientes backend reales:
-- `create_session`
-- `archive_session`
-- `unarchive_session`
-- `pin_session`
+Lo que ya quedó resuelto:
 
-Impacto UI actual:
-- `Nueva sesión` crea borradores locales funcionales mientras falta `create_session`
-- `Rename` ya persiste en runtime cuando hay backend conectado
-- `Archive`, `Restore`, `Pin` y `Notes` viven hoy en persistencia local del browser
-- la biblioteca cross-device o compartida con CLI sigue pendiente hasta que exista backend de lifecycle
+- `create_session`, `archive_session`, `unarchive_session`, `pin_session` y `update_session_notes`
+- metadata persistida del lado runtime
+- snapshots consistentes entre CLI y Web UI
+- records recuperables después de reiniciar el runtime
 
-Archivos a tocar cuando se implemente:
-- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](./src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
-- [src/runtime/runtimeRegistry.ts](./src/runtime/runtimeRegistry.ts)
-- la capa que persista metadata de sesión
+Límite actual:
+
+- un record persistido no equivale todavía a un worker vivo ni a sync remota
 
 ## Fase 2
 
-Objetivo: settings y control de modelo reales desde la UI.
+Objetivo: ownership y auth real por sesión.
 
-Pendientes backend:
-- `set_session_model`
-- opcional `set_default_model`
-- endpoint/listado de modelos válidos para la UI
-- evento consistente de cambio de modelo accionado desde protocolo
+Estado:
+- completado para el backend local single-user
 
-Impacto UI actual:
-- el selector de modelo en settings queda en modo lectura
-- la UI sí muestra el modelo real de la sesión
-- `model_switched` existe como shape/evento, pero no hay acción expuesta para dispararlo desde la web
+Lo que ya quedó resuelto:
 
-Archivos a tocar:
-- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](./src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
+- `claim_session` devuelve `leaseId` corto/renovable
+- toda mutación `web-ui` sensible exige lease vigente
+- takeover desde otro cliente invalida el lease anterior
+- snapshots exponen `channelOwner`, `activeChannel` y vencimiento de lease
+- errores tipados: `unauthorized`, `lease_expired`, `channel_conflict`, `session_not_found`
+
+Límite actual:
+
+- la seguridad sigue orientada a desktop local single-user, no a multiusuario ni a acceso remoto confiable
+- el token del WebSocket sigue existiendo en el launch flow aunque ya no es la única barrera
 
 ## Fase 3
 
-Objetivo: paridad real del `SwarmOfficeView`.
+Objetivo: control real de modelo por sesión.
 
-Ya existe hoy:
-- `teamName`
-- `isLeader`
-- `teammateNames`
-- `teammates[]` básicos con metadata real cuando el runtime la conoce
-- `tasks`
-- `swarmThreads`
-- `swarmWaitingEdges`
-- `Direct instruction` desde web enviando `@agente ...` por el runtime actual
+Estado:
+- backend completado, UX web aún parcial
 
-Pendientes backend:
-- enriquecer consistentemente `swarm.teammates[]` en todos los caminos del runtime con:
-  - `role`
-  - `status`
-  - `currentTask`
-  - `currentInstruction`
-- `swarm.tasks[]` con `assigneeId`/`owner` real en todos los providers
-- `send_swarm_instruction` nativo como método de protocolo en vez de piggyback sobre `@agente`
-- un feed más fiel para `internalChat`
+Lo que ya quedó resuelto:
 
-Impacto UI actual:
-- la vista swarm ya usa datos reales donde existen
-- teammates, roles y asignaciones siguen siendo heurísticos solo cuando el backend no los provee
-- `Direct instruction to <agent>` ya funciona vía mensaje dirigido; falta volverlo endpoint oficial
+- `set_session_model`
+- `list_models`
+- persistencia local del override por sesión
+- restauración del override al reconstruir el runtime vivo cuando aplica
+- comandos CLI `/runtime model list|get|set`
 
-Archivos a tocar:
-- [src/runtime/types.ts](./src/runtime/types.ts)
-- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
-- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
-- la capa real de coordinator/swarm
+Pendiente real:
+
+- selector visual completo en la web para editar modelo sin caer en placeholder
 
 ## Fase 4
 
-Objetivo: fidelidad completa del transcript y adjuntos.
+Objetivo: transcript rico e historial de eventos.
 
-Ya existe hoy:
-- mensajes reales por sesión
-- timestamps reales
-- sanitización en frontend para esconder thinking, redacted thinking, caveats y XML interno
-- placeholder y lifecycle real de `thinking` en web
-- contexto explícito de origen `web-ui` al enviar desde la UI
-- takeover explícito de canal activo con `claim_session`
-- eventos estructurados:
-  - `thinking_started`
-  - `thinking_delta`
-  - `thinking_completed`
-  - `task_started`
-  - `task_progress`
-  - `task_completed`
-  - `tool_started`
-  - `tool_progress`
-  - `tool_completed`
-  - `agent_event`
-  - `swarm_event`
+Estado:
+- mayormente completado, con límites explícitos en adjuntos
 
-Pendientes backend:
-- payload de mensaje más fiel que `RuntimeMessageSummary.text`
-- bloques estructurados para markdown/code/table con mejor preservación
-- soporte real de attachments desde la UI
-- texto de pensamiento realmente incremental y visible en tiempo real cuando el modelo/provider lo emite
-- diferenciación más fuerte entre:
-  - `thinking`
-  - `tool progress`
-  - `final answer`
-- policy más estricta de ownership por turno cuando CLI y web pelean por la misma sesión
+Lo que ya quedó resuelto:
 
-Impacto UI actual:
-- la conversación principal ya funciona con mensajes reales
-- aún depende de un adapter/sanitizador porque el runtime colapsa varios contenidos a texto plano
-- el botón attach queda visible, pero pendiente
-- la UI ya muestra streaming textual, thinking y eventos estructurados, pero todavía no existe una representación rica por bloques ni un ownership lock duro por turno
-- si el modelo no emite deltas reales de pensamiento, la UI cae al placeholder y luego muestra la respuesta final
+- `RuntimeMessageSummary.blocks` para texto/markdown/tool_use/tool_result/thinking
+- historial consultable con `get_session_events`
+- eventos persistidos para sesiones viejas y sesiones vivas
+- detalle de sesión más fiel que el antiguo resumen de texto plano
 
-Archivos a tocar:
-- [src/runtime/types.ts](./src/runtime/types.ts)
-- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
+Límites actuales:
+
+- los adjuntos siguen siendo referencias locales/artefactos existentes
+- no hay uploads remotos ni share flows nuevos en esta fase
+- algunos contenidos todavía se resumen desde shapes restaurados en lugar de conservar fidelidad perfecta a todos los block types del proveedor
 
 ## Fase 5
 
 Objetivo: timeline de eventos y observabilidad por sesión.
 
-Ya existe hoy:
+Estado:
+- backend completado
+
+Lo que ya quedó resuelto:
+
 - `runtime_registry_event`
 - `runtime_session_event`
-- timestamps en eventos runtime
-- feed live local con tasks, tools, swarm, agents, modelo y permission mode
+- timestamps consistentes
+- severidad y source normalizados en records persistidos
+- `get_session_events` para sesiones vivas y persistidas
 
-Pendientes backend:
-- historial consultable de eventos por sesión
-- severidad normalizada
-- scope/source consistente
-- opcional `get_session_events`
+Trabajo restante de producto:
 
-Impacto UI actual:
-- la pestaña `Eventos` ya muestra feed live acumulado localmente
-- todavía no existe histórico confiable al abrir una sesión antigua o recién cargada
-
-Archivos a tocar:
-- [src/runtime/protocol.ts](./src/runtime/protocol.ts)
-- [src/runtime/runtimeBridge.ts](./src/runtime/runtimeBridge.ts)
-- [src/runtime/runtimeService.ts](./src/runtime/runtimeService.ts)
+- pulir UX visual del timeline en web/CLI sin cambiar el contrato base del runtime
 
 ## Notas
 
-- La UI nueva ya está trayendo el diseño real de `BotValia-CodeUI`; lo pendiente ahora es mostly backend parity.
-- Las funciones que hoy no existen en protocolo quedan visibles como UX premium, pero deben reportarse como pendientes y no mentir soporte.
+- El backend de runtime ya cubre lifecycle, leases, overrides de modelo e historial de eventos.
+- Lo que sigue abierto es menos de contrato y más de UX/polish en Web UI, swarm rico y attachments.
 - El CLI ya soporta mensajería directa con `@nombre` para teammates activos y agentes nombrados en ejecución, incluyendo varias líneas `@agente tarea` en un solo envío.
-- El orden recomendado para cerrar gaps es:
-  1. lifecycle de sesión
-  2. modelo/settings
-  3. swarm rico
-  4. transcript estructurado
-  5. historial de eventos
 
 ## Fase 6
 
