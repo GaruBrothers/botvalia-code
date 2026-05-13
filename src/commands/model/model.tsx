@@ -232,6 +232,19 @@ function formatAuditResult(
   return lines.join('\n')
 }
 
+function createPostUpdateAuditResult(
+  audit: RouterAuditResult,
+): RouterAuditResult {
+  return {
+    ...audit,
+    current: {
+      fast: [...audit.recommended.fast],
+      complex: [...audit.recommended.complex],
+      code: [...audit.recommended.code],
+    },
+  }
+}
+
 function AuditOrUpdateModelRouter({
   action,
   onDone,
@@ -289,9 +302,16 @@ function AuditOrUpdateModelRouter({
           },
         }))
 
-        onDone(formatAuditResult(audit, 'update', payload.changedKeys), {
-          display: 'system',
-        })
+        onDone(
+          formatAuditResult(
+            createPostUpdateAuditResult(audit),
+            'update',
+            payload.changedKeys,
+          ),
+          {
+            display: 'system',
+          },
+        )
       } catch (error) {
         onDone(`Failed to ${action} router preset: ${(error as Error).message}`, {
           display: 'system',
