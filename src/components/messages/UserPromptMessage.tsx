@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle';
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import React, { useContext, useMemo } from 'react';
 import { getKairosActive, getUserMsgOptIn } from '../../bootstrap/state.js';
+import { useQueuedMessage } from '../../context/QueuedMessageContext.js';
 import { Box, NoSelect, Text } from '../../ink.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { useAppState } from '../../state/AppState.js';
@@ -29,14 +30,16 @@ const MAX_DISPLAY_CHARS = 10_000;
 const TRUNCATE_HEAD_CHARS = 2_500;
 const TRUNCATE_TAIL_CHARS = 2_500;
 function UserHeader({
+  isQueued,
   isSelected
 }: {
+  isQueued: boolean;
   isSelected: boolean;
 }): React.ReactNode {
-  const accent = isSelected ? 'suggestion' : 'briefLabelYou';
+  const accent = isSelected ? 'suggestion' : isQueued ? 'warning' : 'briefLabelYou';
   return <Box gap={1}>
       <Text color={accent}>you</Text>
-      <Text color="subtle">/ prompt</Text>
+      {isQueued ? <Text color="warning">/ queued</Text> : <Text color="subtle">/ prompt</Text>}
     </Box>;
 }
 export function UserPromptMessage({
@@ -79,6 +82,7 @@ export function UserPromptMessage({
     const hiddenLines = countCharInString(text, '\n', TRUNCATE_HEAD_CHARS) - countCharInString(tail, '\n');
     return `${head}\n… +${hiddenLines} lines …\n${tail}`;
   }, [text]);
+  const isQueued = useQueuedMessage()?.isQueued ?? false;
   const isSelected = useContext(MessageActionsSelectedContext);
   if (!text) {
     logError(new Error('No content found in user prompt message'));
@@ -89,13 +93,13 @@ export function UserPromptMessage({
       <HighlightedThinkingText text={displayText} useBriefLayout={useBriefLayout} timestamp={useBriefLayout ? timestamp : undefined} />
     </Box>;
   }
-  const accent = isSelected ? 'suggestion' : 'briefLabelYou';
+  const accent = isSelected ? 'suggestion' : isQueued ? 'warning' : 'briefLabelYou';
   return <Box flexDirection="row" marginTop={addMargin ? 1 : 0} width="100%">
       <NoSelect fromLeftEdge minWidth={2}>
         <Text color={accent}>│</Text>
       </NoSelect>
       <Box flexDirection="column" flexGrow={1} backgroundColor={isSelected ? 'messageActionsBackground' : 'userMessageBackground'} paddingLeft={1} paddingRight={1}>
-        <UserHeader isSelected={isSelected} />
+        <UserHeader isQueued={isQueued} isSelected={isSelected} />
         <HighlightedThinkingText text={displayText} timestamp={undefined} />
       </Box>
     </Box>;

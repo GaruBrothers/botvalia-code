@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { Box } from 'src/ink.js';
+import { Box, Text } from 'src/ink.js';
 import { useAppState } from 'src/state/AppState.js';
 import { STATUS_TAG, SUMMARY_TAG, TASK_NOTIFICATION_TAG } from '../../constants/xml.js';
 import { QueuedMessageProvider } from '../../context/QueuedMessageContext.js';
@@ -81,7 +81,7 @@ function PromptInputQueuedCommandsImpl(): React.ReactNode {
 
   // createUserMessage mints a fresh UUID per call; without memoization, streaming
   // re-renders defeat Message's areMessagePropsEqual (compares uuid) → flicker.
-  const messages = useMemo(() => {
+  const queuePreview = useMemo(() => {
     if (queuedCommands.length === 0) return null;
     // task-notification is shown via useInboxNotification; most isMeta commands
     // (scheduled tasks, proactive ticks) are system-generated and hidden.
@@ -90,7 +90,10 @@ function PromptInputQueuedCommandsImpl(): React.ReactNode {
     const visibleCommands = queuedCommands.filter(isQueuedCommandVisible);
     if (visibleCommands.length === 0) return null;
     const processedCommands = processQueuedCommands(visibleCommands);
-    return normalizeMessages(processedCommands.map(cmd => {
+    const editableQueuedCount = processedCommands.filter(
+      cmd => cmd.mode === 'prompt' || cmd.mode === 'bash',
+    ).length;
+    const messages = normalizeMessages(processedCommands.map(cmd => {
       let content = cmd.value;
       if (cmd.mode === 'bash' && typeof content === 'string') {
         content = `<bash-input>${content}</bash-input>`;
@@ -101,13 +104,28 @@ function PromptInputQueuedCommandsImpl(): React.ReactNode {
         content
       });
     }));
+    return {
+      editableQueuedCount,
+      messages,
+    };
   }, [queuedCommands]);
 
   // Don't show leader's queued commands when viewing any agent's transcript
-  if (viewingAgent || messages === null) {
+  if (viewingAgent || queuePreview === null) {
     return null;
   }
+  const {
+    editableQueuedCount,
+    messages,
+  } = queuePreview;
+  const queuedSummary = editableQueuedCount > 0
+    ? `${editableQueuedCount} ${editableQueuedCount === 1 ? 'message' : 'messages'} waiting for the current turn`
+    : null;
   return <Box marginTop={1} flexDirection="column">
+      {queuedSummary ? <Box paddingLeft={2} marginBottom={1}>
+          <Text color="warning">Queued</Text>
+          <Text dimColor> · {queuedSummary} · press up to edit</Text>
+        </Box> : null}
       {messages.map((message, i) => <QueuedMessageProvider key={i} isFirst={i === 0} useBriefLayout={useBriefLayout}>
           <Message message={message} lookups={EMPTY_LOOKUPS} addMargin={false} tools={[]} commands={[]} verbose={false} inProgressToolUseIDs={EMPTY_SET} progressMessagesForMessage={[]} shouldAnimate={false} shouldShowDot={false} isTranscriptMode={false} isStatic={true} />
         </QueuedMessageProvider>)}
