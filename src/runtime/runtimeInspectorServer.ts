@@ -167,7 +167,7 @@ async function isStandaloneBuildFresh(): Promise<boolean> {
 }
 
 async function findStandaloneServerPath(): Promise<string | undefined> {
-  if (preferRuntimeUiSource() && !(await isStandaloneBuildFresh())) {
+  if (!(await isStandaloneBuildFresh())) {
     return undefined
   }
 

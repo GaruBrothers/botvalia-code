@@ -67,17 +67,13 @@ function AssistantHeader({
   const accent = isSelected ? 'suggestion' : 'claude'
 
   return (
-    <Box alignItems="center" gap={1}>
-      <NoSelect>
+    <NoSelect>
+      <Box alignItems="center" gap={1}>
         <Text color={accent}>botvalia</Text>
-        <Text color="subtle"> / assistant</Text>
-      </NoSelect>
-      {shouldShowDot && (
-        <NoSelect>
-          <Text color={accent}>{BLACK_CIRCLE}</Text>
-        </NoSelect>
-      )}
-    </Box>
+        <Text color="subtle">/ assistant</Text>
+        {shouldShowDot && <Text color={accent}>{BLACK_CIRCLE}</Text>}
+      </Box>
+    </NoSelect>
   )
 }
 
@@ -110,6 +106,7 @@ export function AssistantTextMessage({
 
     case PROMPT_TOO_LONG_ERROR_MESSAGE: {
       const upgradeHint = getUpgradeMessage('warning')
+
       return (
         <MessageResponse height={1}>
           <Text color="error">
@@ -221,7 +218,7 @@ export function AssistantTextMessage({
       marginTop={addMargin ? 1 : 0}
       width={width ?? '100%'}
     >
-      <NoSelect fromLeftEdge minWidth={2}>
+      <NoSelect fromLeftEdge minWidth={3}>
         <Text color={accent}>│</Text>
       </NoSelect>
       <Box
@@ -235,7 +232,7 @@ export function AssistantTextMessage({
           isSelected={isSelected}
           shouldShowDot={shouldShowDot}
         />
-        <Box marginTop={1} flexDirection="column">
+        <Box flexDirection="column" marginTop={1}>
           <Markdown>{text}</Markdown>
         </Box>
       </Box>

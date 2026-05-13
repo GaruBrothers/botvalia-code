@@ -80,6 +80,21 @@ function TungstenPill({
   return <Text color={selected ? 'warning' : 'text'}>{figures.squareSmallFilled} tmux</Text>;
 }
 
+function FooterStateMessage({
+  label,
+  message,
+  color = 'inactive'
+}: {
+  label: string;
+  message: string;
+  color?: 'bashBorder' | 'ide' | 'inactive' | 'suggestion' | 'warning';
+}): React.ReactNode {
+  return <Box gap={1}>
+      <Text color={color}>{label}</Text>
+      <Text dimColor={true} wrap="truncate">{message}</Text>
+    </Box>;
+}
+
 function ProactiveCountdown() {
   const $ = _c(7);
   const nextTickAt = useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE, proactiveModule?.getNextTickAt ?? NULL, NULL);
@@ -156,7 +171,7 @@ export function PromptInputFooterLeftSide(t0) {
   if (exitMessage.show) {
     let t1;
     if ($[0] !== exitMessage.key) {
-      t1 = <Text dimColor={true} key="exit-message">Press {exitMessage.key} again to exit</Text>;
+      t1 = <FooterStateMessage key="exit-message" label="exit" message={`press ${exitMessage.key} again to leave`} color="warning" />;
       $[0] = exitMessage.key;
       $[1] = t1;
     } else {
@@ -167,7 +182,7 @@ export function PromptInputFooterLeftSide(t0) {
   if (isPasting) {
     let t1;
     if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-      t1 = <Text dimColor={true} key="pasting-message">Pasting text…</Text>;
+      t1 = <FooterStateMessage key="pasting-message" label="paste" message="Pasting text…" color="suggestion" />;
       $[2] = t1;
     } else {
       t1 = $[2];
@@ -197,7 +212,7 @@ export function PromptInputFooterLeftSide(t0) {
   }
   let t3;
   if ($[11] !== showVim) {
-    t3 = showVim ? <Text dimColor={true} key="vim-insert">-- INSERT --</Text> : null;
+    t3 = showVim ? <Text color="suggestion" bold={true} key="vim-insert">insert</Text> : null;
     $[11] = showVim;
     $[12] = t3;
   } else {
@@ -327,7 +342,7 @@ function ModeIndicator({
     name: string;
   }>, t_0 => t_0.name !== 'team-lead') > 0;
   if (mode === 'bash') {
-    return <Text color="bashBorder">! for bash mode</Text>;
+    return <FooterStateMessage label="bash" message="shell input mode" color="bashBorder" />;
   }
   const currentMode = toolPermissionContext?.mode;
   const hasActiveMode = !isDefaultMode(currentMode);
@@ -419,7 +434,7 @@ function ModeIndicator({
   // below still treat "pill present" as non-empty.
   const tasksPart = hasBackgroundTasks && !hasTeammatePills && !shouldHideTasksFooter(tasks, showSpinnerTree) ? <BackgroundTaskStatus tasksSelected={tasksSelected} isViewingTeammate={isViewingTeammate} teammateFooterIndex={teammateFooterIndex} isLeaderIdle={!isLoading} onOpenDialog={onOpenTasksDialog} /> : null;
   if (parts.length === 0 && !tasksPart && !modePart && showHint) {
-    parts.push(<Text dimColor key="shortcuts-hint">
+    parts.push(<Text color="inactive" key="shortcuts-hint">
         ? for shortcuts
       </Text>);
   }
@@ -455,12 +470,12 @@ function ModeIndicator({
         </Byline>
       </Text>);
   } else if (feature('VOICE_MODE') && parts.length > 0 && showHint && voiceEnabled && voiceState === 'idle' && hintParts.length === 0 && voiceHintUnderCap) {
-    parts.push(<Text dimColor key="voice-hint">
+    parts.push(<Text color="ide" key="voice-hint">
         hold {voiceKeyShortcut} to speak
       </Text>);
   }
   if ((tasksPart || hasCoordinatorTasks) && showHint && !hasTeams) {
-    parts.push(<Text dimColor key="manage-tasks">
+    parts.push(<Text color={tasksSelected ? 'suggestion' : 'inactive'} key="manage-tasks">
         {tasksSelected ? <KeyboardShortcutHint shortcut="Enter" action="view tasks" /> : <KeyboardShortcutHint shortcut="↓" action="manage" />}
       </Text>);
   }

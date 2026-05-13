@@ -1,4 +1,5 @@
 import chalk, { Chalk } from 'chalk'
+import type { Color } from '../ink/styles.js'
 import { env } from './env.js'
 
 export type Theme = {
@@ -22,6 +23,12 @@ export type Theme = {
   suggestion: string
   remember: string
   background: string
+  // Design-system surfaces
+  divider: string
+  dividerText: string
+  paneBackground: string
+  paneBorder: string
+  bylineSeparator: string
   // Semantic colors
   success: string
   error: string
@@ -134,6 +141,11 @@ const lightTheme: Theme = {
   suggestion: 'rgb(87,105,247)', // Medium blue
   remember: 'rgb(0,0,255)', // Blue
   background: 'rgb(0,153,153)', // Cyan
+  divider: 'rgb(205,210,218)', // Soft cool divider
+  dividerText: 'rgb(108,116,126)', // Muted graphite for divider titles
+  paneBackground: 'rgb(248,249,251)', // Frosted paper surface
+  paneBorder: 'rgb(130,141,156)', // Cooler structured border accent
+  bylineSeparator: 'rgb(184,190,198)', // Gentle metadata separator
   success: 'rgb(44,122,57)', // Green
   error: 'rgb(171,43,63)', // Red
   warning: 'rgb(150,108,30)', // Amber
@@ -216,6 +228,11 @@ const lightAnsiTheme: Theme = {
   suggestion: 'ansi:blue',
   remember: 'ansi:blue',
   background: 'ansi:cyan',
+  divider: 'ansi:blackBright',
+  dividerText: 'ansi:black',
+  paneBackground: 'ansi:white',
+  paneBorder: 'ansi:blue',
+  bylineSeparator: 'ansi:blackBright',
   success: 'ansi:green',
   error: 'ansi:red',
   warning: 'ansi:yellow',
@@ -297,6 +314,11 @@ const darkAnsiTheme: Theme = {
   suggestion: 'ansi:blueBright',
   remember: 'ansi:blueBright',
   background: 'ansi:cyanBright',
+  divider: 'ansi:white',
+  dividerText: 'ansi:whiteBright',
+  paneBackground: 'ansi:blackBright',
+  paneBorder: 'ansi:blueBright',
+  bylineSeparator: 'ansi:white',
   success: 'ansi:greenBright',
   error: 'ansi:redBright',
   warning: 'ansi:yellowBright',
@@ -378,6 +400,11 @@ const lightDaltonizedTheme: Theme = {
   suggestion: 'rgb(51,102,255)', // Bright blue
   remember: 'rgb(51,102,255)', // Bright blue
   background: 'rgb(0,153,153)', // Cyan (color-blind friendly)
+  divider: 'rgb(198,206,216)', // Soft blue-gray divider
+  dividerText: 'rgb(98,108,122)', // Muted steel for divider titles
+  paneBackground: 'rgb(246,248,250)', // Quiet paper surface
+  paneBorder: 'rgb(104,126,156)', // Structured blue accent
+  bylineSeparator: 'rgb(176,184,194)', // Calm metadata separator
   success: 'rgb(0,102,153)', // Blue instead of green for deuteranopia
   error: 'rgb(204,0,0)', // Pure red for better distinction
   warning: 'rgb(255,153,0)', // Orange adjusted for deuteranopia
@@ -459,6 +486,11 @@ const darkTheme: Theme = {
   suggestion: 'rgb(146,188,255)', // Clean coder blue
   remember: 'rgb(146,188,255)', // Clean coder blue
   background: 'rgb(96,174,255)', // Bright blue accent
+  divider: 'rgb(78,86,96)', // Soft steel divider
+  dividerText: 'rgb(166,172,180)', // Muted header text
+  paneBackground: 'rgb(26,30,35)', // Dense graphite surface
+  paneBorder: 'rgb(116,132,152)', // Structured cool border
+  bylineSeparator: 'rgb(94,100,108)', // Subtle metadata separator
   success: 'rgb(96,186,132)', // Balanced green
   error: 'rgb(242,118,128)', // Soft terminal red
   warning: 'rgb(232,186,88)', // Warm amber
@@ -541,6 +573,11 @@ const premiumTheme: Theme = {
   suggestion: 'rgb(255,196,112)',
   remember: 'rgb(255,196,112)',
   background: 'rgb(214,195,148)',
+  divider: 'rgb(98,74,54)',
+  dividerText: 'rgb(194,183,167)',
+  paneBackground: 'rgb(26,22,19)',
+  paneBorder: 'rgb(168,128,84)',
+  bylineSeparator: 'rgb(112,86,62)',
   success: 'rgb(126,204,157)',
   error: 'rgb(245,126,132)',
   warning: 'rgb(255,196,112)',
@@ -594,6 +631,11 @@ const darkDaltonizedTheme: Theme = {
   suggestion: 'rgb(168,214,255)', // Light blue
   remember: 'rgb(168,214,255)', // Light blue
   background: 'rgb(96,174,255)', // Bright blue accent
+  divider: 'rgb(78,92,106)', // Soft structured divider
+  dividerText: 'rgb(176,188,200)', // Accessible cool title tone
+  paneBackground: 'rgb(26,30,35)', // Dense graphite surface
+  paneBorder: 'rgb(112,158,208)', // High-clarity border accent
+  bylineSeparator: 'rgb(102,112,124)', // Subtle metadata separator
   success: 'rgb(102,178,255)', // Blue instead of green
   error: 'rgb(255,122,122)', // Accessible red
   warning: 'rgb(255,214,92)', // Warm yellow-orange
@@ -676,21 +718,86 @@ const chalkForChart =
     ? new Chalk({ level: 2 }) // 256 colors
     : chalk
 
+const ANSI_COLOR_STYLERS = {
+  'ansi:black': (value: string) => chalkForChart.black(value),
+  'ansi:red': (value: string) => chalkForChart.red(value),
+  'ansi:green': (value: string) => chalkForChart.green(value),
+  'ansi:yellow': (value: string) => chalkForChart.yellow(value),
+  'ansi:blue': (value: string) => chalkForChart.blue(value),
+  'ansi:magenta': (value: string) => chalkForChart.magenta(value),
+  'ansi:cyan': (value: string) => chalkForChart.cyan(value),
+  'ansi:white': (value: string) => chalkForChart.white(value),
+  'ansi:blackBright': (value: string) => chalkForChart.blackBright(value),
+  'ansi:redBright': (value: string) => chalkForChart.redBright(value),
+  'ansi:greenBright': (value: string) => chalkForChart.greenBright(value),
+  'ansi:yellowBright': (value: string) => chalkForChart.yellowBright(value),
+  'ansi:blueBright': (value: string) => chalkForChart.blueBright(value),
+  'ansi:magentaBright': (value: string) => chalkForChart.magentaBright(value),
+  'ansi:cyanBright': (value: string) => chalkForChart.cyanBright(value),
+  'ansi:whiteBright': (value: string) => chalkForChart.whiteBright(value),
+} as const
+
+function hasOwnThemeColor(
+  theme: Theme,
+  color: keyof Theme | Color | undefined,
+): color is keyof Theme {
+  return (
+    typeof color === 'string' &&
+    Object.prototype.hasOwnProperty.call(theme, color)
+  )
+}
+
+function extractOpeningAnsiSequence(styledText: string, marker: string): string {
+  const markerIndex = styledText.indexOf(marker)
+  return markerIndex >= 0 ? styledText.slice(0, markerIndex) : ''
+}
+
+export function resolveThemeColor(
+  color: keyof Theme | Color | undefined,
+  theme: Theme,
+): Color | undefined {
+  if (!color) return undefined
+
+  if (hasOwnThemeColor(theme, color)) {
+    return theme[color] as Color
+  }
+
+  return color as Color
+}
+
 /**
  * Converts a theme color to an ANSI escape sequence for use with asciichart.
  * Uses chalk to generate the escape codes, with 256-color mode for Apple Terminal.
  */
 export function themeColorToAnsi(themeColor: string): string {
+  const marker = 'X'
   const rgbMatch = themeColor.match(/rgb\(\s?(\d+),\s?(\d+),\s?(\d+)\s?\)/)
   if (rgbMatch) {
     const r = parseInt(rgbMatch[1]!, 10)
     const g = parseInt(rgbMatch[2]!, 10)
     const b = parseInt(rgbMatch[3]!, 10)
-    // Use chalk.rgb which auto-converts to 256 colors when level is 2
-    // Extract just the opening escape sequence by using a marker
-    const colored = chalkForChart.rgb(r, g, b)('X')
-    return colored.slice(0, colored.indexOf('X'))
+    return extractOpeningAnsiSequence(chalkForChart.rgb(r, g, b)(marker), marker)
   }
+
+  if (/^#(?:[0-9a-f]{3,8})$/i.test(themeColor)) {
+    return extractOpeningAnsiSequence(chalkForChart.hex(themeColor)(marker), marker)
+  }
+
+  const ansi256Match = themeColor.match(/^ansi256\((\d{1,3})\)$/)
+  if (ansi256Match) {
+    return extractOpeningAnsiSequence(
+      chalkForChart.ansi256(parseInt(ansi256Match[1]!, 10))(marker),
+      marker,
+    )
+  }
+
+  const ansiStyler =
+    ANSI_COLOR_STYLERS[themeColor as keyof typeof ANSI_COLOR_STYLERS]
+
+  if (ansiStyler) {
+    return extractOpeningAnsiSequence(ansiStyler(marker), marker)
+  }
+
   // Fallback to magenta if parsing fails
   return '\x1b[35m'
 }

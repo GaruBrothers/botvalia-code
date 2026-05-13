@@ -386,7 +386,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       upsertSessionLease(
         sessionId,
         currentSession.channelOwner.leaseId,
-        currentSession.channelOwner.leaseExpiresAt,
+        currentSession.channelOwner.leaseExpiresAt ?? null,
       );
       return currentSession.channelOwner.leaseId;
     }
@@ -422,7 +422,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
 
   useEffect(() => {
     handleProtocolEventRef.current = event => {
-      if (event.clientId) {
+      if ('clientId' in event && event.clientId) {
         clientIdRef.current = event.clientId;
       }
 
