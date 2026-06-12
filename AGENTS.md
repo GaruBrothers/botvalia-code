@@ -5,6 +5,8 @@
 >
 > Si el usuario no lo pide de forma explicita y puntual, se asume prohibido.
 <!-- IA-SYSTEM-PROTECTION:END -->
+
+> Politica global IA asistida: antes de sugerir, documentar o ejecutar comandos, revisar `../../IA_ASISTIDA_COMANDOS_RESTRINGIDOS.md`. No forzar politicas corporativas; si un script queda bloqueado, escalar a Seguridad/Data Center.
 # AGENTS.md
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
