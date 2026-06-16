@@ -806,6 +806,7 @@ async function* queryLoop(
     }
 
     let attemptWithFallback = true
+    const attemptedModels = new Set<string>()
 
     queryCheckpoint('query_api_loop_start')
     try {
@@ -832,8 +833,17 @@ async function* queryLoop(
               toolChoice: undefined,
                 isNonInteractiveSession:
                   toolUseContext.options.isNonInteractiveSession,
-                fallbackModel:
-                  fallbackQueue[0]?.routeSpec ?? fallbackQueue[0]?.model,
+                fallbackModel: (() => {
+                  const nextUntried = fallbackQueue.find(
+                    candidate =>
+                      !(
+                        (candidate.routeSpec !== undefined &&
+                          attemptedModels.has(candidate.routeSpec)) ||
+                        attemptedModels.has(candidate.model)
+                      ),
+                  )
+                  return nextUntried?.routeSpec ?? nextUntried?.model
+                })(),
               onStreamingFallback: () => {
                 streamingFallbackOccured = true
               },
@@ -1077,6 +1087,10 @@ async function* queryLoop(
               innerError.fallbackModel,
               fallbackQueue,
             )
+            if (currentRouteSpec) {
+              attemptedModels.add(currentRouteSpec)
+            }
+            attemptedModels.add(currentModel)
             currentModel = nextFallback.model
             currentRouteSpec = nextFallback.routeSpec
             applyProviderRoute(currentRouteSpec)
