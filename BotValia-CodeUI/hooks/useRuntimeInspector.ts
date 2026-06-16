@@ -43,7 +43,10 @@ type UseRuntimeInspectorResult = {
   reconnect: () => Promise<void>;
   refresh: () => Promise<void>;
   claimSessionControl: (sessionId?: string | null) => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (
+    text: string,
+    attachments?: Array<{ name: string; type: string; base64: string }>,
+  ) => Promise<void>;
   sendDirectInstruction: (teammateName: string, text: string) => Promise<void>;
   interrupt: () => Promise<void>;
   createSession: (title: string, workspacePath: string) => Promise<void>;
@@ -599,7 +602,10 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionVersion, globalState.autoRefresh]);
 
-  const sendMessage = async (text: string) => {
+  const sendMessage = async (
+    text: string,
+    attachments?: Array<{ name: string; type: string; base64: string }>,
+  ) => {
     const client = clientRef.current;
     const sessionId = selectedSessionIdRef.current;
     const session = sessions.find(candidate => candidate.id === sessionId);
@@ -617,13 +623,39 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
     }
 
     const leaseId = await ensureWebLease(sessionId, client);
-    commitSessions(previous => appendOptimisticMessage(previous, sessionId, text));
+
+    let content: any[] | undefined = undefined;
+    let uiText = text;
+
+    if (attachments && attachments.length > 0) {
+      content = [];
+      for (const att of attachments) {
+        const commaIdx = att.base64.indexOf(',');
+        const data = commaIdx >= 0 ? att.base64.slice(commaIdx + 1) : att.base64;
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: att.type,
+            data,
+          },
+        });
+        uiText += `\n\n![${att.name}](${att.base64})`;
+      }
+      content.push({
+        type: 'text',
+        text,
+      });
+    }
+
+    commitSessions(previous => appendOptimisticMessage(previous, sessionId, uiText));
 
     try {
       await client.sendMessage(
         sessionId,
         {
           text,
+          content,
           channel: 'web-ui',
         },
         leaseId,

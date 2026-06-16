@@ -273,6 +273,7 @@ export interface RuntimeSessionDetail {
 
 export interface RuntimeSendMessageInput {
   text: string;
+  content?: any[];
   uuid?: string;
   isMeta?: boolean;
   channel?: 'cli' | 'web-ui';

@@ -580,7 +580,8 @@ export function createQueryEngineSessionRuntimeController({
     runtime.setStatus('running')
 
     try {
-      for await (const message of engine.submitMessage(input.text, {
+      const prompt = input.content && input.content.length > 0 ? input.content : input.text
+      for await (const message of engine.submitMessage(prompt, {
         uuid: input.uuid,
         isMeta: input.isMeta,
         querySource: activeChannel === 'web-ui' ? 'runtime-web' : 'sdk',

@@ -229,6 +229,7 @@ export type RuntimeSessionDetail = {
 
 export type RuntimeSendMessageInput = {
   text: string
+  content?: any[]
   uuid?: string
   isMeta?: boolean
   channel?: 'cli' | 'web-ui'
@@ -296,7 +297,7 @@ export function toRuntimeTaskSummary(task: TaskState): RuntimeTaskSummary {
 }
 
 function toRuntimeMessageBlocks(blocks: unknown[]): RuntimeMessageBlock[] {
-  return blocks.flatMap(block => {
+  return blocks.flatMap((block): RuntimeMessageBlock[] => {
     if (!block || typeof block !== 'object') {
       return []
     }
@@ -368,6 +369,17 @@ function toRuntimeMessageBlocks(blocks: unknown[]): RuntimeMessageBlock[] {
                 : JSON.stringify(candidate.content),
         },
       ]
+    }
+
+    if (candidate.type === 'image') {
+      const source = (candidate as any).source
+      if (source && source.type === 'base64' && typeof source.data === 'string') {
+        const mediaType = source.media_type || 'image/png'
+        return [{
+          type: 'markdown',
+          text: `![image](data:${mediaType};base64,${source.data})`
+        }]
+      }
     }
 
     if (typeof candidate.type === 'string') {

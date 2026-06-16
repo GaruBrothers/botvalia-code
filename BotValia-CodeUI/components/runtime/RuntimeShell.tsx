@@ -274,7 +274,6 @@ export function RuntimeShell() {
               onSend={sendMessage}
               onStop={interrupt}
               onCyclePermissionMode={cyclePermissionMode}
-              onAttach={() => handlePendingFeature('Adjuntar archivos desde la UI')}
               permissionModeLabel={
                 selectedSession
                   ? formatPermissionModeLabel(selectedSession.permissionMode)

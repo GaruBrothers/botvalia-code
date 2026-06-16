@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ArrowUp, Sparkles, StopCircle, Zap, Paperclip } from "lucide-react";
+import { ArrowUp, Sparkles, StopCircle, Zap, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -21,7 +21,7 @@ const SKILLS = [
 
 type ComposerProps = {
   isRunning: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments?: Array<{ name: string; type: string; base64: string }>) => void;
   onStop?: () => void;
   onAttach?: () => void;
   onCyclePermissionMode?: () => void;
@@ -44,16 +44,37 @@ export function Composer({
   const [showQuick, setShowQuick] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<Array<{ name: string; type: string; base64: string }>>([]);
   
   // Suggestion state
   const [suggestionType, setSuggestionType] = useState<'command' | 'skill' | null>(null);
   const [suggestionQuery, setSuggestionQuery] = useState("");
 
   const handleSend = () => {
-    if (!text.trim() || disabled) return;
-    onSend(text);
+    if ((!text.trim() && attachments.length === 0) || disabled) return;
+    onSend(text, attachments);
     setText("");
+    setAttachments([]);
     setSuggestionType(null);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      if (!file.type.startsWith('image/')) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setAttachments(prev => [...prev, { name: file.name, type: file.type, base64 }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleAttach = () => {
@@ -146,6 +167,27 @@ export function Composer({
            </div>
         )}
 
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-4 pt-3 pb-2 border-b border-white/[0.06] bg-white/[0.01]">
+            {attachments.map((file, idx) => (
+              <div key={idx} className="relative group flex items-center space-x-2 bg-white/[0.04] border border-white/[0.08] rounded-xl p-1.5 pr-3 max-w-[220px] shadow-sm hover:bg-white/[0.06] transition-all duration-200 animate-in fade-in zoom-in-95">
+                <img src={file.base64} alt={file.name} className="w-8 h-8 object-cover rounded-lg border border-white/[0.1] shadow-inner" />
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-xs text-gray-200 truncate font-semibold leading-none mb-0.5">{file.name}</span>
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold leading-none">{file.type.split('/')[1]}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 shadow-lg border border-black/20"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <Textarea
           value={text}
           onChange={handleTextChange}
@@ -200,11 +242,8 @@ export function Composer({
               ref={fileInputRef} 
               className="hidden" 
               multiple 
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  onAttach?.();
-                }
-              }}
+              onChange={handleFileChange}
+              accept="image/*"
             />
             <Button 
               variant="ghost" 
@@ -227,7 +266,7 @@ export function Composer({
             <Button 
               size="icon" 
               className="h-8 w-8 rounded-full bg-white text-black hover:bg-gray-200 disabled:bg-white/10 disabled:text-white/30 transition-all font-bold shadow-md"
-              disabled={disabled || (!text.trim() && !isRunning)}
+              disabled={disabled || (!text.trim() && attachments.length === 0 && !isRunning)}
               onClick={handleSend}
             >
               <ArrowUp className="h-4 w-4" />
