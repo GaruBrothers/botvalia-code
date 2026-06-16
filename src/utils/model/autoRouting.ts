@@ -39,7 +39,13 @@ export function getAutoRoutedSelection(
     return undefined
   }
 
-  const tier = classifyPromptTier(promptText)
+  const hasImage = inputMessages.some(m => {
+    if (m.type !== 'user' || m.isMeta || m.toolUseResult) return false
+    const content = m.message.content
+    return Array.isArray(content) && content.some(block => block.type === 'image')
+  })
+
+  const tier = classifyPromptTier(promptText, hasImage)
   const primaryCandidate = getPrimaryCandidate(tier)
   const fallbackCandidates = getFallbackCandidates(tier)
   const parsedPrimary = safeNormalizeModelCandidate(primaryCandidate)
@@ -106,7 +112,11 @@ export function getAutoRoutedSelection(
   }
 }
 
-function classifyPromptTier(promptText: string): AutoRouteTier {
+function classifyPromptTier(promptText: string, hasImage = false): AutoRouteTier {
+  if (hasImage) {
+    return 'code'
+  }
+
   if (codingIntentPattern.test(promptText)) {
     return 'code'
   }
