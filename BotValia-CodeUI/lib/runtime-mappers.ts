@@ -649,7 +649,7 @@ export function applyDetailToSession(
   const pendingMessages =
     previousSession?.messages.filter(message => message.isPending) || [];
   const mergedMessages = [...messages];
-  const shouldPreserveAssistantPending =
+  const shouldPreservePending =
     detail.snapshot.status === 'running' ||
     detail.snapshot.status === 'requires_action';
 
@@ -658,11 +658,11 @@ export function applyDetailToSession(
       continue;
     }
 
-    if (pendingMessage.role === 'assistant') {
-      if (!shouldPreserveAssistantPending) {
-        continue;
-      }
+    if (!shouldPreservePending) {
+      continue;
+    }
 
+    if (pendingMessage.role === 'assistant') {
       if (pendingMessage.streamKind === 'thinking') {
         mergedMessages.push(pendingMessage);
         continue;
@@ -950,7 +950,7 @@ function clearStreamingMessage(
   );
 }
 
-function clearPendingMessagesFromSession(
+export function clearPendingMessagesFromSession(
   previousSessions: Session[],
   sessionId: string,
 ): Session[] {

@@ -7,6 +7,7 @@ import {
   appendOptimisticMessage,
   applyRuntimeRegistryEvent,
   applyRuntimeSessionEvent,
+  clearPendingMessagesFromSession,
   mergeDetailIntoSessions,
   mergeSnapshotsIntoSessions,
 } from '@/lib/runtime-mappers';
@@ -662,6 +663,7 @@ export function useRuntimeInspector(): UseRuntimeInspectorResult {
       );
       scheduleSessionDetailRefresh(sessionId);
     } catch (error) {
+      commitSessions(previous => clearPendingMessagesFromSession(previous, sessionId));
       await refresh(client);
       setRuntimeError(
         error instanceof Error ? error.message : 'No pude enviar el mensaje al runtime.',
