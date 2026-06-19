@@ -76,6 +76,13 @@ async function main(): Promise<void> {
     } = await import('../utils/claudeInChrome/mcpServer.js');
     await runClaudeInChromeMcpServer();
     return;
+  } else if (args[0] === 'codex-bridge') {
+    profileCheckpoint('cli_codex_bridge_path');
+    const {
+      runCodexBridgeCommand
+    } = await import('../../integrations/codex/Extensions/CodexIntegrationExtensions.js');
+    await runCodexBridgeCommand(args);
+    return;
   } else if (process.argv[2] === '--chrome-native-host') {
     profileCheckpoint('cli_chrome_native_host_path');
     const {

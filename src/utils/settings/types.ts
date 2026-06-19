@@ -801,6 +801,36 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Remote session configuration'),
+      codexBridge: z
+        .object({
+          enabled: z.boolean().optional(),
+          host: z.string().optional(),
+          port: z.number().int().positive().optional(),
+          authToken: z.string().optional(),
+          virtualModel: z.string().optional(),
+          defaultStrategy: z
+            .enum(['coding', 'architecture', 'cheap', 'free', 'local', 'reasoning'])
+            .optional(),
+          allowTools: z.boolean().optional(),
+          requestTimeoutMs: z.number().int().positive().optional(),
+          runnerCommand: z.string().optional(),
+          runnerArgs: z.array(z.string()).optional(),
+          cwd: z.string().optional(),
+          models: z
+            .array(
+              z.object({
+                id: z.string(),
+                route: z.string().optional(),
+                strategy: z
+                  .enum(['coding', 'architecture', 'cheap', 'free', 'local', 'reasoning'])
+                  .optional(),
+                description: z.string().optional(),
+              }),
+            )
+            .optional(),
+        })
+        .optional()
+        .describe('OpenAI-compatible Codex bridge server configuration'),
       autoUpdatesChannel: z
         .enum(['latest', 'stable'])
         .optional()

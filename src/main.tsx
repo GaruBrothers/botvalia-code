@@ -4050,6 +4050,13 @@ async function run(): Promise<CommanderCommand> {
     });
   }
 
+  program.command('codex-bridge').description('Start the OpenAI-compatible Codex bridge').option('--port <number>', 'HTTP port', '5008').option('--host <string>', 'Bind address', '127.0.0.1').option('--auth-token <token>', 'Optional Bearer token for OpenAI-compatible clients').option('--model <model>', 'Virtual model id exposed by the bridge').option('--strategy <strategy>', 'Default routing strategy').option('--allow-tools', 'Allow BotValia tools in bridge requests').action(async () => {
+    const {
+      runCodexBridgeCommand
+    } = await import('../integrations/codex/Extensions/CodexIntegrationExtensions.js');
+    await runCodexBridgeCommand(process.argv.slice(2));
+  });
+
   // `botvalia ssh <host> [dir]` — registered here only so --help shows it.
   // The actual interactive flow is handled by early argv rewriting in main()
   // (parallels the DIRECT_CONNECT/cc:// pattern above). If commander reaches
